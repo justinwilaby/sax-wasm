@@ -1,0 +1,6 @@
+[package]
+name = "sax-wasm"
+version = "0.1.0"
+authors = ["justinwilaby <jwilaby@gmail.com>"]
+
+[dependencies]

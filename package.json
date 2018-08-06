@@ -1,0 +1,46 @@
+{
+  "name": "sax-wasm",
+  "version": "0.0.1",
+  "description": "A SAX style parser written in Rust for Web Assembly",
+  "main": "sax-wasm.wasm",
+  "scripts": {
+    "test": "jest",
+    "build": "rustc ./src/main.rs -C lto -O --target wasm32-unknown-unknown --out-dir ./lib && cd ./lib && wasm-gc main.wasm sax-wasm.wasm "
+  },
+  "keywords": [
+    "XML",
+    "parser",
+    "sax",
+    "web",
+    "assembly"
+  ],
+  "author": "Justin Wilaby",
+  "license": "MIT",
+  "dependencies": {
+    "@types/node": "^10.5.5",
+    "@types/webassembly-js-api": "0.0.1",
+    "typescript": "^3.0.1"
+  },
+  "devDependencies": {
+    "@types/jest": "^23.3.1",
+    "jest": "^23.4.2",
+    "ts-jest": "^23.1.2"
+  },
+  "jest": {
+    "transform": {
+      "^.+\\.(tsx?|jsx?)$": "ts-jest"
+    },
+    "testURL": "http://localhost",
+    "testMatch": [
+      "<rootDir>/src/js/**/?(*.)(spec|test).(ts)?(x)"
+    ],
+    "moduleFileExtensions": [
+      "ts",
+      "tsx",
+      "js",
+      "jsx",
+      "json",
+      "node"
+    ]
+  }
+}

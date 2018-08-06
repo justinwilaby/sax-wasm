@@ -1,0 +1,6 @@
+
+/target
+**/*.rs.bk
+/node_modules
+.idea
+main.wasm
