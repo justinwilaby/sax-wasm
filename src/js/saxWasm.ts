@@ -2,16 +2,6 @@ import Memory = WebAssembly.Memory;
 import MemoryDescriptor = WebAssembly.MemoryDescriptor;
 import TableDescriptor = WebAssembly.TableDescriptor;
 
-export class Options {
-  static readonly Trim = 0b1;
-  static readonly Normalize = 0b10;
-  static readonly Lowercase = 0b100;
-  static readonly XmlNS = 0b1000;
-  static readonly StrictEntities = 0b10000;
-  static readonly Strict = 0b100000;
-  static readonly NoScript = 0b1000000;
-}
-
 export class SaxEventType {
   // 1
   public static Text = 0b1;
@@ -37,31 +27,6 @@ export class SaxEventType {
   public static Cdata = 0b10000000000;
   // 2048
   public static CloseCDATA = 0b100000000000;
-}
-
-export class SaxErrorType {
-  static readonly UnclosedRootTag = 1;
-  static readonly XmlPrefixBinding = 2;
-  static readonly XmlnsPrefixBinding = 3;
-  static readonly UnboundNSPrefix = 4;
-  static readonly EmptyCloseTag = 5;
-  static readonly UnexpectedCloseTag = 6;
-  static readonly UnmatchedCloseTag = 7;
-  static readonly InvalidCharacterEntity = 8;
-  static readonly NonWhitespaceBeforeFirstTag = 9;
-  static readonly TextDataOutsideRootNode = 10;
-  static readonly UnencodedLessThan = 11;
-  static readonly MisplacedDoctype = 12;
-  static readonly MalformedComment = 13;
-  static readonly InvalidCharInTagName = 14;
-  static readonly MisplacedForwardSlash = 15;
-  static readonly InvalidAttributeName = 16;
-  static readonly AttributeWithoutValue = 17;
-  static readonly UnquotedAttributeValue = 18;
-  static readonly AttributesNotSeparated = 19;
-  static readonly InvalidClosingTagName = 20;
-  static readonly InvalidCharsInCloseTag = 21;
-  static readonly InvalidCharInEntityName = 22;
 }
 
 export interface Position {
