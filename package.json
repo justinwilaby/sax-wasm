@@ -8,7 +8,7 @@
   ],
   "scripts": {
     "test": "jest",
-    "build:wasm": "rustc ./src/main.rs -C lto -O --target wasm32-unknown-unknown --out-dir ./lib && cd ./lib && wasm-gc main.wasm sax-wasm.wasm",
+    "build:wasm": "rustc ./src/main.rs -C lto -O --target wasm32-unknown-unknown -o ./lib/sax-wasm.wasm",
     "build": "tsc && npm run build:wasm"
   },
   "keywords": [

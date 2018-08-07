@@ -118,18 +118,16 @@ Complete list of event/argument pairs:
 This project requires rust v1.29+ since it contains the `wasm32-unknown-unknown` target out of the box. This is 
 currently only available in the nightly build.
 
-1. Install rust:
+Install rust:
 ```bash
 curl https://sh.rustup.rs -sSf | sh
 ```
-2. Install the nightly compiler and switch to it
+Install the nightly compiler and switch to it
 ```bash
 rustup install nightly
 rustup default nightly
 ```
-3. Follow the instructions for installing [wasm-gc](https://github.com/alexcrichton/wasm-gc)
-
-4. Install [node with npm](https://nodejs.org/en/) then run the following command from the project root.
+Install [node with npm](https://nodejs.org/en/) then run the following command from the project root.
 ```bash
 npm install
 ```
