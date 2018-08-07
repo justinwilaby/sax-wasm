@@ -1,9 +1,11 @@
 {
   "name": "sax-wasm",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "An extremely fast JSX, HTML and XML parser written in Rust compiled to WebAssembly for Node and the Web",
   "main": "index.js",
-  "files": ["lib"],
+  "files": [
+    "lib"
+  ],
   "scripts": {
     "test": "jest",
     "build:wasm": "rustc ./src/main.rs -C lto -O --target wasm32-unknown-unknown --out-dir ./lib && cd ./lib && wasm-gc main.wasm sax-wasm.wasm",
