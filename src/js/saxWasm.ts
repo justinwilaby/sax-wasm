@@ -37,12 +37,6 @@ export class SaxEventType {
   public static Cdata = 0b10000000000;
   // 2048
   public static CloseCDATA = 0b100000000000;
-  // 4096
-  public static Script = 0b1000000000000;
-  // 8192
-  public static CloseNamespace = 0b10000000000000;
-  // 16384
-  public static OpenNamespace = 0b100000000000000;
 }
 
 export class SaxErrorType {
@@ -102,9 +96,7 @@ const jsonFlag = SaxEventType.Attribute |
   SaxEventType.OpenTag |
   SaxEventType.CloseTag |
   SaxEventType.OpenCDATA |
-  SaxEventType.CloseCDATA |
-  SaxEventType.OpenNamespace |
-  SaxEventType.CloseNamespace;
+  SaxEventType.CloseCDATA;
 
 interface WasmSaxParser {
   memory: Memory;
