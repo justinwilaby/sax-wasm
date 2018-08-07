@@ -1,9 +1,9 @@
 {
   "compilerOptions": {
-    "module": "es6",
+    "module": "commonjs",
     "target": "es2017",
     "outDir": "lib",
-    "sourceMap": true
+    "sourceMap": false
   },
   "lib": [
     "es2017",
@@ -11,5 +11,8 @@
   ],
   "include": [
     "src/js/**/*.ts"
+  ],
+  "exclude": [
+    "src/js/**/*.spec.ts"
   ]
 }

@@ -1,7 +1,7 @@
 # SAX (Simple API for XML) for Web Assembly
 *When you absolutely, positively have to have the fastest parser in the room, accept no substitutes.*
 
-The first streamable, fixed memory XML, HTML, and JSX parser for [WebAssembly](https://developer.mozilla.org/en-US/docs/WebAssembly).
+The first streamable, low memory XML, HTML, and JSX parser for [WebAssembly](https://developer.mozilla.org/en-US/docs/WebAssembly).
 **And yes, it will parse JSX!**
 
 Sax Wasm is a sax style parser for XML, HTML and JSX written in [Rust](https://www.rust-lang.org/en-US/), compiled for Web Assembly with the sole motivation
@@ -68,8 +68,22 @@ loadAndPrepareWasm().then(parser => {
     }
     parser.write('<div class="modal"></div>')
 });
-
 ```
+
+## Differences from sax-js
+Besides being incredibly fast, there are some notable differences between sax-wasm and sax-js that may affect some users
+when migrating:
+
+1. JSX is supported including JSX fragments. Things like `<foo bar={this.bar()}></bar>` will parse as expected.
+1. No attempt is made to validate the document. sax-wasm reports what it sees. If you need "strict mode", it could 
+be recreated by applying rules to the events that are reported by the parser.
+1. Namespaces are reported in attributes. No special events dedicated to namespaces
+1. The parser is ready as soon as the promise is handled.
+
+## Streaming 
+Streaming is supported with sax-wasm by writing utf-8 encoded text to the parser instance. Writes can occur safely 
+anywhere except withing the `eventHandler` function or within the `eventTrap` (when extending `SAXParser` class). 
+Doing so anyway risks overwriting memory still in play.
 
 ## Events
 Events are subscribed to using a bitmask composed from flags representing the event type. 
@@ -98,3 +112,28 @@ Complete list of event/argument pairs:
 |SaxEventType.CloseNamespace       |ns: Namespace       |
 |SaxEventType.Script               |script: string      |
 |SaxEventType.OpenNamespace        |ns: Namespace       |
+
+## Building from source
+### Prerequisites
+This project requires rust v1.29+ since it contains the `wasm32-unknown-unknown` target out of the box. This is 
+currently only available in the nightly build.
+
+1. Install rust:
+```bash
+curl https://sh.rustup.rs -sSf | sh
+```
+2. Install the nightly compiler and switch to it
+```bash
+rustup install nightly
+rustup default nightly
+```
+3. Follow the instructions for installing [wasm-gc](https://github.com/alexcrichton/wasm-gc)
+
+4. Install [node with npm](https://nodejs.org/en/) then run the following command from the project root.
+```bash
+npm install
+```
+The project can now be built using: 
+```bash
+npm run build
+```
