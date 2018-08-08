@@ -1,20 +1,13 @@
--language: rust
+language: rust
 rust:
   - nightly
+matrix:
+  allow_failures:
+    - rust: nightly
+  fast_finish: true
 
-allow_failures:
-  - rust: nightly
-fast_finish: true
-
-install:
+  install:
     - npm install
 
-script
-  - npm run build && npm run test:coveralls
-
-cache:
-  directories:
-  - "node_modules"
-
-notifications:
-  email: false
+  script:
+    - npm run build
