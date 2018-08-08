@@ -8,6 +8,7 @@
   ],
   "scripts": {
     "test": "jest --runInBand",
+    "test:coveralls": "jest --runInBand --coverage --coverageReporters=text-lcov | coveralls",
     "build:wasm": "rustc ./src/main.rs -C lto -O --target wasm32-unknown-unknown -o ./lib/sax-wasm.wasm",
     "build": "tsc && npm run build:wasm"
   },
