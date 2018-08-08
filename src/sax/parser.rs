@@ -619,6 +619,7 @@ impl<'a> SAXParser<'a> {
       self.tag.text.push_str(self.text.as_ref());
       self.text = "".to_string();
     }
+    self.tag.self_closing = self_closing;
     self.tags.push(self.tag.clone());
     if self.events & Event::OpenTag as u32 != 0 {
       self.trigger_event(Event::OpenTag, &tag_to_json(&self.tag));

@@ -16,9 +16,14 @@ pub fn attribute_to_json(attr: &Attribute) -> String {
 
 pub fn attributes_to_json(attrs: &Vec<Attribute>) -> String {
   let mut attrs_json = "[".to_string();
+  let len = attrs_json.len();
+  let mut i = 0;
   for attr in attrs {
+    i += 1;
     attrs_json.push_str(attribute_to_json(attr).as_ref());
-    attrs_json.push_str(",");
+    if i != len {
+      attrs_json.push_str(",");
+    }
   }
   attrs_json.push_str("]");
   attrs_json
