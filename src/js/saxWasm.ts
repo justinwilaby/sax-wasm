@@ -34,11 +34,6 @@ export interface Position {
   character: number;
 }
 
-export interface Namespace {
-  prefix: string;
-  uri: string
-}
-
 export interface Attribute {
   name: string;
   value: string;
@@ -48,18 +43,15 @@ export interface Attribute {
 
 export interface Tag {
   name: string;
-  ns: Namespace[];
   attributes: Attribute[];
-  prefix: string;
-  local: string;
-  uri: string;
   text: string;
-  self_closing: boolean;
+  selfClosing: boolean;
   start: Position;
   end: Position;
 }
 
 const jsonFlag = SaxEventType.Attribute |
+  SaxEventType.OpenTagStart |
   SaxEventType.OpenTag |
   SaxEventType.CloseTag |
   SaxEventType.OpenCDATA |
@@ -75,7 +67,7 @@ export class SAXParser {
   public static textDecoder: TextDecoder; // Web only
 
   public events: number;
-  public eventHandler: (type: SaxEventType, detail: Tag | Attribute | Namespace | Position | string) => void;
+  public eventHandler: (type: SaxEventType, detail: Tag | Attribute | Position | string) => void;
   private wasmSaxParser: WasmSaxParser;
 
   constructor(events = 0) {

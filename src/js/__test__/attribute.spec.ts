@@ -72,4 +72,11 @@ describe('SaxWasm', () => {
     expect(_data[1].start).toEqual({ line: 3, character: 2 });
     expect(_data[1].end).toEqual({ line: 3, character: 26 });
   });
+
+  it ('should report namespaces as attributes', () => {
+    parser.write(`<x xmlns:edi='http://ecommerce.example.org/schema'></x>`);
+    expect(_event).toBe(SaxEventType.Attribute);
+    expect(_data[0].name).toBe('xmlns:edi');
+    expect(_data[0].value).toBe('http://ecommerce.example.org/schema');
+  });
 });
