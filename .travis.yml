@@ -26,6 +26,6 @@ matrix:
   - language: rust
 
     script:
-    - rustup update
+    - rustup install nightly
     - rustup target add wasm32-unknown-unknown --toolchain nightly
     - rustup default nightly
