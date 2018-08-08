@@ -7,9 +7,9 @@ notifications:
   email: false
 
 before_install:
-- rustup update
+- rustup install nightly
 - rustup target add wasm32-unknown-unknown --toolchain nightly
-- rustc +nightly --target wasm32-unknown-unknown -O hello.rs
+- rustup default nightly
 
 install:
 - npm install
@@ -25,7 +25,3 @@ matrix:
   include:
   - language: rust
 
-    script:
-    - rustup install nightly
-    - rustup target add wasm32-unknown-unknown --toolchain nightly
-    - rustup default nightly
