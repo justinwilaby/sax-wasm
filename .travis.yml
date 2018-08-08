@@ -21,7 +21,10 @@ matrix:
     fast_finish: true
 
     install:
-        - npm install
+    - rustup update
+    - rustup target add wasm32-unknown-unknown --toolchain nightly
+    - rustc +nightly --target wasm32-unknown-unknown -O hello.rs
+    - npm install
 
     script
       - npm run build && npm run test:coveralls
