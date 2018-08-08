@@ -44,10 +44,32 @@ describe('SaxWasm', () => {
     expect(_data[0].value).toBe('👅');
   });
 
-  it('should provide the attribute value when the value is not qupted', () => {
+  it('should provide the attribute value when the value is not quoted', () => {
     parser.write('<body app=buggyAngularApp></body>');
     expect(_event).toBe(SaxEventType.Attribute);
     expect(_data[0].name).toBe('app');
     expect(_data[0].value).toBe('buggyAngularApp');
+  });
+
+  it('should provide the attribute value when the value is a JSX expression', () => {
+    parser.write('<Component props={() => { return this.props } }></Component>');
+    expect(_event).toBe(SaxEventType.Attribute);
+    expect(_data[0].name).toBe('props');
+    expect(_data[0].value).toBe('{() => { return this.props } }');
+  });
+
+  it('should report the correct start and end positions for attributes', () => {
+    const html = `
+<div 
+  data-value="👅" 
+  class="grapheme cluster">
+</div>`;
+
+    parser.write(html);
+    expect(_event).toBe(SaxEventType.Attribute);
+    expect(_data[0].start).toEqual({ line: 2, character: 2 });
+    expect(_data[0].end).toEqual({ line: 2, character: 16 });
+    expect(_data[1].start).toEqual({ line: 3, character: 2 });
+    expect(_data[1].end).toEqual({ line: 3, character: 26 });
   });
 });

@@ -1,0 +1,20 @@
+-language: rust
+rust:
+  - nightly
+
+allow_failures:
+  - rust: nightly
+fast_finish: true
+
+install:
+    - npm install
+
+script
+  - npm run build && npm run test:coveralls
+
+cache:
+  directories:
+  - "node_modules"
+
+notifications:
+  email: false

@@ -7,7 +7,7 @@
     "lib"
   ],
   "scripts": {
-    "test": "jest",
+    "test": "jest --runInBand",
     "build:wasm": "rustc ./src/main.rs -C lto -O --target wasm32-unknown-unknown -o ./lib/sax-wasm.wasm",
     "build": "tsc && npm run build:wasm"
   },
@@ -23,7 +23,7 @@
   "devDependencies": {
     "@types/jest": "^23.3.1",
     "@types/node": "^10.5.5",
-    "@types/webassembly-js-api": "0.0.1",
+    "@types/webassembly-js-api": "^0.0.1",
     "jest": "^23.4.2",
     "ts-jest": "^23.1.2",
     "typescript": "^3.0.1"

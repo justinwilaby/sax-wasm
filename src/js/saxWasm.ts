@@ -42,6 +42,8 @@ export interface Namespace {
 export interface Attribute {
   name: string;
   value: string;
+  start: Position;
+  end: Position;
 }
 
 export interface Tag {

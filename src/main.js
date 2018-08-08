@@ -28,7 +28,7 @@ async function runProgram() {
   const wasm = fs.readFileSync(path.resolve(__dirname, '../lib/sax-wasm.wasm'));
   result = await WebAssembly.instantiate(wasm, imports);
   const linearMemory = result.instance.exports.memory;
-  const document = `<div class="test"></div>`;
+  const document = `<component data-id="user_1234"key="23"/>`;
   const docBuff = Buffer.from(document);
   const memBuff = new Uint8Array(linearMemory.buffer, 0, docBuff.length);
   const s = memBuff.set(docBuff, 0);

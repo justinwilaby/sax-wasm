@@ -9,5 +9,5 @@ incremental = false        # whether or not to enable incremental compilation
 dep-info-basedir = ".."   # full path for the base directory for targets in depfiles
 
 [term]
-verbose = false        # whether cargo provides verbose output
+verbose = true        # whether cargo provides verbose output
 color = 'auto'         # whether cargo colorizes output
