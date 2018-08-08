@@ -54,7 +54,8 @@ describe('SaxWasm', () => {
   });
 
   it('should report selfClosing tags correctly', () => {
+    parser.events = SaxEventType.CloseTag;
     parser.write('<path d="M0,12.5 L50,12.5 L50,25 L0,25 L0,12.5z"/>');
-    expect(_data[2].selfClosing).toBeTruthy();
+    expect(_data[0].selfClosing).toBeTruthy();
   })
 });
