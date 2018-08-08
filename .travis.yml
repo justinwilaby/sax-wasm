@@ -1,37 +1,32 @@
+language: node_js
 
-matrix:
-  include:
-    -language: node_js
-    node_js:
-    - "lts/*"
-
-    install:
-    - npm install
-
-    cache:
-      directories:
-      - "node_modules"
-
-    -language: rust
-    rust:
-      - nightly
-
-    allow_failures:
-      - rust: nightly
-    fast_finish: true
-
-    install:
-    - rustup update
-    - rustup target add wasm32-unknown-unknown --toolchain nightly
-    - rustc +nightly --target wasm32-unknown-unknown -O hello.rs
-    - npm install
-
-    script
-      - npm run build && npm run test:coveralls
-
-      cache:
-            directories:
-            - "node_modules"
+node_js:
+- "lts/*"
 
 notifications:
   email: false
+
+before_install:
+- rustup update
+- rustup target add wasm32-unknown-unknown --toolchain nightly
+- rustc +nightly --target wasm32-unknown-unknown -O hello.rs
+
+install:
+- npm install
+
+script:
+- npm run build && npm run test:coveralls
+
+cache:
+  directories:
+  - "node_modules"
+
+matrix:
+  include:
+  - language: rust
+
+    rust:
+    - nightly
+    script:
+    - rustup target add wasm32-unknown-unknown --toolchain nightly
+    - rustup defailt nightly
