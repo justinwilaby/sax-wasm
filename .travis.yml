@@ -29,4 +29,4 @@ matrix:
     - nightly
     script:
     - rustup target add wasm32-unknown-unknown --toolchain nightly
-    - rustup defailt nightly
+    - rustup default nightly
