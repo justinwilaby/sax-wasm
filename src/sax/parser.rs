@@ -1,7 +1,7 @@
 use sax::entities::*;
 use sax::names::*;
 use sax::json_utils::*;
-use sax::tag::Tag;
+use sax::tag::*;
 use std::str;
 
 static BOM: &'static [u8; 3] = &[0xef, 0xbb, 0xbf];
@@ -15,7 +15,6 @@ pub struct SAXParser<'a> {
   state: State,
   saw_root: bool,
   closed_root: bool,
-  attribute_name: String,
   cdata: String,
   comment: String,
   doctype: String,
@@ -26,6 +25,7 @@ pub struct SAXParser<'a> {
   proc_inst_name: String,
   quote: &'a str,
   sgml_decl: String,
+  attribute: Attribute,
   tag: Tag,
   brace_ct: u32,
   tag_start: (u32, u32),
@@ -45,7 +45,6 @@ impl<'a> SAXParser<'a> {
 
       saw_root: false,
       closed_root: false,
-      attribute_name: "".to_string(),
       cdata: "".to_string(),
       comment: "".to_string(),
       doctype: "".to_string(),
@@ -57,6 +56,7 @@ impl<'a> SAXParser<'a> {
       quote: "",
       sgml_decl: "".to_string(),
       tag: Tag::new((0, 0)),
+      attribute: Attribute::new(),
       brace_ct: 0,
       tag_start: (0, 0),
     }
@@ -428,7 +428,8 @@ impl<'a> SAXParser<'a> {
     } else if grapheme == "/" {
       self.state = State::OpenTagSlash;
     } else if is_name_start_char(grapheme) {
-      self.attribute_name = grapheme.to_string();
+      self.attribute.name = grapheme.to_string();
+      self.attribute.start = (self.line, self.character - 1);
       self.state = State::AttribName;
     }
   }
@@ -436,18 +437,14 @@ impl<'a> SAXParser<'a> {
   fn attribute_name(&mut self, grapheme: &str) {
     if grapheme == "=" {
       self.state = State::AttribValue;
-      self.tag.set_attribute((self.attribute_name.clone(), "".to_string()));
     } else if grapheme == ">" {
-      let attribute_name = self.attribute_name.clone();
-      {
-        // Attribute without a value or a boolean attribute
-        self.tag.set_attribute((attribute_name.clone(), attribute_name));
-      }
+      self.attribute.end = (self.line, self.character);
+      self.process_attribute();
       self.process_open_tag(false);
     } else if SAXParser::is_whitespace(grapheme) {
       self.state = State::AttribNameSawWhite;
     } else if is_name_char(grapheme) {
-      self.attribute_name.push_str(grapheme);
+      self.attribute.name.push_str(grapheme);
     }
   }
 
@@ -456,17 +453,14 @@ impl<'a> SAXParser<'a> {
       return;
     }
     if grapheme == "=" {
-      self.state = State::AttribName;
+      self.state = State::AttribValue;
     } else {
-      let attribute_name = self.attribute_name.clone();
-      {
-        self.tag.set_attribute((attribute_name, "".to_string()));
-      }
       if grapheme == ">" {
+        self.process_attribute();
         self.process_open_tag(false);
       } else if is_name_start_char(grapheme) {
         self.state = State::AttribName;
-        self.attribute_name = grapheme.to_string();
+        self.attribute.name = grapheme.to_string();
       } else {
         self.state = State::Attrib;
       }
@@ -483,10 +477,10 @@ impl<'a> SAXParser<'a> {
     } else if grapheme == "{" {
       self.state = State::JSXAttributeExpression;
       self.brace_ct += 1;
-      self.push_attribute_value(grapheme);
+      self.attribute.value.push_str(grapheme);
     } else {
       self.state = State::AttribValueUnquoted;
-      self.push_attribute_value(grapheme);
+      self.attribute.value.push_str(grapheme);
     }
   }
 
@@ -495,7 +489,7 @@ impl<'a> SAXParser<'a> {
       if grapheme == "&" {
         self.state = State::AttribValueEntityQ;
       } else {
-        self.push_attribute_value(grapheme);
+        self.attribute.value.push_str(grapheme);
       }
     } else {
       self.process_attribute();
@@ -512,7 +506,7 @@ impl<'a> SAXParser<'a> {
     } else if grapheme == "/" {
       self.state = State::OpenTagSlash;
     } else if is_name_start_char(grapheme) {
-      self.attribute_name = grapheme.to_string();
+      self.attribute.name = grapheme.to_string();
       self.state = State::AttribName;
     }
   }
@@ -522,7 +516,7 @@ impl<'a> SAXParser<'a> {
       if grapheme == "&" {
         self.state = State::AttribValueEntityQ;
       } else {
-        self.push_attribute_value(grapheme);
+        self.attribute.value.push_str(grapheme);
       }
       return;
     } else {
@@ -594,7 +588,7 @@ impl<'a> SAXParser<'a> {
       if buffer == 1 {
         self.text.push_str(s.as_ref());
       } else {
-        self.push_attribute_value(s.as_ref());
+        self.attribute.value.push_str(s.as_ref());
       }
     }
   }
@@ -608,25 +602,12 @@ impl<'a> SAXParser<'a> {
   }
 
   fn process_attribute(&mut self) {
-    let attribute_name = self.attribute_name.clone();
-    let mut attribute_value = "".to_string();
-    {
-      let attr_opt = self.tag.get_attribute_mut(attribute_name.as_ref());
-      if attr_opt.is_some() {
-        attribute_value.push_str(attr_opt.unwrap().1.as_ref());
-      }
-    }
-    if attribute_value == "" {
-      self.attribute_name = attribute_value;
-      return;
-    }
-    let attr = (attribute_name, attribute_value);
-
+    self.attribute.end = (self.line, self.character);
+    self.tag.attributes.push(self.attribute.clone());
     if self.events & Event::Attribute as u32 != 0 {
-      self.trigger_event(Event::Attribute, &attribute_to_json(&attr));
+      self.trigger_event(Event::Attribute, &attribute_to_json(&self.attribute));
     }
-    self.tag.set_attribute(attr);
-    self.attribute_name = "".to_string();
+    self.attribute = Attribute::new();
   }
 
   fn process_open_tag(&mut self, self_closing: bool) {
@@ -692,7 +673,6 @@ impl<'a> SAXParser<'a> {
     if t == 0 {
       self.closed_root = true;
     }
-    self.attribute_name = "".to_string();
     self.state = State::Text;
   }
 
@@ -702,23 +682,15 @@ impl<'a> SAXParser<'a> {
     } else if grapheme == "{" {
       self.brace_ct += 1;
     }
-    self.push_attribute_value(grapheme);
+    self.attribute.value.push_str(grapheme);
     if self.brace_ct == 0 {
       self.process_attribute();
       self.state = State::AttribValueClosed;
     }
   }
 
-  fn push_attribute_value(&mut self, attribute_value: &str) {
-    let attribute_name = self.attribute_name.clone();
-    let attr_opt = self.tag.get_attribute_mut(attribute_name.as_ref());
-    if attr_opt.is_some() {
-      attr_opt.unwrap().1.push_str(attribute_value);
-    }
-  }
-
   fn new_tag(&mut self) {
-    self.tag_start = (self.line, self.character);
+    self.tag_start = (self.line, self.character - 1);
     self.state = State::OpenWaka;
   }
 }

@@ -1,4 +1,8 @@
 # SAX (Simple API for XML) for Web Assembly
+
+[![Build Status](https://travis-ci.org/justinwilaby/sax-wasm.svg?branch=master)](https://travis-ci.org/justinwilaby/sax-wasm)
+[![Coverage Status](https://coveralls.io/repos/github/justinwilaby/sax-wasm/badge.svg?branch=feature%2Fattribute-positions)](https://coveralls.io/github/justinwilaby/sax-wasm?branch=feature%2Fattribute-positions)
+
 *When you absolutely, positively have to have the fastest parser in the room, accept no substitutes.*
 
 The first streamable, low memory XML, HTML, and JSX parser for [WebAssembly](https://developer.mozilla.org/en-US/docs/WebAssembly).

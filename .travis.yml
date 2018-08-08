@@ -1,0 +1,27 @@
+language: node_js
+
+node_js:
+- "lts/*"
+
+notifications:
+  email: false
+
+before_install:
+- rustup install nightly
+- rustup target add wasm32-unknown-unknown --toolchain nightly
+- rustup default nightly
+
+install:
+- npm install
+
+script:
+- npm run build && npm run test:coveralls
+
+cache:
+  directories:
+  - "node_modules"
+
+matrix:
+  include:
+  - language: rust
+

@@ -1,16 +1,20 @@
-use sax::tag::Tag;
+use sax::tag::*;
 
-pub fn attribute_to_json(attr: &(String, String)) -> String {
+pub fn attribute_to_json(attr: &Attribute) -> String {
   // {"name":"myName", "value":"myValue"}
   let mut attr_json = "{\"name\":\"".to_string();
-  attr_json.push_str(attr.0.as_ref());
+  attr_json.push_str(attr.name.as_ref());
   attr_json.push_str("\",\"value\":\"");
-  attr_json.push_str(attr.1.as_ref());
-  attr_json.push_str("\"}");
+  attr_json.push_str(attr.value.as_ref());
+  attr_json.push_str("\",\"start\":");
+  attr_json.push_str(point_to_json(&attr.start).as_ref());
+  attr_json.push_str(",\"end\":");
+  attr_json.push_str(point_to_json(&attr.end).as_ref());
+  attr_json.push_str("}");
   attr_json
 }
 
-pub fn attributes_to_json(attrs: &Vec<(String, String)>) -> String {
+pub fn attributes_to_json(attrs: &Vec<Attribute>) -> String {
   let mut attrs_json = "[".to_string();
   for attr in attrs {
     attrs_json.push_str(attribute_to_json(attr).as_ref());

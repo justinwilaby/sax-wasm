@@ -1,7 +1,7 @@
 #[derive(Clone)]
 pub struct Tag {
   pub name: String,
-  pub attributes: Vec<(String, String)>,
+  pub attributes: Vec<Attribute>,
   pub text: String,
   pub self_closing: bool,
   pub start: (u32, u32),
@@ -19,23 +19,23 @@ impl Tag {
       end: (0, 0),
     }
   }
+}
 
-  pub fn get_attribute_mut(&mut self, key: &str) -> Option<&mut (String, String)> {
-    for a in &mut self.attributes {
-      if a.0 == key {
-        return Some(a);
-      }
-    }
-    None
-  }
+#[derive(Clone)]
+pub struct Attribute {
+  pub name: String,
+  pub value: String,
+  pub start: (u32, u32),
+  pub end: (u32, u32),
+}
 
-  pub fn set_attribute(&mut self, attribute: (String, String)) {
-    for a in &mut self.attributes {
-      if a.0 == attribute.0 {
-        a.1 = attribute.1;
-        return;
-      }
-    }
-    self.attributes.push(attribute);
+impl Attribute {
+  pub fn new() -> Attribute {
+    return Attribute {
+      name: "".to_string(),
+      value: "".to_string(),
+      start: (0, 0),
+      end: (0, 0),
+    };
   }
 }
