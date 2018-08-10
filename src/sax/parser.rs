@@ -217,7 +217,7 @@ impl<'a> SAXParser<'a> {
 
   fn text(&mut self, grapheme: &str) {
     if self.saw_root && !self.closed_root && grapheme != "<" && grapheme != "&" {
-      self.text.push_str(grapheme);
+      self.text.push_str(SAXParser::control_char_safe(grapheme));
     } else if grapheme == "<" && !(self.saw_root && self.closed_root) {
       self.new_tag();
     } else if grapheme == "&" {
@@ -594,7 +594,16 @@ impl<'a> SAXParser<'a> {
   }
 
   fn is_whitespace(grapheme: &str) -> bool {
-    grapheme == " " || grapheme == "\n" || grapheme == "\r" || grapheme == "\t"
+    grapheme == " " || grapheme == "\n" || grapheme == "\t" || grapheme == "\r"
+  }
+
+  fn control_char_safe(grapheme: &str) -> &str {
+    match grapheme {
+      "\n" => "\\n",
+      "\t" => "\\t",
+      "\r" => "\\r",
+      _ => grapheme
+    }
   }
 
   fn is_quote(grapheme: &str) -> bool {
@@ -675,6 +684,7 @@ impl<'a> SAXParser<'a> {
       self.closed_root = true;
     }
     self.state = State::Text;
+    self.close_tag_name = "".to_string();
   }
 
   fn jsx_attribute_expression(&mut self, grapheme: &str) {
@@ -683,7 +693,7 @@ impl<'a> SAXParser<'a> {
     } else if grapheme == "{" {
       self.brace_ct += 1;
     }
-    self.attribute.value.push_str(grapheme);
+    self.attribute.value.push_str(SAXParser::control_char_safe(grapheme));
     if self.brace_ct == 0 {
       self.process_attribute();
       self.state = State::AttribValueClosed;
