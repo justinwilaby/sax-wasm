@@ -55,7 +55,22 @@ describe('SaxWasm', () => {
 
   it('should report selfClosing tags correctly', () => {
     parser.events = SaxEventType.CloseTag;
-    parser.write('<path d="M0,12.5 L50,12.5 L50,25 L0,25 L0,12.5z"/>');
+    parser.write('<g><path d="M0,12.5 L50,12.5 L50,25 L0,25 L0,12.5z"/></g>');
     expect(_data[0].selfClosing).toBeTruthy();
-  })
+    expect(_data[1].selfClosing).toBeFalsy();
+  });
+
+  it('should handle the BOM', () => {
+    parser.events = SaxEventType.OpenTag;
+    parser.write('\uFEFF<div></div>');
+    expect(_event).toBe(SaxEventType.OpenTag);
+    expect(_data[0].name).toBe('div');
+  });
+
+  it('should treat orphaned end tags as text', () => {
+    parser.events = SaxEventType.Text;
+    parser.write('<div><a href="http://github.com">GitHub</a></orphan></div>');
+    expect(_event).toBe(SaxEventType.Text);
+    expect(_data[1]).toBe('</orphan>')
+  });
 });

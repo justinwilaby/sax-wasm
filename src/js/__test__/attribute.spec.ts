@@ -38,7 +38,7 @@ describe('SaxWasm', () => {
   });
 
   it('should preserve grapheme clusters as attribute values', () => {
-    parser.write('<div id="👅"></div>div>');
+    parser.write('<div id="👅"></div>');
     expect(_event).toBe(SaxEventType.Attribute);
     expect(_data[0].name).toBe('id');
     expect(_data[0].value).toBe('👅');

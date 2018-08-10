@@ -28,11 +28,14 @@ async function runProgram() {
   const wasm = fs.readFileSync(path.resolve(__dirname, '../lib/sax-wasm.wasm'));
   result = await WebAssembly.instantiate(wasm, imports);
   const linearMemory = result.instance.exports.memory;
-  const document = `<path d="M0,12.5 L50,12.5 L50,25 L0,25 L0,12.5z"/>`;
+  const document = `
+<Component>
+  {this.authenticated ? <User props={this.userProps}/> : <SignIn props={this.signInProps}/>
+</Component>`;
   const docBuff = Buffer.from(document);
   const memBuff = new Uint8Array(linearMemory.buffer, 0, docBuff.length);
   const s = memBuff.set(docBuff, 0);
-  result.instance.exports.parser(0b1111111111111111111);
+  result.instance.exports.parser(0b100000000);
   result.instance.exports.write(0, memBuff.length);
 }
 
