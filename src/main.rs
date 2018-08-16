@@ -25,6 +25,13 @@ pub unsafe extern fn write(ptr: *mut u8, length: usize) {
   parser.write(document);
 }
 
+#[no_mangle]
+pub extern fn end() {
+  let parser = get_parser();
+  parser.character = 0;
+  parser.line = 0;
+}
+
 extern "C" {
   fn event_listener(event: u32, ptr: *const u8, len: usize);
 }

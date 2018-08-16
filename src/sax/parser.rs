@@ -641,7 +641,7 @@ impl<'a> SAXParser<'a> {
   fn process_close_tag(&mut self) {
     let mut s = self.tags.len();
     let mut found = false;
-    if self.close_tag_name == "" {
+    if self.close_tag_name == "" && self.tag.self_closing {
       self.close_tag_name = self.tag.name.clone();
     }
     while s != 0 {

@@ -48,4 +48,12 @@ describe('When parsing JSX, the SaxWasm', () => {
     expect(_data[1].name).toBe('li');
     expect(_data[2].name).toBe('ul');
   });
+
+  it('should recognize JSX Fragments', () => {
+    parser.write('<> <div></div> <p></p> </>');
+    expect(_data[0].name).toBe('div');
+    expect(_data[1].name).toBe('p');
+    expect(_data[2].name).toBe('');
+  });
+
 });
