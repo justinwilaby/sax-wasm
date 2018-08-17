@@ -86,6 +86,16 @@ impl<'a> SAXParser<'a> {
     }
   }
 
+  pub fn identity(&mut self) {
+    self.character = 0;
+    self.line = 0;
+    self.state = State::Begin;
+    self.text = "".to_string();
+    self.saw_root = false;
+    self.closed_root = false;
+    self.attribute = Attribute::new();
+  }
+
   fn process_grapheme(&mut self, grapheme: &'a str) {
     if grapheme == "\n" {
       self.line += 1;
@@ -641,7 +651,7 @@ impl<'a> SAXParser<'a> {
   fn process_close_tag(&mut self) {
     let mut s = self.tags.len();
     let mut found = false;
-    if self.close_tag_name == "" {
+    if self.close_tag_name == "" && self.tag.self_closing {
       self.close_tag_name = self.tag.name.clone();
     }
     while s != 0 {

@@ -19,6 +19,14 @@ describe('When parsing JSX, the SaxWasm', () => {
     return parser.prepareWasm(saxWasm);
   });
 
+  beforeEach(() => {
+    _data = [] as Tag[];
+  });
+
+  afterEach(() => {
+    parser.end();
+  });
+
   it('should recognize child tags within Javascriopt', () => {
     parser.write(`
     <Component>
@@ -48,4 +56,12 @@ describe('When parsing JSX, the SaxWasm', () => {
     expect(_data[1].name).toBe('li');
     expect(_data[2].name).toBe('ul');
   });
+
+  it('should recognize JSX Fragments', () => {
+    parser.write('<> <div></div> <p></p> </>');
+    expect(_data[0].name).toBe('div');
+    expect(_data[1].name).toBe('p');
+    expect(_data[2].name).toBe('');
+  });
+
 });

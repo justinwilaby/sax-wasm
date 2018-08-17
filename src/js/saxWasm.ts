@@ -61,6 +61,7 @@ interface WasmSaxParser {
   memory: Memory;
   parser: (events: number) => void;
   write: (pointer: number, length: number) => void;
+  end: () => void;
 }
 
 export class SAXParser {
@@ -93,6 +94,10 @@ export class SAXParser {
     const memBuff = new Uint8Array(memory.buffer, 0, slice.length);
     memBuff.set(slice);
     write(0, memBuff.length);
+  }
+
+  public end(): void {
+    this.wasmSaxParser.end();
   }
 
   public async prepareWasm(saxWasm: Uint8Array): Promise<boolean> {
