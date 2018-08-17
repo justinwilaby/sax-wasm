@@ -19,6 +19,14 @@ describe('When parsing JSX, the SaxWasm', () => {
     return parser.prepareWasm(saxWasm);
   });
 
+  beforeEach(() => {
+    _data = [] as Tag[];
+  });
+
+  afterEach(() => {
+    parser.end();
+  });
+
   it('should recognize child tags within Javascriopt', () => {
     parser.write(`
     <Component>

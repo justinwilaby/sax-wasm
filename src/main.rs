@@ -27,9 +27,7 @@ pub unsafe extern fn write(ptr: *mut u8, length: usize) {
 
 #[no_mangle]
 pub extern fn end() {
-  let parser = get_parser();
-  parser.character = 0;
-  parser.line = 0;
+  get_parser().identity();
 }
 
 extern "C" {

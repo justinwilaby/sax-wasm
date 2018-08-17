@@ -7,13 +7,23 @@ describe('When parsing JSX, the SaxWasm', () => {
   let parser: SAXParser;
   let _event: number;
   let _data: string;
-  beforeEach(async () => {
+
+  beforeAll(async () => {
     parser = new SAXParser(SaxEventType.ProcessingInstruction);
+
     parser.eventHandler = function (event: SaxEventType, data: string) {
       _event = event as number;
       _data = data;
     };
     return parser.prepareWasm(saxWasm);
+  });
+
+  beforeEach(() => {
+    _data = '';
+  });
+
+  afterEach(() => {
+    parser.end();
   });
 
   it('should recognize Processing Instructions', () => {

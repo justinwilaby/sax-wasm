@@ -24,6 +24,14 @@ describe('SaxWasm', () => {
     return parser.prepareWasm(saxWasm);
   });
 
+  beforeEach(() => {
+    _data = [] as Tag[];
+  });
+
+  afterEach(() => {
+    parser.end();
+  });
+
   it('should report the SaxEventType.OpenTagStart', () => {
     parser.write('<div class="myDiv">This is my div</div>');
     expect(_event & SaxEventType.OpenTagStart).toBeTruthy();
@@ -71,6 +79,6 @@ describe('SaxWasm', () => {
     parser.events = SaxEventType.Text;
     parser.write('<div><a href="http://github.com">GitHub</a></orphan></div>');
     expect(_event).toBe(SaxEventType.Text);
-    expect(_data[1]).toBe('</orphan>')
+    expect(_data[1]).toBe('</orphan>');
   });
 });

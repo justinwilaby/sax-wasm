@@ -30,9 +30,13 @@ async function runProgram() {
   const linearMemory = result.instance.exports.memory;
   const document = `<> <p></p> </>`;
   const docBuff = Buffer.from(document);
-  const memBuff = new Uint8Array(linearMemory.buffer, 0, docBuff.length);
+  let memBuff = new Uint8Array(linearMemory.buffer, 0, docBuff.length);
   const s = memBuff.set(docBuff, 0);
   result.instance.exports.parser(0b111111111111);
+  result.instance.exports.write(0, memBuff.length);
+  result.instance.exports.end();
+  memBuff = new Uint8Array(linearMemory.buffer, 0, docBuff.length);
+  memBuff.set(docBuff, 0);
   result.instance.exports.write(0, memBuff.length);
 }
 

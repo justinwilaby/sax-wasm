@@ -8,16 +8,23 @@ describe('SaxWasm', () => {
   let parser: SAXParser;
   let _event: number;
   let _data: Attribute[];
-  beforeEach(async () => {
-    parser = new SAXParser(SaxEventType.Attribute);
-    _data = [] as Attribute[];
-    _event = 0;
 
-    parser.eventHandler = function (event:SaxEventType, data:Attribute) {
-      _event |= event as number;
+  beforeAll(async () => {
+    parser = new SAXParser(SaxEventType.Attribute);
+
+    parser.eventHandler = function (event: SaxEventType, data: Attribute) {
+      _event = event as number;
       _data.push(data);
     };
     return parser.prepareWasm(saxWasm);
+  });
+
+  beforeEach(() => {
+    _data = [] as Attribute[];
+  });
+
+  afterEach(() => {
+    parser.end();
   });
 
   it('should recognize attribute names', () => {
@@ -67,13 +74,13 @@ describe('SaxWasm', () => {
 
     parser.write(html);
     expect(_event).toBe(SaxEventType.Attribute);
-    expect(_data[0].start).toEqual({ line: 2, character: 2 });
-    expect(_data[0].end).toEqual({ line: 2, character: 16 });
-    expect(_data[1].start).toEqual({ line: 3, character: 2 });
-    expect(_data[1].end).toEqual({ line: 3, character: 26 });
+    expect(_data[0].start).toEqual({line: 2, character: 2});
+    expect(_data[0].end).toEqual({line: 2, character: 16});
+    expect(_data[1].start).toEqual({line: 3, character: 2});
+    expect(_data[1].end).toEqual({line: 3, character: 26});
   });
 
-  it ('should report namespaces as attributes', () => {
+  it('should report namespaces as attributes', () => {
     parser.write(`<x xmlns:edi='http://ecommerce.example.org/schema'></x>`);
     expect(_event).toBe(SaxEventType.Attribute);
     expect(_data[0].name).toBe('xmlns:edi');
