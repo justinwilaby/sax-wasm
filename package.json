@@ -7,6 +7,8 @@
   "files": [
     "lib/index.js",
     "lib/saxWasm.js",
+    "lib/index.d.ts",
+    "lib/saxWasm.d.ts",
     "lib/sax-wasm.wasm"
   ],
   "scripts": {
