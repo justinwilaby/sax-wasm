@@ -30,7 +30,7 @@ const saxPath = require.resolve('sax-wasm/lib/sax-wasm.wasm');
 const saxWasmBuffer = fs.readFileSync(saxPath);
 
 // Instantiate 
-const parser = new SAXParser(0, SaxEventType.Attribute | SaxEventType.OpenTag);
+const parser = new SAXParser(SaxEventType.Attribute | SaxEventType.OpenTag);
 parser.eventHandler = (event, data) => {
   if (event === SaxEventType.Attribute ) {
     // process attribute
@@ -56,7 +56,7 @@ import { SaxEventType, SAXParser } from 'sax-wasm';
 async function loadAndPrepareWasm() {
   const saxWasmResponse = await fetch('./path/to/wasm/sax-wasm.wasm');
   const saxWasmbuffer = await saxWasmResponse.arrayBuffer();
-  const parser = new SAXParser(0, SaxEventType.Attribute | SaxEventType.OpenTag);
+  const parser = new SAXParser(SaxEventType.Attribute | SaxEventType.OpenTag);
   
   // Instantiate and prepare the wasm for parsing
   const ready = await parser.prepareWasm(new Uint8Array(saxWasmbuffer));
@@ -105,20 +105,20 @@ parser.events = SaxEventType.Text | SaxEventType.OpenTag | SaxEventType.Attribut
 ```
 Complete list of event/argument pairs:
 
-|Event                             |Argument            |
-|----------------------------------|--------------------|
-|SaxEventType.Text                 |text: string        |
-|SaxEventType.ProcessingInstruction|procInst: string    |
-|SaxEventType.SGMLDeclaration      |sgmlDecl: string    |
-|SaxEventType.Doctype              |doctype: string     |
-|SaxEventType.Comment              |comment: string     |
-|SaxEventType.OpenTagStart         |tag: Tag            |
-|SaxEventType.Attribute            |attribute: Attribute|
-|SaxEventType.OpenTag              |tag: Tag            |
-|SaxEventType.CloseTag             |tag: Tag            |
-|SaxEventType.OpenCDATA            |start: Position     |
-|SaxEventType.CDATA                |cdata: string       |
-|SaxEventType.CloseCDATA           |end: Position       |
+|Event                             |Mask          |Argument            |
+|----------------------------------|--------------|--------------------|
+|SaxEventType.Text                 |0b1           |text: string        |
+|SaxEventType.ProcessingInstruction|0b10          |procInst: string    |
+|SaxEventType.SGMLDeclaration      |0b100         |sgmlDecl: string    |
+|SaxEventType.Doctype              |0b1000        |doctype: string     |
+|SaxEventType.Comment              |0b10000       |comment: string     |
+|SaxEventType.OpenTagStart         |0b100000      |tag: Tag            |
+|SaxEventType.Attribute            |0b1000000     |attribute: Attribute|
+|SaxEventType.OpenTag              |0b10000000    |tag: Tag            |
+|SaxEventType.CloseTag             |0b100000000   |tag: Tag            |
+|SaxEventType.OpenCDATA            |0b1000000000  |start: Position     |
+|SaxEventType.CDATA                |0b10000000000 |cdata: string       |
+|SaxEventType.CloseCDATA           |0b100000000000|end: Position       |
 
 ## SAXParser.js
 ### Methods
