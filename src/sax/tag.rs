@@ -2,22 +2,45 @@
 pub struct Tag {
   pub name: String,
   pub attributes: Vec<Attribute>,
-  pub text: String,
+  pub text_nodes: Vec<Text>,
   pub self_closing: bool,
+  pub open_start: (u32, u32),
+  pub open_end: (u32, u32),
+  pub close_start: (u32, u32),
+  pub close_end: (u32, u32),
+}
+
+impl Tag {
+  pub fn new(open_start: (u32, u32)) -> Tag {
+    Tag {
+      open_start,
+      open_end: (0, 0),
+      close_start: (0, 0),
+      close_end: (0, 0),
+
+      attributes: Vec::new(),
+      text_nodes: Vec::new(),
+
+      name: "".to_string(),
+      self_closing: false,
+    }
+  }
+}
+
+#[derive(Clone)]
+pub struct Text {
+  pub value: String,
   pub start: (u32, u32),
   pub end: (u32, u32),
 }
 
-impl Tag {
-  pub fn new(start: (u32, u32)) -> Tag {
-    Tag {
+impl Text {
+  pub fn new(start: (u32, u32)) -> Text {
+    return Text {
       start,
-      name: "".to_string(),
-      attributes: Vec::new(),
-      text: "".to_string(),
-      self_closing: false,
+      value: "".to_string(),
       end: (0, 0),
-    }
+    };
   }
 }
 
@@ -25,8 +48,10 @@ impl Tag {
 pub struct Attribute {
   pub name: String,
   pub value: String,
-  pub start: (u32, u32),
-  pub end: (u32, u32),
+  pub name_start: (u32, u32),
+  pub name_end: (u32, u32),
+  pub value_start: (u32, u32),
+  pub value_end: (u32, u32),
 }
 
 impl Attribute {
@@ -34,8 +59,10 @@ impl Attribute {
     return Attribute {
       name: "".to_string(),
       value: "".to_string(),
-      start: (0, 0),
-      end: (0, 0),
+      name_start: (0, 0),
+      name_end: (0, 0),
+      value_start: (0, 0),
+      value_end: (0, 0),
     };
   }
 }

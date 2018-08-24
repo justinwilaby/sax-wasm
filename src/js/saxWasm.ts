@@ -37,6 +37,14 @@ export interface Position {
 export interface Attribute {
   name: string;
   value: string;
+  nameStart: Position;
+  nameEnd: Position;
+  valueStart: Position;
+  valueEnd: Position;
+}
+
+export interface Text {
+  value: string;
   start: Position;
   end: Position;
 }
@@ -44,13 +52,16 @@ export interface Attribute {
 export interface Tag {
   name: string;
   attributes: Attribute[];
-  text: string;
+  textNodes: Text[];
   selfClosing: boolean;
-  start: Position;
-  end: Position;
+  openStart: Position;
+  openEnd: Position;
+  closeStart: Position;
+  closeEnd: Position;
 }
 
-const jsonFlag = SaxEventType.Attribute |
+const jsonFlag = SaxEventType.Text |
+  SaxEventType.Attribute |
   SaxEventType.OpenTagStart |
   SaxEventType.OpenTag |
   SaxEventType.CloseTag |
@@ -68,7 +79,7 @@ export class SAXParser {
   public static textDecoder: TextDecoder; // Web only
 
   public events: number;
-  public eventHandler: (type: SaxEventType, detail: Tag | Attribute | Position | string) => void;
+  public eventHandler: (type: SaxEventType, detail: Tag | Attribute | Position | Text | string) => void;
   private wasmSaxParser: WasmSaxParser;
 
   constructor(events = 0) {

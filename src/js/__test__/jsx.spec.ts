@@ -5,7 +5,7 @@ import * as path from 'path';
 const saxWasm = fs.readFileSync(path.resolve(__dirname, '../../../lib/sax-wasm.wasm'));
 describe('When parsing JSX, the SaxWasm', () => {
   let parser: SAXParser;
-  let _event: number;
+  let _event: SaxEventType;
   let _data: Tag[];
   beforeEach(async () => {
     parser = new SAXParser(SaxEventType.CloseTag);
@@ -13,7 +13,7 @@ describe('When parsing JSX, the SaxWasm', () => {
     _event = 0;
 
     parser.eventHandler = function (event: SaxEventType, data: Tag) {
-      _event = event as number;
+      _event = event;
       _data.push(data);
     };
     return parser.prepareWasm(saxWasm);
@@ -30,7 +30,7 @@ describe('When parsing JSX, the SaxWasm', () => {
   it('should recognize child tags within Javascriopt', () => {
     parser.write(`
     <Component>
-      {this.authenticated ? <User props={this.userProps}/> : <SignIn props={this.signInProps}/>
+      {this.authenticated ? <User props={this.userProps}/> : <SignIn props={this.signInProps}/>}
     </Component>`);
 
     expect(_event).toBe(SaxEventType.CloseTag);
