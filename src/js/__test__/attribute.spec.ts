@@ -6,14 +6,14 @@ const saxWasm = fs.readFileSync(path.resolve(__dirname, '../../../lib/sax-wasm.w
 
 describe('SaxWasm', () => {
   let parser: SAXParser;
-  let _event: number;
+  let _event: SaxEventType;
   let _data: Attribute[];
 
   beforeAll(async () => {
     parser = new SAXParser(SaxEventType.Attribute);
 
     parser.eventHandler = function (event: SaxEventType, data: Attribute) {
-      _event = event as number;
+      _event = event;
       _data.push(data);
     };
     return parser.prepareWasm(saxWasm);
@@ -62,22 +62,27 @@ describe('SaxWasm', () => {
     parser.write('<Component props={() => { return this.props } }></Component>');
     expect(_event).toBe(SaxEventType.Attribute);
     expect(_data[0].name).toBe('props');
-    expect(_data[0].value).toBe('{() => { return this.props } }');
+    expect(_data[0].value).toBe('() => { return this.props } ');
   });
 
   it('should report the correct start and end positions for attributes', () => {
     const html = `
 <div 
-  data-value="👅" 
+  data-value="👅"
   class="grapheme cluster">
 </div>`;
 
     parser.write(html);
     expect(_event).toBe(SaxEventType.Attribute);
-    expect(_data[0].start).toEqual({line: 2, character: 2});
-    expect(_data[0].end).toEqual({line: 2, character: 16});
-    expect(_data[1].start).toEqual({line: 3, character: 2});
-    expect(_data[1].end).toEqual({line: 3, character: 26});
+    expect(_data[0].nameStart).toEqual({line: 2, character: 2});
+    expect(_data[0].nameEnd).toEqual({line: 2, character: 12});
+    expect(_data[0].valueStart).toEqual({line: 2, character: 14});
+    expect(_data[0].valueEnd).toEqual({line: 2, character: 15});
+
+    expect(_data[1].nameStart).toEqual({line: 3, character: 2});
+    expect(_data[1].nameEnd).toEqual({line: 3, character: 7});
+    expect(_data[1].valueStart).toEqual({line: 3, character: 9});
+    expect(_data[1].valueEnd).toEqual({line: 3, character: 25});
   });
 
   it('should report namespaces as attributes', () => {
@@ -86,4 +91,5 @@ describe('SaxWasm', () => {
     expect(_data[0].name).toBe('xmlns:edi');
     expect(_data[0].value).toBe('http://ecommerce.example.org/schema');
   });
+
 });

@@ -6,13 +6,15 @@
 *When you absolutely, positively have to have the fastest parser in the room, accept no substitutes.*
 
 The first streamable, low memory XML, HTML, and JSX parser for [WebAssembly](https://developer.mozilla.org/en-US/docs/WebAssembly).
-**And yes, it will parse JSX!**
 
-Sax Wasm is a sax style parser for XML, HTML and JSX written in [Rust](https://www.rust-lang.org/en-US/), compiled for Web Assembly with the sole motivation
-to bring **near native speeds** to xml and JSX parsing for node and the web.
+Sax Wasm is a sax style parser for XML, HTML and JSX written in [Rust](https://www.rust-lang.org/en-US/), compiled for 
+Web Assembly with the sole motivation to bring **near native speeds** to XML and JSX parsing for node and the web. 
+Inspired by [sax js](https://github.com/isaacs/sax-js) and rebuilt with Rust for Web Assembly sax-wasm brings optimizations 
+for speed and support for JSX syntax. 
 
-This is a port of [sax js](https://github.com/isaacs/sax-js) to Rust for Web Assembly with optimizations for speed and JSX specific syntax.
-Since there are no built-ins with WebAssembly, file size is larger but execution time is faster, sometimes much, much faster.
+Suitable for [LSP](https://langserver.org/) implementations, sax-wasm provides line numbers and character positions within the 
+document for elements, attributes and text node which provides the raw building blocks for linting, transpilation and lexing. 
+
 
 ## Installation
 ```bash
@@ -63,27 +65,29 @@ async function loadAndPrepareWasm() {
   }
 }
 
-loadAndPrepareWasm().then(parser => {
+loadAndPrepareWasm().then(processDocument);
+
+function processDocument(parser) {
   parser.eventHandler = (event, data) => {
-      if (event === SaxEventType.Attribute ) {
-          // process attribute
-        } else {
-          // process open tag
-        }
-    }
-    parser.write('<div class="modal"></div>');
-    parser.end();
-});
+    if (event === SaxEventType.Attribute ) {
+        // process attribute
+      } else {
+        // process open tag
+      }
+  }
+  parser.write('<div class="modal"></div>');
+  parser.end();
+}
 ```
 
 ## Differences from sax-js
 Besides being incredibly fast, there are some notable differences between sax-wasm and sax-js that may affect some users
 when migrating:
 
-1. JSX is supported including JSX fragments. Things like `<foo bar={this.bar()}></bar>` will parse as expected.
-1. No attempt is made to validate the document. sax-wasm reports what it sees. If you need "strict mode", it could 
+1. JSX is supported including JSX fragments. Things like `<foo bar={this.bar()}></bar>` and `<><foo/><bar/></>` will parse as expected.
+1. No attempt is made to validate the document. sax-wasm reports what it sees. If you need strict mode or document validation, it may 
 be recreated by applying rules to the events that are reported by the parser.
-1. Namespaces are reported in attributes. No special events dedicated to namespaces
+1. Namespaces are reported in attributes. No special events dedicated to namespaces.
 1. The parser is ready as soon as the promise is handled.
 
 ## Streaming 
@@ -93,7 +97,7 @@ Doing so anyway risks overwriting memory still in play.
 
 ## Events
 Events are subscribed to using a bitmask composed from flags representing the event type. 
-Bit positions along a 15 bit integer can be masked on to tell the parser to emit the event of that type.
+Bit positions along a 12 bit integer can be masked on to tell the parser to emit the event of that type.
 For example, passing in the following bitmask to the parser instructs it to emit events for text, open tags and attributes:
 ```js
 import { SaxEventType } from 'sax-wasm';
@@ -115,14 +119,11 @@ Complete list of event/argument pairs:
 |SaxEventType.OpenCDATA            |start: Position     |
 |SaxEventType.CDATA                |cdata: string       |
 |SaxEventType.CloseCDATA           |end: Position       |
-|SaxEventType.CloseNamespace       |ns: Namespace       |
-|SaxEventType.Script               |script: string      |
-|SaxEventType.OpenNamespace        |ns: Namespace       |
 
 ## SAXParser.js
 ### Methods
-- `prepareWasm(wasm: Uint8Array): Promise<boolean>` - Instantiates the wasm binary with reasonable defaults and stores the instance as a member of the class. Always resolves to
-true or throws if something went wrong.
+- `prepareWasm(wasm: Uint8Array): Promise<boolean>` - Instantiates the wasm binary with reasonable defaults and stores 
+the instance as a member of the class. Always resolves to true or throws if something went wrong.
 
 - `write(buffer: string): void;` - writes the supplied string to the wasm stream and kicks off processing. 
 The character and line counters are *not* reset.

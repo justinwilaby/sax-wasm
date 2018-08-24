@@ -1,6 +1,6 @@
 use sax::entities::*;
-use sax::names::*;
 use sax::json_utils::*;
+use sax::names::*;
 use sax::tag::*;
 use std::str;
 
@@ -13,13 +13,11 @@ pub struct SAXParser<'a> {
   pub tags: Vec<Tag>,
 
   state: State,
-  saw_root: bool,
-  closed_root: bool,
   cdata: String,
   comment: String,
   doctype: String,
   entity: String,
-  text: String,
+  text: Text,
   close_tag_name: String,
   proc_inst_body: String,
   proc_inst_name: String,
@@ -28,7 +26,6 @@ pub struct SAXParser<'a> {
   attribute: Attribute,
   tag: Tag,
   brace_ct: u32,
-  tag_start: (u32, u32),
 
   event_handler: fn(u32, *const u8, usize),
 }
@@ -43,13 +40,10 @@ impl<'a> SAXParser<'a> {
       character: 0,
       tags: Vec::new(),
 
-      saw_root: false,
-      closed_root: false,
       cdata: "".to_string(),
       comment: "".to_string(),
       doctype: "".to_string(),
       entity: "".to_string(),
-      text: "".to_string(),
       close_tag_name: "".to_string(),
       proc_inst_name: "".to_string(),
       proc_inst_body: "".to_string(),
@@ -57,8 +51,8 @@ impl<'a> SAXParser<'a> {
       sgml_decl: "".to_string(),
       tag: Tag::new((0, 0)),
       attribute: Attribute::new(),
+      text: Text::new((0, 0)),
       brace_ct: 0,
-      tag_start: (0, 0),
     }
   }
 
@@ -90,9 +84,6 @@ impl<'a> SAXParser<'a> {
     self.character = 0;
     self.line = 0;
     self.state = State::Begin;
-    self.text = "".to_string();
-    self.saw_root = false;
-    self.closed_root = false;
     self.attribute = Attribute::new();
   }
 
@@ -154,7 +145,7 @@ impl<'a> SAXParser<'a> {
       return;
     }
 
-    self.begin_white_space(grapheme)
+    self.begin_white_space(grapheme);
   }
 
   fn open_waka(&mut self, grapheme: &str) {
@@ -164,9 +155,7 @@ impl<'a> SAXParser<'a> {
 
     if is_name_start_char(grapheme) {
       self.state = State::OpenTag;
-      let mut tag = Tag::new(self.tag_start);
-      tag.name = grapheme.to_string();
-      self.tag = tag;
+      self.tag.name = grapheme.to_string();
       return;
     }
 
@@ -192,9 +181,9 @@ impl<'a> SAXParser<'a> {
       }
 
       _ => {
-        self.state = State::Text;
-        self.text.push_str("<");
-        self.text.push_str(grapheme);
+        self.new_text();
+        self.text.value.push_str("<");
+        self.text.value.push_str(grapheme);
       }
     }
   }
@@ -219,16 +208,26 @@ impl<'a> SAXParser<'a> {
   fn begin_white_space(&mut self, grapheme: &str) {
     if grapheme == "<" {
       self.new_tag();
-    } else if SAXParser::is_whitespace(grapheme) {
-      self.state = State::Text;
-      self.tag.text = grapheme.to_string();
+    } else {
+      self.new_text();
+      self.text.value.push_str(SAXParser::control_char_safe(grapheme));
     }
   }
 
   fn text(&mut self, grapheme: &str) {
-    if self.saw_root && !self.closed_root && grapheme != "<" && grapheme != "&" {
-      self.text.push_str(SAXParser::control_char_safe(grapheme));
-    } else if grapheme == "<" && !(self.saw_root && self.closed_root) {
+    if grapheme != "<" && grapheme != "&" {
+      self.text.value.push_str(SAXParser::control_char_safe(grapheme));
+    } else if grapheme == "<" {
+      if self.text.value != "" {
+        self.text.end = (self.line, self.character - 1);
+        let len = self.tags.len();
+        if len != 0 {
+          self.tags[len - 1].text_nodes.push(self.text.clone());
+        }
+        if self.events & Event::Text as u32 != 0 {
+          self.trigger_event(Event::Text, &text_to_json(&self.text));
+        }
+      }
       self.new_tag();
     } else if grapheme == "&" {
       self.state = State::TextEntity;
@@ -251,7 +250,7 @@ impl<'a> SAXParser<'a> {
       self.sgml_decl = "".to_string();
     } else if sgml == "DOCTYPE" {
       self.state = State::Doctype;
-      if self.doctype.len() != 0 && self.saw_root {
+      if self.doctype.len() != 0 {
         self.doctype = "".to_string();
         self.sgml_decl = "".to_string();
       }
@@ -259,7 +258,7 @@ impl<'a> SAXParser<'a> {
       if self.events & Event::SGMLDeclaration as u32 != 0 {
         self.trigger_event(Event::SGMLDeclaration, &self.sgml_decl);
       }
-      self.state = State::Text;
+      self.new_text();
       self.sgml_decl = "".to_string();
       return;
     }
@@ -279,7 +278,7 @@ impl<'a> SAXParser<'a> {
 
   fn doctype(&mut self, grapheme: &'a str) {
     if grapheme == ">" {
-      self.state = State::Text;
+      self.new_text();
       if self.events & Event::Doctype as u32 != 0 {
         self.trigger_event(Event::Doctype, &self.doctype);
       }
@@ -347,7 +346,7 @@ impl<'a> SAXParser<'a> {
       self.comment.push_str(grapheme);
       self.state = State::Comment;
     } else {
-      self.state = State::Text;
+      self.new_text();
     }
   }
 
@@ -370,7 +369,7 @@ impl<'a> SAXParser<'a> {
 
   fn cdata_ending_2(&mut self, grapheme: &str) {
     if grapheme == ">" && self.cdata.len() != 0 {
-      self.state = State::Text;
+      self.new_text();
       if self.events & Event::Cdata as u32 != 0 {
         self.trigger_event(Event::Cdata, &self.cdata);
       }
@@ -409,7 +408,7 @@ impl<'a> SAXParser<'a> {
 
   fn proc_inst_ending(&mut self, grapheme: &str) {
     if grapheme == ">" {
-      self.state = State::Text;
+      self.new_text();
       if self.events & Event::ProcessingInstruction as u32 != 0 {
         self.trigger_event(Event::ProcessingInstruction, &self.proc_inst_body);
       }
@@ -439,20 +438,21 @@ impl<'a> SAXParser<'a> {
       self.state = State::OpenTagSlash;
     } else if is_name_start_char(grapheme) {
       self.attribute.name = grapheme.to_string();
-      self.attribute.start = (self.line, self.character - 1);
+      self.attribute.name_start = (self.line, self.character - 1);
       self.state = State::AttribName;
     }
   }
 
   fn attribute_name(&mut self, grapheme: &str) {
     if grapheme == "=" {
+      self.attribute.name_end = (self.line, self.character - 1);
       self.state = State::AttribValue;
     } else if grapheme == ">" {
-      self.attribute.end = (self.line, self.character);
       self.process_attribute();
       self.process_open_tag(false);
     } else if SAXParser::is_whitespace(grapheme) {
       self.state = State::AttribNameSawWhite;
+      self.attribute.name_end = (self.line, self.character - 1);
     } else if is_name_char(grapheme) {
       self.attribute.name.push_str(grapheme);
     }
@@ -464,13 +464,16 @@ impl<'a> SAXParser<'a> {
     }
     if grapheme == "=" {
       self.state = State::AttribValue;
+      self.attribute.name_end = (self.line, self.character - 1);
     } else {
       if grapheme == ">" {
         self.process_attribute();
         self.process_open_tag(false);
       } else if is_name_start_char(grapheme) {
-        self.state = State::AttribName;
+        self.process_attribute(); // new Attribute struct created
         self.attribute.name = grapheme.to_string();
+        self.attribute.name_start = (self.line, self.character - 1);
+        self.state = State::AttribName;
       } else {
         self.state = State::Attrib;
       }
@@ -481,13 +484,13 @@ impl<'a> SAXParser<'a> {
     if SAXParser::is_whitespace(grapheme) {
       return;
     }
+    self.attribute.value_start = (self.line, self.character);
     if SAXParser::is_quote(grapheme) {
       self.quote = grapheme;
       self.state = State::AttribValueQuoted;
     } else if grapheme == "{" {
       self.state = State::JSXAttributeExpression;
       self.brace_ct += 1;
-      self.attribute.value.push_str(grapheme);
     } else {
       self.state = State::AttribValueUnquoted;
       self.attribute.value.push_str(grapheme);
@@ -502,6 +505,7 @@ impl<'a> SAXParser<'a> {
         self.attribute.value.push_str(grapheme);
       }
     } else {
+      self.attribute.value_end = (self.line, self.character - 1);
       self.process_attribute();
       self.quote = "";
       self.state = State::AttribValueClosed;
@@ -530,6 +534,7 @@ impl<'a> SAXParser<'a> {
       }
       return;
     } else {
+      self.attribute.value_end = (self.line, self.character - 1);
       self.process_attribute();
       if grapheme == ">" {
         self.process_open_tag(false);
@@ -542,13 +547,6 @@ impl<'a> SAXParser<'a> {
   fn close_tag(&mut self, grapheme: &str) {
     if grapheme == ">" {
       self.process_close_tag();
-    } else if self.tag.name == "" {
-      if SAXParser::is_whitespace(grapheme) {
-        return;
-      }
-      if !is_name_start_char(grapheme) {
-        self.tag.name = grapheme.to_string();
-      }
     } else if is_name_char(grapheme) {
       self.close_tag_name.push_str(grapheme);
     } else {
@@ -578,7 +576,6 @@ impl<'a> SAXParser<'a> {
     if grapheme == ";" {
       let entity = parse_entity(&self.entity);
       if entity != "" {
-        (self.event_handler)(2222, entity.as_ptr(), entity.len());
         value = Some(entity);
       } else {
         value = Some("&".to_string() + self.entity.as_ref() + ";");
@@ -596,7 +593,7 @@ impl<'a> SAXParser<'a> {
     if value.is_some() {
       let s = value.unwrap();
       if buffer == 1 {
-        self.text.push_str(s.as_ref());
+        self.text.value.push_str(s.as_ref());
       } else {
         self.attribute.value.push_str(s.as_ref());
       }
@@ -621,7 +618,6 @@ impl<'a> SAXParser<'a> {
   }
 
   fn process_attribute(&mut self) {
-    self.attribute.end = (self.line, self.character);
     self.tag.attributes.push(self.attribute.clone());
     if self.events & Event::Attribute as u32 != 0 {
       self.trigger_event(Event::Attribute, &attribute_to_json(&self.attribute));
@@ -630,21 +626,14 @@ impl<'a> SAXParser<'a> {
   }
 
   fn process_open_tag(&mut self, self_closing: bool) {
-    self.saw_root = true;
-    if self.text != "" {
-      if self.events & Event::Text as u32 != 0 {
-        self.trigger_event(Event::Text, &self.text);
-      }
-      self.tag.text.push_str(self.text.as_ref());
-      self.text = "".to_string();
-    }
     self.tag.self_closing = self_closing;
+    self.tag.open_end = (self.line, self.character);
     self.tags.push(self.tag.clone());
     if self.events & Event::OpenTag as u32 != 0 {
       self.trigger_event(Event::OpenTag, &tag_to_json(&self.tag));
     }
     if !self_closing {
-      self.state = State::Text;
+      self.new_text();
     }
   }
 
@@ -656,17 +645,19 @@ impl<'a> SAXParser<'a> {
     }
     while s != 0 {
       s -= 1;
-      let tag = &self.tags[s];
+      let tag = &mut self.tags[s];
       if tag.name == self.close_tag_name {
+        tag.close_start = self.tag.open_start; // self.tag is an artifact and will dealloc
+        tag.close_end = (self.line, self.character);
         found = true;
         break;
       }
     }
     if !found {
-      self.text.push_str("</");
-      self.text.push_str(self.close_tag_name.as_ref());
-      self.text.push('>');
-      self.state = State::Text;
+      self.new_text();
+      self.text.value.push_str("</");
+      self.text.value.push_str(self.close_tag_name.as_ref());
+      self.text.value.push('>');
       return;
     }
     let mut t = self.tags.len();
@@ -675,25 +666,14 @@ impl<'a> SAXParser<'a> {
       let tag_opt = self.tags.pop();
       if tag_opt.is_some() {
         self.tag = tag_opt.unwrap();
-        self.tag.end = (self.line, self.character);
-        if self.text != "" {
-          if self.events & Event::Text as u32 != 0 {
-            self.trigger_event(Event::Text, &self.text);
-          }
-          self.tag.text.push_str(self.text.as_ref());
-          self.text = "".to_string();
-        }
-
+        self.tag.close_end = (self.line, self.character);
         if self.events & Event::CloseTag as u32 != 0 {
           self.trigger_event(Event::CloseTag, &tag_to_json(&self.tag));
         }
       }
     }
 
-    if t == 0 {
-      self.closed_root = true;
-    }
-    self.state = State::Text;
+    self.new_text();
     self.close_tag_name = "".to_string();
   }
 
@@ -703,16 +683,23 @@ impl<'a> SAXParser<'a> {
     } else if grapheme == "{" {
       self.brace_ct += 1;
     }
-    self.attribute.value.push_str(SAXParser::control_char_safe(grapheme));
     if self.brace_ct == 0 {
+      self.attribute.value_end = (self.line, self.character - 1);
       self.process_attribute();
       self.state = State::AttribValueClosed;
+    } else {
+      self.attribute.value.push_str(SAXParser::control_char_safe(grapheme));
     }
   }
 
   fn new_tag(&mut self) {
-    self.tag_start = (self.line, self.character - 1);
+    self.tag = Tag::new((self.line, self.character - 1));
     self.state = State::OpenWaka;
+  }
+
+  fn new_text(&mut self) {
+    self.text = Text::new((self.line, self.character));
+    self.state = State::Text;
   }
 }
 
