@@ -107,7 +107,7 @@ Complete list of event/argument pairs:
 
 |Event                             |Mask          |Argument            |
 |----------------------------------|--------------|--------------------|
-|SaxEventType.Text                 |0b1           |text: string        |
+|SaxEventType.Text                 |0b1           |text: Text          |
 |SaxEventType.ProcessingInstruction|0b10          |procInst: string    |
 |SaxEventType.SGMLDeclaration      |0b100         |sgmlDecl: string    |
 |SaxEventType.Doctype              |0b1000        |doctype: string     |
