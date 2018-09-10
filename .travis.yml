@@ -10,7 +10,10 @@ before_install:
 - rustup install nightly
 - rustup target add wasm32-unknown-unknown --toolchain nightly
 - rustup default nightly
-- cd / && cargo install wasm-gc
+- cwd=$(pwd -P)
+- cd /
+- cargo install wasm-gc
+- cd $cwd
 
 install:
 - npm install
