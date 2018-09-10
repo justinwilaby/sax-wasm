@@ -15,7 +15,8 @@
     "test": "jest --runInBand",
     "test:coveralls": "jest --runInBand --coverage --coverageReporters=text-lcov | coveralls",
     "build:wasm": "rustc ./src/main.rs -C lto -O --target wasm32-unknown-unknown -o ./lib/sax-wasm.wasm",
-    "build": "tsc && npm run build:wasm"
+    "run:wasm-gc": "cd ./lib && wasm-gc sax-wasm.wasm",
+    "build": "tsc && npm run build:wasm && npm run run:wasm-gc"
   },
   "keywords": [
     "XML",

@@ -546,6 +546,11 @@ impl<'a> SAXParser<'a> {
 
   fn close_tag(&mut self, grapheme: &str) {
     if grapheme == ">" {
+      // Weird </> tag
+      let len = self.tags.len();
+      if self.close_tag_name == "" && (len == 0 || self.tags[len - 1].name != "") {
+        self.process_open_tag(true);
+      }
       self.process_close_tag();
     } else if is_name_char(grapheme) {
       self.close_tag_name.push_str(grapheme);
@@ -658,6 +663,7 @@ impl<'a> SAXParser<'a> {
       self.text.value.push_str("</");
       self.text.value.push_str(self.close_tag_name.as_ref());
       self.text.value.push('>');
+      self.text.start = self.tag.open_start;
       return;
     }
     let mut t = self.tags.len();

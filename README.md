@@ -37,7 +37,7 @@ parser.eventHandler = (event, data) => {
   } else {
     // process open tag
   }
-}
+};
 
 // Instantiate and prepare the wasm for parsing
 parser.prepareWasm(saxWasmBuffer).then(ready => {
@@ -92,7 +92,7 @@ be recreated by applying rules to the events that are reported by the parser.
 
 ## Streaming 
 Streaming is supported with sax-wasm by writing utf-8 encoded text to the parser instance. Writes can occur safely 
-anywhere except withing the `eventHandler` function or within the `eventTrap` (when extending `SAXParser` class). 
+anywhere except within the `eventHandler` function or within the `eventTrap` (when extending `SAXParser` class). 
 Doing so anyway risks overwriting memory still in play.
 
 ## Events
@@ -170,6 +170,7 @@ Install [node with npm](https://nodejs.org/en/) then run the following command f
 ```bash
 npm install
 ```
+Follow the instructions to install [wasm-gc](https://github.com/alexcrichton/wasm-gc) based on your platform.
 The project can now be built using: 
 ```bash
 npm run build
