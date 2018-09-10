@@ -25,4 +25,7 @@ cache:
 matrix:
   include:
   - language: rust
+  - language: c
 
+compiler:
+- gcc
