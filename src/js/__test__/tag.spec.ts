@@ -75,11 +75,21 @@ describe('SaxWasm', () => {
     expect(tag.name).toBe('div');
   });
 
-  it('should treat orphaned end tags as text', () => {
+  it('should treat orphaned close tags as text', () => {
     parser.events = SaxEventType.Text;
     parser.write('<div><a href="http://github.com">GitHub</a></orphan></div>');
     expect(_event).toBe(SaxEventType.Text);
     const [,text] = _data as Text[];
     expect(text.value).toBe('</orphan>');
+  });
+
+  it('should treat empty self-closing tags as tags', () => {
+    parser.events = SaxEventType.OpenTag | SaxEventType.CloseTag;
+    parser.write('<div></></div>');
+    expect(_event & SaxEventType.OpenTag).toBeTruthy();
+    expect(_event & SaxEventType.CloseTag).toBeTruthy();
+    const [, openTag, closeTag] = _data as Tag[];
+    expect(openTag.name).toBe('');
+    expect(closeTag.name).toBe('');
   });
 });
