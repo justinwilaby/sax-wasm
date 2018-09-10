@@ -10,7 +10,7 @@ before_install:
 - rustup install nightly
 - rustup target add wasm32-unknown-unknown --toolchain nightly
 - rustup default nightly
-- cargo install wasm-gc
+- cd / && cargo install wasm-gc
 
 install:
 - npm install
@@ -25,7 +25,3 @@ cache:
 matrix:
   include:
   - language: rust
-  - language: c
-
-compiler:
-- gcc
