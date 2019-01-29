@@ -7,9 +7,9 @@ notifications:
   email: false
 
 before_install:
-- rustup install nightly
-- rustup target add wasm32-unknown-unknown --toolchain nightly
-- rustup default nightly
+- rustup install stable
+- rustup target add wasm32-unknown-unknown --toolchain stable
+- rustup default stable
 - cwd=$(pwd -P)
 - cd /
 - cargo install wasm-gc
