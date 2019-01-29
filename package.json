@@ -38,11 +38,11 @@
   },
   "jest": {
     "transform": {
-      "^.+\\.(tsx?|jsx?)$": "ts-jest"
+      "^.+\\.(ts)$": "ts-jest"
     },
     "testURL": "http://localhost",
     "testMatch": [
-      "<rootDir>/src/js/**/?(*.)(spec|test).(ts)?(x)"
+      "<rootDir>/src/js/**/?(*.)(spec|test).(ts)"
     ],
     "moduleFileExtensions": [
       "ts",
