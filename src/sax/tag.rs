@@ -21,7 +21,7 @@ impl Tag {
       attributes: Vec::new(),
       text_nodes: Vec::new(),
 
-      name: "".to_string(),
+      name: String::new(),
       self_closing: false,
     }
   }
@@ -38,7 +38,7 @@ impl Text {
   pub fn new(start: (u32, u32)) -> Text {
     return Text {
       start,
-      value: "".to_string(),
+      value: String::new(),
       end: (0, 0),
     };
   }
@@ -57,8 +57,8 @@ pub struct Attribute {
 impl Attribute {
   pub fn new() -> Attribute {
     return Attribute {
-      name: "".to_string(),
-      value: "".to_string(),
+      name: String::new(),
+      value: String::new(),
       name_start: (0, 0),
       name_end: (0, 0),
       value_start: (0, 0),

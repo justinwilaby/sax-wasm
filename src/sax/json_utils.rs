@@ -1,7 +1,8 @@
 use sax::tag::*;
+use sax::utils::*;
 
 pub fn attributes_to_json(attrs: &Vec<Attribute>) -> String {
-  let mut attrs_json = "[".to_string();
+  let mut attrs_json = "[".to_owned();
   let mut i = 0;
   for attr in attrs {
     if i != 0 {
@@ -16,7 +17,7 @@ pub fn attributes_to_json(attrs: &Vec<Attribute>) -> String {
 
 pub fn attribute_to_json(attr: &Attribute) -> String {
   // {"name":"myName", "value":"myValue"}
-  let mut attr_json = "{\"name\":\"".to_string();
+  let mut attr_json = "{\"name\":\"".to_owned();
   attr_json.push_str(&attr.name);
   attr_json.push_str("\",\"value\":\"");
   attr_json.push_str(&attr.value);
@@ -33,7 +34,7 @@ pub fn attribute_to_json(attr: &Attribute) -> String {
 }
 
 pub fn text_to_json(text: &Text) -> String {
-  let mut text_json = "{\"value\":\"".to_string();
+  let mut text_json = "{\"value\":\"".to_owned();
   text_json.push_str(&text.value);
   text_json.push_str("\",\"start\":");
   text_json.push_str(&point_to_json(&text.start));
@@ -44,7 +45,7 @@ pub fn text_to_json(text: &Text) -> String {
 }
 
 pub fn texts_to_json(texts: &Vec<Text>) -> String {
-  let mut texts_json = "[".to_string();
+  let mut texts_json = "[".to_owned();
   let len = texts.len();
   let mut i = 0;
   for text in texts {
@@ -59,10 +60,10 @@ pub fn texts_to_json(texts: &Vec<Text>) -> String {
 }
 
 pub fn point_to_json(pt: &(u32, u32)) -> String {
-  let mut pt_json = "{\"line\":".to_string();
-  pt_json.push_str(&pt.0.to_string());
+  let mut pt_json = "{\"line\":".to_owned();
+  pt_json.push_str(uint_to_string(pt.0.clone()).as_str());
   pt_json.push_str(",\"character\":");
-  pt_json.push_str(&pt.1.to_string());
+  pt_json.push_str(uint_to_string(pt.1.clone()).as_str());
   pt_json.push_str("}");
 
   pt_json
@@ -70,7 +71,7 @@ pub fn point_to_json(pt: &(u32, u32)) -> String {
 
 pub fn tag_to_json(tag: &Tag) -> String {
   // Name
-  let mut tag_json = "{\"name\":\"".to_string();
+  let mut tag_json = "{\"name\":\"".to_owned();
   tag_json.push_str(&tag.name);
   tag_json.push_str("\",");
   // attributes

@@ -150,21 +150,20 @@ unpredictable behavior.
 
 ## Building from source
 ### Prerequisites
-This project requires rust v1.29+ since it contains the `wasm32-unknown-unknown` target out of the box. This is 
-currently only available in the nightly build.
+This project requires rust v1.30+ since it contains the `wasm32-unknown-unknown` target out of the box.
 
 Install rust:
 ```bash
 curl https://sh.rustup.rs -sSf | sh
 ```
-Install the nightly compiler and switch to it.
+Install the stable compiler and switch to it.
 ```bash
-rustup install nightly
-rustup default nightly
+rustup install stable
+rustup default stable
 ```
 Install the wasm32-unknown-unknown target.
 ```bash
-rustup target add wasm32-unknown-unknown --toolchain nightly
+rustup target add wasm32-unknown-unknown --toolchain stable
 ```
 Install [node with npm](https://nodejs.org/en/) then run the following command from the project root.
 ```bash

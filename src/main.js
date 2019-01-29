@@ -7,7 +7,13 @@ async function runProgram() {
   function event_listener(event, ptr, len) {
     const linearMemory = result.instance.exports.memory;
     const memBuff = Buffer.from(linearMemory.buffer, ptr, len);
-    console.log(event, memBuff.toString());
+    const rawString = memBuff.toString();
+    console.log(event, rawString);
+    try {
+      JSON.parse(rawString);
+    } catch (e) {
+      debugger;
+    }
   }
 
   function error_handler(error, ptr, len) {
@@ -32,7 +38,8 @@ async function runProgram() {
   render() {
     return (
       <card>
-      </>
+        <input type="date />
+        <text size="medium" isSubtle={true} horizontalAlignment="right" weight="bolder">My First ACX card!</text>
       </card>
     )
   }
