@@ -9,7 +9,7 @@ The first streamable, low memory XML, HTML, and JSX parser for [WebAssembly](htt
 
 Sax Wasm is a sax style parser for XML, HTML and JSX written in [Rust](https://www.rust-lang.org/en-US/), compiled for 
 Web Assembly with the sole motivation to bring **near native speeds** to XML and JSX parsing for node and the web. 
-Inspired by [sax js](https://github.com/isaacs/sax-js) and rebuilt with Rust for Web Assembly sax-wasm brings optimizations 
+Inspired by [sax js](https://github.com/isaacs/sax-js) and rebuilt with Rust for Web Assembly, sax-wasm brings optimizations 
 for speed and support for JSX syntax. 
 
 Suitable for [LSP](https://langserver.org/) implementations, sax-wasm provides line numbers and character positions within the 
@@ -105,20 +105,20 @@ parser.events = SaxEventType.Text | SaxEventType.OpenTag | SaxEventType.Attribut
 ```
 Complete list of event/argument pairs:
 
-|Event                             |Mask          |Argument            |
-|----------------------------------|--------------|--------------------|
-|SaxEventType.Text                 |0b1           |text: Text          |
-|SaxEventType.ProcessingInstruction|0b10          |procInst: string    |
-|SaxEventType.SGMLDeclaration      |0b100         |sgmlDecl: string    |
-|SaxEventType.Doctype              |0b1000        |doctype: string     |
-|SaxEventType.Comment              |0b10000       |comment: string     |
-|SaxEventType.OpenTagStart         |0b100000      |tag: Tag            |
-|SaxEventType.Attribute            |0b1000000     |attribute: Attribute|
-|SaxEventType.OpenTag              |0b10000000    |tag: Tag            |
-|SaxEventType.CloseTag             |0b100000000   |tag: Tag            |
-|SaxEventType.OpenCDATA            |0b1000000000  |start: Position     |
-|SaxEventType.CDATA                |0b10000000000 |cdata: string       |
-|SaxEventType.CloseCDATA           |0b100000000000|end: Position       |
+|Event                             |Mask          |Argument passed to handler                   |
+|----------------------------------|--------------|---------------------------------------------|
+|SaxEventType.Text                 |0b000000000001|text: [Text](src/js/saxWasm.ts#L46)          |
+|SaxEventType.ProcessingInstruction|0b000000000010|procInst: string                             |
+|SaxEventType.SGMLDeclaration      |0b000000000100|sgmlDecl: string                             |
+|SaxEventType.Doctype              |0b000000001000|doctype: string                              |
+|SaxEventType.Comment              |0b000000010000|comment: string                              |
+|SaxEventType.OpenTagStart         |0b000000100000|tag: [Tag](src/js/saxWasm.ts#L52)            |
+|SaxEventType.Attribute            |0b000001000000|attribute: [Attribute](src/js/saxWasm.ts#L37)|
+|SaxEventType.OpenTag              |0b000010000000|tag: [Tag](src/js/saxWasm.ts#L52)            |
+|SaxEventType.CloseTag             |0b000100000000|tag: [Tag](src/js/saxWasm.ts#L52)            |
+|SaxEventType.OpenCDATA            |0b001000000000|start: [Position](src/js/saxWasm.ts#L32)     |
+|SaxEventType.CDATA                |0b010000000000|cdata: string                                |
+|SaxEventType.CloseCDATA           |0b100000000000|end: [Position](src/js/saxWasm.ts#L32)       |
 
 ## SAXParser.js
 ### Methods
@@ -134,7 +134,7 @@ readied for the next document.
 
 - `events` - A bitmask containing the events to subscribe to. See the examples for creating the bitmask
 
-- `eventHanlder` - A function reference used for event handling. The supplied function must have a signature that accepts 
+- `eventHandlder` - A function reference used for event handling. The supplied function must have a signature that accepts 
 2 arguments: 1. The `event` which is one of the `SaxEventTypes` and the `body` (listed in the table above)
 
 ## sax-wasm.wasm
