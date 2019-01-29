@@ -1,4 +1,4 @@
-import {SaxEventType, SAXParser, Tag} from '../index';
+import {SaxEventType, SAXParser, Tag} from '../saxWasm';
 import * as fs from 'fs';
 import * as path from 'path';
 

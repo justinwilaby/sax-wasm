@@ -35,22 +35,5 @@
     "jest": "23.6.0",
     "ts-jest": "23.10.5",
     "typescript": "^3.2.4"
-  },
-  "jest": {
-    "transform": {
-      "^.+\\.(ts)$": "ts-jest"
-    },
-    "testURL": "http://localhost",
-    "testMatch": [
-      "<rootDir>/src/js/**/?(*.)(spec|test).(ts)"
-    ],
-    "moduleFileExtensions": [
-      "ts",
-      "tsx",
-      "js",
-      "jsx",
-      "json",
-      "node"
-    ]
   }
 }
