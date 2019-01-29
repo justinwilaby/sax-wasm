@@ -42,7 +42,7 @@ pub fn parse_entity<'a>(entity: &String) -> char {
         e = hex_to_dec(hex_str);
       } else {
         let dec_str = entity.get_unchecked(1..entity.len());
-        e = to_dec(dec_str);
+        e = to_int(dec_str);
       }
     }
   }
@@ -358,7 +358,7 @@ fn hex_to_dec(s: &str) -> u32 {
   payload
 }
 
-unsafe fn to_dec(s: &str) -> u32 {
+pub fn to_int(s: &str) -> u32 {
   let mut i = 0;
   let len = s.len();
   let mut payload = 0b0;
@@ -366,8 +366,8 @@ unsafe fn to_dec(s: &str) -> u32 {
     if i == len {
       break;
     }
-    let sl = s.get_unchecked(i..i + 1);
-    let d = match sl {
+    let sl = unsafe { s.get_unchecked(i..i + 1) };
+    let mut d = match sl {
       "1" => { 1 }
       "2" => { 2 }
       "3" => { 3 }
@@ -379,8 +379,9 @@ unsafe fn to_dec(s: &str) -> u32 {
       "9" => { 9 }
       _ => { 0 }
     };
-    payload = payload + d;
-    i = i + 1;
+    i += 1;
+    d *= 10u32.pow((len - i) as u32);
+    payload += d;
   }
   payload
 }
