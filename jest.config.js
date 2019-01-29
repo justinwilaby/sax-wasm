@@ -1,10 +1,10 @@
 module.exports = {
   "transform": {
-    "^.+\\.(ts)$": "<rootDir>/node_modules/ts-jest"
+    "^.+\\.(ts)$": "ts-jest"
   },
   "testURL": "http://localhost",
   "testMatch": [
-    "<rootDir>/src/js/**/?(*.)(spec|test).(ts)"
+    "**/?(*.)(spec|test).(ts)"
   ],
   "moduleFileExtensions": [
     "ts",
