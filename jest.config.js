@@ -1,6 +1,6 @@
 module.exports = {
   "transform": {
-    "^.+\\.(ts)$": "ts-jest"
+    "(.ts)$": "ts-jest"
   },
   "testURL": "http://localhost",
   "testMatch": [
