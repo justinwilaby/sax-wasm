@@ -1,7 +1,3 @@
-import Memory = WebAssembly.Memory;
-import MemoryDescriptor = WebAssembly.MemoryDescriptor;
-import TableDescriptor = WebAssembly.TableDescriptor;
-
 export class SaxEventType {
   // 1
   public static Text = 0b1;
@@ -69,7 +65,7 @@ const jsonFlag = SaxEventType.Text |
   SaxEventType.CloseCDATA;
 
 interface WasmSaxParser {
-  memory: Memory;
+  memory: WebAssembly.Memory;
   parser: (events: number) => void;
   write: (pointer: number, length: number) => void;
   end: () => void;
@@ -116,8 +112,8 @@ export class SAXParser {
       env: {
         memoryBase: 0,
         tableBase: 0,
-        memory: new WebAssembly.Memory({initial: 256} as MemoryDescriptor),
-        table: new WebAssembly.Table({initial: 4, element: 'anyfunc'} as TableDescriptor),
+        memory: new WebAssembly.Memory({initial: 256} as WebAssembly.MemoryDescriptor),
+        table: new WebAssembly.Table({initial: 4, element: 'anyfunc'} as WebAssembly.TableDescriptor),
         event_listener: this.eventTrap
       }
     });
