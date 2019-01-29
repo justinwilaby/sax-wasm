@@ -8,7 +8,8 @@
   },
   "lib": [
     "es2017",
-    "esnext"
+    "esnext",
+    "node"
   ],
   "include": [
     "src/js/**/*.ts"
