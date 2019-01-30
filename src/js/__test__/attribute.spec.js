@@ -1,4 +1,4 @@
-const {Attribute, SaxEventType, SAXParser}  = require('../../../lib//saxWasm');
+const {SaxEventType, SAXParser}  = require('../../../lib');
 const fs = require('fs');
 const path = require('path');
 const expect = require('expect.js');
