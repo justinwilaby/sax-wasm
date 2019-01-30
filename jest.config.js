@@ -1,10 +1,7 @@
 module.exports = {
-  "transform": {
-    "(.ts)$": "ts-jest"
-  },
   "testURL": "http://localhost",
   "testMatch": [
-    "**/?(*.)(spec|test).(ts)"
+    "**/?(*.)(spec|test).(js)"
   ],
   "moduleFileExtensions": [
     "ts",

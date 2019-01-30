@@ -1,18 +1,18 @@
-import {SaxEventType, SAXParser} from '../saxWasm';
-import * as fs from 'fs';
-import * as path from 'path';
+const {Attribute, SaxEventType, SAXParser}  = require('../../../lib//saxWasm');
+const fs = require('fs');
+const path = require('path');
 
 const saxWasm = fs.readFileSync(path.resolve(__dirname, '../../../lib/sax-wasm.wasm'));
 describe('When parsing JSX, the SaxWasm', () => {
-  let parser: SAXParser;
-  let _event: number;
-  let _data: string;
+  let parser;
+  let _event;
+  let _data;
 
   beforeAll(async () => {
     parser = new SAXParser(SaxEventType.ProcessingInstruction);
 
-    parser.eventHandler = function (event: SaxEventType, data: string) {
-      _event = event as number;
+    parser.eventHandler = function (event, data) {
+      _event = event;
       _data = data;
     };
     return parser.prepareWasm(saxWasm);

@@ -1,18 +1,18 @@
-import {SaxEventType, SAXParser, Tag} from '../saxWasm';
-import * as fs from 'fs';
-import * as path from 'path';
+const {Attribute, SaxEventType, SAXParser}  = require('../../../lib//saxWasm');
+const fs = require('fs');
+const path = require('path');
 
 const saxWasm = fs.readFileSync(path.resolve(__dirname, '../../../lib/sax-wasm.wasm'));
 describe('When parsing JSX, the SaxWasm', () => {
-  let parser: SAXParser;
-  let _event: SaxEventType;
-  let _data: Tag[];
+  let parser;
+  let _event;
+  let _data;
   beforeEach(async () => {
     parser = new SAXParser(SaxEventType.CloseTag);
-    _data = [] as Tag[];
+    _data = [];
     _event = 0;
 
-    parser.eventHandler = function (event: SaxEventType, data: Tag) {
+    parser.eventHandler = function (event, data) {
       _event = event;
       _data.push(data);
     };
@@ -20,7 +20,7 @@ describe('When parsing JSX, the SaxWasm', () => {
   });
 
   beforeEach(() => {
-    _data = [] as Tag[];
+    _data = [];
   });
 
   afterEach(() => {

@@ -1,18 +1,17 @@
-import {Attribute, SaxEventType, SAXParser} from '../saxWasm';
-import * as fs from 'fs';
-import * as path from 'path';
-
+const {Attribute, SaxEventType, SAXParser}  = require('../../../lib//saxWasm');
+const fs = require('fs');
+const path = require('path');
 const saxWasm = fs.readFileSync(path.resolve(__dirname, '../../../lib/sax-wasm.wasm'));
 
 describe('SaxWasm', () => {
-  let parser: SAXParser;
-  let _event: SaxEventType;
-  let _data: Attribute[];
+  let parser;
+  let _event;
+  let _data;
 
   beforeAll(async () => {
     parser = new SAXParser(SaxEventType.Attribute);
 
-    parser.eventHandler = function (event: SaxEventType, data: Attribute) {
+    parser.eventHandler = function (event, data) {
       _event = event;
       _data.push(data);
     };
@@ -20,7 +19,7 @@ describe('SaxWasm', () => {
   });
 
   beforeEach(() => {
-    _data = [] as Attribute[];
+    _data = [];
   });
 
   afterEach(() => {
