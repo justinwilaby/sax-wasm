@@ -10,6 +10,8 @@ before_install:
 - sudo apt-get update
 - sudo apt-get install nodejs
 - sudo apt-get install npm
+- sudo ln -s /usr/bin/nodejs /usr/bin/node
+- node --version
 - npm prune
 - rustup target add wasm32-unknown-unknown --toolchain stable
 - rustup default stable
