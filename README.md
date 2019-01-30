@@ -107,18 +107,18 @@ Complete list of event/argument pairs:
 
 |Event                             |Mask          |Argument passed to handler                   |
 |----------------------------------|--------------|---------------------------------------------|
-|SaxEventType.Text                 |0b000000000001|text: [Text](src/js/saxWasm.ts#L46)          |
+|SaxEventType.Text                 |0b000000000001|text: [Text](src/js/saxWasm.ts#L42)          |
 |SaxEventType.ProcessingInstruction|0b000000000010|procInst: string                             |
 |SaxEventType.SGMLDeclaration      |0b000000000100|sgmlDecl: string                             |
 |SaxEventType.Doctype              |0b000000001000|doctype: string                              |
 |SaxEventType.Comment              |0b000000010000|comment: string                              |
-|SaxEventType.OpenTagStart         |0b000000100000|tag: [Tag](src/js/saxWasm.ts#L52)            |
-|SaxEventType.Attribute            |0b000001000000|attribute: [Attribute](src/js/saxWasm.ts#L37)|
-|SaxEventType.OpenTag              |0b000010000000|tag: [Tag](src/js/saxWasm.ts#L52)            |
-|SaxEventType.CloseTag             |0b000100000000|tag: [Tag](src/js/saxWasm.ts#L52)            |
-|SaxEventType.OpenCDATA            |0b001000000000|start: [Position](src/js/saxWasm.ts#L32)     |
+|SaxEventType.OpenTagStart         |0b000000100000|tag: [Tag](src/js/saxWasm.ts#L48)            |
+|SaxEventType.Attribute            |0b000001000000|attribute: [Attribute](src/js/saxWasm.ts#L33)|
+|SaxEventType.OpenTag              |0b000010000000|tag: [Tag](src/js/saxWasm.ts#L48)            |
+|SaxEventType.CloseTag             |0b000100000000|tag: [Tag](src/js/saxWasm.ts#L48)            |
+|SaxEventType.OpenCDATA            |0b001000000000|start: [Position](src/js/saxWasm.ts#L28)     |
 |SaxEventType.CDATA                |0b010000000000|cdata: string                                |
-|SaxEventType.CloseCDATA           |0b100000000000|end: [Position](src/js/saxWasm.ts#L32)       |
+|SaxEventType.CloseCDATA           |0b100000000000|end: [Position](src/js/saxWasm.ts#L28)       |
 
 ## SAXParser.js
 ### Methods
@@ -134,7 +134,7 @@ readied for the next document.
 
 - `events` - A bitmask containing the events to subscribe to. See the examples for creating the bitmask
 
-- `eventHandlder` - A function reference used for event handling. The supplied function must have a signature that accepts 
+- `eventHandler` - A function reference used for event handling. The supplied function must have a signature that accepts 
 2 arguments: 1. The `event` which is one of the `SaxEventTypes` and the `body` (listed in the table above)
 
 ## sax-wasm.wasm
