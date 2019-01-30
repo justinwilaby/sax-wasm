@@ -1,13 +1,12 @@
 language: node_js
 
 node_js:
-- "11"
+- "lts/*"
 
 notifications:
   email: false
 
 before_install:
-- node --version
 - rustup install stable
 - rustup target add wasm32-unknown-unknown --toolchain stable
 - rustup default stable

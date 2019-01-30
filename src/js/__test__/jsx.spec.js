@@ -1,13 +1,14 @@
 const {Attribute, SaxEventType, SAXParser}  = require('../../../lib//saxWasm');
 const fs = require('fs');
 const path = require('path');
+const expect = require('expect.js');
 
 const saxWasm = fs.readFileSync(path.resolve(__dirname, '../../../lib/sax-wasm.wasm'));
 describe('When parsing JSX, the SaxWasm', () => {
   let parser;
   let _event;
   let _data;
-  beforeEach(async () => {
+  before(async () => {
     parser = new SAXParser(SaxEventType.CloseTag);
     _data = [];
     _event = 0;
@@ -21,7 +22,7 @@ describe('When parsing JSX, the SaxWasm', () => {
 
   beforeEach(() => {
     _data = [];
-  });
+  })
 
   afterEach(() => {
     parser.end();
@@ -33,10 +34,10 @@ describe('When parsing JSX, the SaxWasm', () => {
       {this.authenticated ? <User props={this.userProps}/> : <SignIn props={this.signInProps}/>}
     </Component>`);
 
-    expect(_event).toBe(SaxEventType.CloseTag);
-    expect(_data[0].name).toBe('User');
-    expect(_data[1].name).toBe('SignIn');
-    expect(_data[2].name).toBe('Component');
+    expect(_event).to.be(SaxEventType.CloseTag);
+    expect(_data[0].name).to.be('User');
+    expect(_data[1].name).to.be('SignIn');
+    expect(_data[2].name).to.be('Component');
   });
 
   it('should recognize tags within javascript', () => {
@@ -51,17 +52,17 @@ describe('When parsing JSX, the SaxWasm', () => {
     </ul>
     `);
 
-    expect(_event).toBe(SaxEventType.CloseTag);
-    expect(_data[0].name).toBe('li');
-    expect(_data[1].name).toBe('li');
-    expect(_data[2].name).toBe('ul');
+    expect(_event).to.be(SaxEventType.CloseTag);
+    expect(_data[0].name).to.be('li');
+    expect(_data[1].name).to.be('li');
+    expect(_data[2].name).to.be('ul');
   });
 
   it('should recognize JSX Fragments', () => {
     parser.write('<> <div></div> <p></p> </>');
-    expect(_data[0].name).toBe('div');
-    expect(_data[1].name).toBe('p');
-    expect(_data[2].name).toBe('');
+    expect(_data[0].name).to.be('div');
+    expect(_data[1].name).to.be('p');
+    expect(_data[2].name).to.be('');
   });
 
 });

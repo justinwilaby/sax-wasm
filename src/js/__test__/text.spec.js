@@ -1,6 +1,7 @@
 const {Attribute, SaxEventType, SAXParser}  = require('../../../lib//saxWasm');
 const fs = require('fs');
 const path = require('path');
+const expect = require('expect.js');
 
 const saxWasm = fs.readFileSync(path.resolve(__dirname, '../../../lib/sax-wasm.wasm'));
 
@@ -29,16 +30,16 @@ describe('SaxWasm', () => {
 
   it('should report text that occurs outside of an element', () => {
     parser.write('this is just plain text <br>');
-    expect(_data[0].value).toBe('this is just plain text ');
+    expect(_data[0].value).to.be('this is just plain text ');
   });
 
   it('should report multiple text blocks when child nodes exist between them', () => {
     parser.write('<div>I like to use <bold>bold text</bold> to emphasize</div>');
 
-    expect(_data.length).toBe(3);
-    expect(_data[0].value).toBe('I like to use ');
-    expect(_data[1].value).toBe('bold text');
-    expect(_data[2].value).toBe(' to emphasize');
+    expect(_data.length).to.be(3);
+    expect(_data[0].value).to.be('I like to use ');
+    expect(_data[1].value).to.be('bold text');
+    expect(_data[2].value).to.be(' to emphasize');
   });
 
   it('should capture conrtol chars properly', () => {
@@ -48,6 +49,6 @@ describe('SaxWasm', () => {
 </div>`;
   parser.write(str);
 
-  expect(_data[0].value).toBe('\n\n\n');
+  expect(_data[0].value).to.be('\n\n\n');
   });
 });

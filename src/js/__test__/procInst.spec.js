@@ -1,6 +1,7 @@
 const {Attribute, SaxEventType, SAXParser}  = require('../../../lib//saxWasm');
 const fs = require('fs');
 const path = require('path');
+const expect = require('expect.js');
 
 const saxWasm = fs.readFileSync(path.resolve(__dirname, '../../../lib/sax-wasm.wasm'));
 describe('When parsing JSX, the SaxWasm', () => {
@@ -8,7 +9,7 @@ describe('When parsing JSX, the SaxWasm', () => {
   let _event;
   let _data;
 
-  beforeAll(async () => {
+  before(async () => {
     parser = new SAXParser(SaxEventType.ProcessingInstruction);
 
     parser.eventHandler = function (event, data) {
@@ -28,7 +29,7 @@ describe('When parsing JSX, the SaxWasm', () => {
 
   it('should recognize Processing Instructions', () => {
     parser.write('<?xml version="1.0" encoding="utf-8"?>');
-    expect(_event).toBe(SaxEventType.ProcessingInstruction);
-    expect(_data).toBe('version="1.0" encoding="utf-8"');
+    expect(_event).to.be(SaxEventType.ProcessingInstruction);
+    expect(_data).to.be('version="1.0" encoding="utf-8"');
   });
 });
