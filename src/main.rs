@@ -1,44 +1,34 @@
 #![crate_type = "cdylib"]
-#![feature(const_fn)]
-
+extern crate core;
 use sax::parser::*;
 use std::slice;
+use core::mem;
 
 pub mod sax;
 
-static mut SAX: Option<SAXParser> = None;
+static mut SAX: *mut SAXParser = 0 as *mut SAXParser;
 
 #[no_mangle]
 pub unsafe extern fn parser(events: u32) {
-  if SAX.is_none() {
+  if SAX == 0 as *mut SAXParser {
     let eh: fn(u32, *const u8, usize) = |event: u32, ptr: *const u8, len: usize| { event_listener(event, ptr, len) };
-    SAX = Some(SAXParser::new(eh));
+    let sax_parse = SAXParser::new(eh);
+    SAX = mem::transmute(Box::new(sax_parse));
   }
-  let parser = get_parser();
-  parser.events = events;
+  (*SAX).events = events;
 }
 
 #[no_mangle]
 pub unsafe extern fn write(ptr: *mut u8, length: usize) {
   let document = slice::from_raw_parts(ptr, length);
-  let parser = get_parser();
-  parser.write(document);
+  (*SAX).write(document);
 }
 
 #[no_mangle]
-pub extern fn end() {
-  get_parser().identity();
+pub unsafe extern fn end() {
+  (*SAX).identity();
 }
 
 extern "C" {
   fn event_listener(event: u32, ptr: *const u8, len: usize);
-}
-
-fn get_parser() -> &'static mut SAXParser<'static> {
-  unsafe {
-    match SAX {
-      Some(ref mut x) => &mut *x,
-      None => panic!()
-    }
-  }
 }

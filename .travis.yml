@@ -1,4 +1,4 @@
-language: node_js
+language: rust
 
 node_js:
 - "lts/*"
@@ -7,9 +7,11 @@ notifications:
   email: false
 
 before_install:
-- rustup install nightly
-- rustup target add wasm32-unknown-unknown --toolchain nightly
-- rustup default nightly
+- nvm install node
+- node --version
+- npm prune
+- rustup target add wasm32-unknown-unknown --toolchain stable
+- rustup default stable
 - cwd=$(pwd -P)
 - cd /
 - cargo install wasm-gc
@@ -24,7 +26,3 @@ script:
 cache:
   directories:
   - "node_modules"
-
-matrix:
-  include:
-  - language: rust

@@ -1,8 +1,10 @@
+use std::str;
+
 use sax::entities::*;
 use sax::json_utils::*;
 use sax::names::*;
 use sax::tag::*;
-use std::str;
+use std::mem;
 
 static BOM: &'static [u8; 3] = &[0xef, 0xbb, 0xbf];
 
@@ -40,15 +42,15 @@ impl<'a> SAXParser<'a> {
       character: 0,
       tags: Vec::new(),
 
-      cdata: "".to_string(),
-      comment: "".to_string(),
-      doctype: "".to_string(),
-      entity: "".to_string(),
-      close_tag_name: "".to_string(),
-      proc_inst_name: "".to_string(),
-      proc_inst_body: "".to_string(),
+      cdata: String::new(),
+      comment: String::new(),
+      doctype: String::new(),
+      entity: String::new(),
+      close_tag_name: String::new(),
+      proc_inst_name: String::new(),
+      proc_inst_body: String::new(),
       quote: "",
-      sgml_decl: "".to_string(),
+      sgml_decl: String::new(),
       tag: Tag::new((0, 0)),
       attribute: Attribute::new(),
       text: Text::new((0, 0)),
@@ -162,18 +164,18 @@ impl<'a> SAXParser<'a> {
     match grapheme.as_ref() {
       "!" => {
         self.state = State::SgmlDecl;
-        self.sgml_decl = "".to_string();
+        self.sgml_decl = String::new();
       }
 
       "/" => {
         self.state = State::CloseTag;
-        self.close_tag_name = "".to_string();
+        self.close_tag_name = String::new();
       }
 
       "?" => {
         self.state = State::ProcInst;
-        self.proc_inst_body = "".to_string();
-        self.proc_inst_name = "".to_string();
+        self.proc_inst_body = String::new();
+        self.proc_inst_name = String::new();
       }
 
       ">" => {
@@ -235,37 +237,34 @@ impl<'a> SAXParser<'a> {
   }
 
   fn sgml_decl(&mut self, grapheme: &str) {
-    let mut sgml = self.sgml_decl.clone();
+    let mut sgml = mem::replace(&mut self.sgml_decl, String::new());
     sgml.push_str(grapheme);
 
     if sgml == "[CDATA[" {
       self.state = State::Cdata;
-      self.sgml_decl = "".to_string();
-      self.cdata = "".to_string();
+      self.cdata = String::new();
       if self.events & Event::OpenCDATA as u32 != 0 {
         self.trigger_event(Event::OpenCDATA, &point_to_json(&(self.line - 7, self.character)));
       }
     } else if sgml == "--" {
       self.state = State::Comment;
-      self.sgml_decl = "".to_string();
     } else if sgml == "DOCTYPE" {
       self.state = State::Doctype;
       if self.doctype.len() != 0 {
-        self.doctype = "".to_string();
-        self.sgml_decl = "".to_string();
+        self.doctype = String::new();
+      } else {
+        self.sgml_decl = sgml;
       }
     } else if grapheme == ">" {
       if self.events & Event::SGMLDeclaration as u32 != 0 {
         self.trigger_event(Event::SGMLDeclaration, &self.sgml_decl);
       }
       self.new_text();
-      self.sgml_decl = "".to_string();
       return;
     }
     if SAXParser::is_quote(grapheme) {
       self.state = State::SgmlDeclQuoted;
     }
-    self.sgml_decl.push_str(grapheme);
   }
 
   fn sgml_quoted(&mut self, grapheme: &'a str) {
@@ -577,31 +576,28 @@ impl<'a> SAXParser<'a> {
     } else if self.state == State::AttribValueEntityU {
       return_state = State::AttribValueUnquoted;
     }
-    let mut value: Option<String> = None;
+    let mut value = String::new();
     if grapheme == ";" {
       let entity = parse_entity(&self.entity);
-      if entity != "" {
-        value = Some(entity);
+      if entity != '\u{0}' {
+        value.push(entity)
       } else {
-        value = Some("&".to_string() + self.entity.as_ref() + ";");
+        value = "&".to_string() + self.entity.as_ref() + ";";
       }
       self.state = return_state;
-      self.entity = "".to_string();
+      self.entity = String::new();
     } else if (self.entity.len() > 0 && is_entity_body(grapheme)) || is_entity_start_char(grapheme) {
       self.entity.push_str(grapheme);
     } else {
       self.state = return_state;
-      self.entity = "".to_string();
-      value = Some("&".to_string() + self.entity.as_ref() + grapheme);
+      self.entity = String::new();
+      value = "&".to_string() + self.entity.as_ref() + grapheme;
     }
 
-    if value.is_some() {
-      let s = value.unwrap();
-      if buffer == 1 {
-        self.text.value.push_str(s.as_ref());
-      } else {
-        self.attribute.value.push_str(s.as_ref());
-      }
+    if buffer == 1 {
+      self.text.value.push_str(value.as_ref());
+    } else {
+      self.attribute.value.push_str(value.as_ref());
     }
   }
 
@@ -623,11 +619,11 @@ impl<'a> SAXParser<'a> {
   }
 
   fn process_attribute(&mut self) {
-    self.tag.attributes.push(self.attribute.clone());
+    let attr = mem::replace(&mut self.attribute, Attribute::new());
     if self.events & Event::Attribute as u32 != 0 {
-      self.trigger_event(Event::Attribute, &attribute_to_json(&self.attribute));
+      self.trigger_event(Event::Attribute, &attribute_to_json(&attr));
     }
-    self.attribute = Attribute::new();
+    self.tag.attributes.push(attr);
   }
 
   fn process_open_tag(&mut self, self_closing: bool) {
@@ -666,21 +662,18 @@ impl<'a> SAXParser<'a> {
       self.text.start = self.tag.open_start;
       return;
     }
-    let mut t = self.tags.len();
-    while t > s {
-      t -= 1;
-      let tag_opt = self.tags.pop();
-      if tag_opt.is_some() {
-        self.tag = tag_opt.unwrap();
-        self.tag.close_end = (self.line, self.character);
-        if self.events & Event::CloseTag as u32 != 0 {
-          self.trigger_event(Event::CloseTag, &tag_to_json(&self.tag));
-        }
+    let mut len = self.tags.len();
+    while len > s {
+      len -= 1;
+      self.tag = self.tags.remove(len);
+      self.tag.close_end = (self.line, self.character);
+      if self.events & Event::CloseTag as u32 != 0 {
+        self.trigger_event(Event::CloseTag, &tag_to_json(&self.tag));
       }
     }
 
     self.new_text();
-    self.close_tag_name = "".to_string();
+    self.close_tag_name = String::new();
   }
 
   fn jsx_attribute_expression(&mut self, grapheme: &str) {

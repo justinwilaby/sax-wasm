@@ -1,327 +1,322 @@
 use sax::names::is_name_start_char;
+use sax::utils::to_char_code;
 use std::char;
 
 // https://unicode-table.com/en/
 pub fn is_entity_start_char(grapheme: &str) -> bool {
-  let c = grapheme.chars().next().unwrap();
-  if c != '\u{003A}' && is_name_start_char(grapheme) {
+  let c = to_char_code(grapheme);
+  if c != to_char_code(":") && is_name_start_char(grapheme) {
     return true;
   }
-  c == '\u{0023}'
+  c == to_char_code("#")
 }
 
 pub fn is_entity_body(grapheme: &str) -> bool {
   if is_entity_start_char(grapheme) {
     return true;
   }
-  let c = grapheme.chars().next().unwrap();
+  let c = to_char_code(grapheme);
   match c {
-    '\u{00B7}' => true,
-    '\u{0030}'...'\u{036F}' => true,
-    '\u{203F}'...'\u{2040}' => true,
+    0xb7 => true,
+    0x30...0x36f => true,
+    0x203f...0x2040 => true,
     _ => false
   }
 }
 
-pub fn parse_entity<'a>(entity: &String) -> String {
-  let mut e = match_xml_entity(entity.as_ref());
-  if e != '\u{0}' {
-    return e.to_string();
+pub fn parse_entity<'a>(entity: &String) -> char {
+  let mut e = match_xml_entity(entity);
+  if e != 0x0 {
+    return unsafe { char::from_u32_unchecked(e) };
   }
-  e = match_entity(entity.as_ref());
-  if e != '\u{0}' {
-    return e.to_string();
+  e = match_entity(entity);
+  if e != 0x0 {
+    return unsafe { char::from_u32_unchecked(e) };
   }
-  let mut c = None;
+  let mut e = 0x0;
   unsafe {
     if entity.get_unchecked(0..1) == "#" {
       let x = entity.get_unchecked(1..2);
       if x == "x" || x == "X" {
         let hex_str = entity.get_unchecked(2..entity.len());
-        let hex = hex_to_dec(hex_str);
-        c = Some(char::from_u32_unchecked(hex));
+        e = hex_to_dec(hex_str);
       } else {
         let dec_str = entity.get_unchecked(1..entity.len());
-        let dec = to_dec(dec_str);
-        c = Some(char::from_u32_unchecked(dec));
+        e = to_int(dec_str);
       }
     }
   }
-  return c.unwrap_or('\u{0}').to_string();
+  unsafe { char::from_u32_unchecked(e) }
 }
 
-fn match_xml_entity(entity: &str) -> char {
-  let c = match entity.as_ref() {
-    "amp" => '\u{0026}',
-    "gt" => '\u{003E}',
-    "lt" => '\u{003C}',
-    "quot" => '\u{0022}',
-    "apos" => '\u{027}',
-    _ => '\u{0}'
-  };
-
-  c
+fn match_xml_entity(entity: &str) -> u32 {
+  match entity {
+    "amp" => 0x26,
+    "gt" => 0x3E,
+    "lt" => 0x3C,
+    "quot" => 0x22,
+    "apos" => 0x27,
+    _ => 0
+  }
 }
 
-fn match_entity(entity: &str) -> char {
-  let c = match entity.as_ref() {
-    "amp" => '\u{0026}',
-    "gt" => '\u{003E}',
-    "lt" => '\u{003C}',
-    "quot" => '\u{0022}',
-    "apos" => '\u{027}',
-    "AElig" => '\u{00c6}',
-    "Aacute" => '\u{00c1}',
-    "Acirc" => '\u{00c2}',
-    "Agrave" => '\u{00c0}',
-    "Aring" => '\u{00c5}',
-    "Atilde" => '\u{00c3}',
-    "Auml" => '\u{00c4}',
-    "Ccedil" => '\u{00c7}',
-    "ETH" => '\u{00d0}',
-    "Eacute" => '\u{00c9}',
-    "Ecirc" => '\u{00ca}',
-    "Egrave" => '\u{00c8}',
-    "Euml" => '\u{00cb}',
-    "Iacute" => '\u{00cd}',
-    "Icirc" => '\u{00ce}',
-    "Igrave" => '\u{00cc}',
-    "Iuml" => '\u{00cf}',
-    "Ntilde" => '\u{00d1}',
-    "Oacute" => '\u{00d3}',
-    "Ocirc" => '\u{00d4}',
-    "Ograve" => '\u{00d2}',
-    "Oslash" => '\u{00d8}',
-    "Otilde" => '\u{00d5}',
-    "Ouml" => '\u{00d6}',
-    "THORN" => '\u{00de}',
-    "Uacute" => '\u{00da}',
-    "Ucirc" => '\u{00db}',
-    "Ugrave" => '\u{00d9}',
-    "Uuml" => '\u{00dc}',
-    "Yacute" => '\u{00dd}',
-    "aacute" => '\u{00e1}',
-    "acirc" => '\u{00e2}',
-    "aelig" => '\u{00e6}',
-    "agrave" => '\u{00e0}',
-    "aring" => '\u{00e5}',
-    "atilde" => '\u{00e3}',
-    "auml" => '\u{00e4}',
-    "ccedil" => '\u{00e7}',
-    "eacute" => '\u{00e9}',
-    "ecirc" => '\u{00ea}',
-    "egrave" => '\u{00e8}',
-    "eth" => '\u{00f0}',
-    "euml" => '\u{00eb}',
-    "iacute" => '\u{00ed}',
-    "icirc" => '\u{00ee}',
-    "igrave" => '\u{00ec}',
-    "iuml" => '\u{00ef}',
-    "ntilde" => '\u{00f1}',
-    "oacute" => '\u{00f3}',
-    "ocirc" => '\u{00f4}',
-    "ograve" => '\u{00f2}',
-    "oslash" => '\u{00f8}',
-    "otilde" => '\u{00f5}',
-    "ouml" => '\u{00f6}',
-    "szlig" => '\u{00df}',
-    "thorn" => '\u{00fe}',
-    "uacute" => '\u{00fa}',
-    "ucirc" => '\u{00fb}',
-    "ugrave" => '\u{00f9}',
-    "uuml" => '\u{00fc}',
-    "yacute" => '\u{00fd}',
-    "yuml" => '\u{00ff}',
-    "copy" => '\u{00a9}',
-    "reg" => '\u{00ae}',
-    "nbsp" => '\u{00a0}',
-    "iexcl" => '\u{00a1}',
-    "cent" => '\u{00a2}',
-    "pound" => '\u{00a3}',
-    "curren" => '\u{00a4}',
-    "yen" => '\u{00a5}',
-    "brvbar" => '\u{00a6}',
-    "sect" => '\u{00a7}',
-    "uml" => '\u{00a8}',
-    "ordf" => '\u{00aa}',
-    "laquo" => '\u{00ab}',
-    "not" => '\u{00ac}',
-    "shy" => '\u{00ad}',
-    "macr" => '\u{00af}',
-    "deg" => '\u{00b0}',
-    "plusmn" => '\u{00b1}',
-    "sup1" => '\u{00b9}',
-    "sup2" => '\u{00b2}',
-    "sup3" => '\u{00b3}',
-    "acute" => '\u{00b4}',
-    "micro" => '\u{00b5}',
-    "para" => '\u{00b6}',
-    "middot" => '\u{00b7}',
-    "cedil" => '\u{00b8}',
-    "ordm" => '\u{00ba}',
-    "raquo" => '\u{00bb}',
-    "frac14" => '\u{00bc}',
-    "frac12" => '\u{00bd}',
-    "frac34" => '\u{00be}',
-    "iquest" => '\u{00bf}',
-    "times" => '\u{00d7}',
-    "divide" => '\u{00f7}',
-    "OElig" => '\u{152}',
-    "oelig" => '\u{0153}',
-    "Scaron" => '\u{0160}',
-    "scaron" => '\u{0161}',
-    "Yuml" => '\u{0178}',
-    "fnof" => '\u{0192}',
-    "circ" => '\u{02c6}',
-    "tilde" => '\u{02dc}',
-    "Alpha" => '\u{0391}',
-    "Beta" => '\u{0392}',
-    "Gamma" => '\u{0393}',
-    "Delta" => '\u{0394}',
-    "Epsilon" => '\u{0395}',
-    "Zeta" => '\u{0396}',
-    "Eta" => '\u{0397}',
-    "Theta" => '\u{0398}',
-    "Iota" => '\u{0399}',
-    "Kappa" => '\u{039a}',
-    "Lambda" => '\u{039b}',
-    "Mu" => '\u{039c}',
-    "Nu" => '\u{039d}',
-    "Xi" => '\u{039e}',
-    "Omicron" => '\u{039f}',
-    "Pi" => '\u{03a0}',
-    "Rho" => '\u{03a1}',
-    "Sigma" => '\u{03a3}',
-    "Tau" => '\u{03a4}',
-    "Upsilon" => '\u{03a5}',
-    "Phi" => '\u{03a6}',
-    "Chi" => '\u{03a7}',
-    "Psi" => '\u{03a8}',
-    "Omega" => '\u{03a9}',
-    "alpha" => '\u{03b1}',
-    "beta" => '\u{03b2}',
-    "gamma" => '\u{03b3}',
-    "delta" => '\u{03b4}',
-    "epsilon" => '\u{03b5}',
-    "zeta" => '\u{03b6}',
-    "eta" => '\u{03b7}',
-    "theta" => '\u{03b8}',
-    "iota" => '\u{03b9}',
-    "kappa" => '\u{03ba}',
-    "lambda" => '\u{03bb}',
-    "mu" => '\u{03bc}',
-    "nu" => '\u{03bd}',
-    "xi" => '\u{03be}',
-    "omicron" => '\u{03bf}',
-    "pi" => '\u{03c0}',
-    "rho" => '\u{03c1}',
-    "sigmaf" => '\u{03c2}',
-    "sigma" => '\u{03c3}',
-    "tau" => '\u{03c4}',
-    "upsilon" => '\u{03c5}',
-    "phi" => '\u{03c6}',
-    "chi" => '\u{03c7}',
-    "psi" => '\u{03c8}',
-    "omega" => '\u{03c9}',
-    "thetasym" => '\u{03d1}',
-    "upsih" => '\u{03d2}',
-    "piv" => '\u{03d6}',
-    "ensp" => '\u{2002}',
-    "emsp" => '\u{2003}',
-    "thinsp" => '\u{2009}',
-    "zwnj" => '\u{200c}',
-    "zwj" => '\u{200d}',
-    "lrm" => '\u{200e}',
-    "rlm" => '\u{200f}',
-    "ndash" => '\u{2013}',
-    "mdash" => '\u{2014}',
-    "lsquo" => '\u{2018}',
-    "rsquo" => '\u{2019}',
-    "sbquo" => '\u{201a}',
-    "ldquo" => '\u{201c}',
-    "rdquo" => '\u{201d}',
-    "bdquo" => '\u{201e}',
-    "dagger" => '\u{2020}',
-    "Dagger" => '\u{2021}',
-    "bull" => '\u{2022}',
-    "hellip" => '\u{2026}',
-    "permil" => '\u{2030}',
-    "prime" => '\u{2032}',
-    "Prime" => '\u{2033}',
-    "lsaquo" => '\u{2039}',
-    "rsaquo" => '\u{203a}',
-    "oline" => '\u{203e}',
-    "frasl" => '\u{2044}',
-    "euro" => '\u{20ac}',
-    "image" => '\u{2111}',
-    "weierp" => '\u{2118}',
-    "real" => '\u{211c}',
-    "trade" => '\u{2122}',
-    "alefsym" => '\u{2135}',
-    "larr" => '\u{2190}',
-    "uarr" => '\u{2191}',
-    "rarr" => '\u{2192}',
-    "darr" => '\u{2193}',
-    "harr" => '\u{2194}',
-    "crarr" => '\u{21b5}',
-    "lArr" => '\u{21d0}',
-    "uArr" => '\u{21d1}',
-    "rArr" => '\u{21d2}',
-    "dArr" => '\u{21d3}',
-    "hArr" => '\u{21d4}',
-    "forall" => '\u{2200}',
-    "part" => '\u{2202}',
-    "exist" => '\u{2203}',
-    "empty" => '\u{2205}',
-    "nabla" => '\u{2207}',
-    "isin" => '\u{2208}',
-    "notin" => '\u{2209}',
-    "ni" => '\u{220b}',
-    "prod" => '\u{220f}',
-    "sum" => '\u{2211}',
-    "minus" => '\u{2212}',
-    "lowast" => '\u{2217}',
-    "radic" => '\u{221a}',
-    "prop" => '\u{221d}',
-    "infin" => '\u{221e}',
-    "ang" => '\u{2220}',
-    "and" => '\u{2227}',
-    "or" => '\u{2228}',
-    "cap" => '\u{2229}',
-    "cup" => '\u{222a}',
-    "int" => '\u{222b}',
-    "there4" => '\u{2234}',
-    "sim" => '\u{223c}',
-    "cong" => '\u{2245}',
-    "asymp" => '\u{2248}',
-    "ne" => '\u{2260}',
-    "equiv" => '\u{2261}',
-    "le" => '\u{2264}',
-    "ge" => '\u{2265}',
-    "sub" => '\u{2282}',
-    "sup" => '\u{2283}',
-    "nsub" => '\u{2284}',
-    "sube" => '\u{2286}',
-    "supe" => '\u{2287}',
-    "oplus" => '\u{2295}',
-    "otimes" => '\u{2297}',
-    "perp" => '\u{22a5}',
-    "sdot" => '\u{22c5}',
-    "lceil" => '\u{2308}',
-    "rceil" => '\u{2309}',
-    "lfloor" => '\u{230a}',
-    "rfloor" => '\u{230b}',
-    "lang" => '\u{2329}',
-    "rang" => '\u{232a}',
-    "loz" => '\u{25ca}',
-    "spades" => '\u{2660}',
-    "clubs" => '\u{2663}',
-    "hearts" => '\u{2665}',
-    "diams" => '\u{2666}',
-    _ => '\u{0}'
-  };
-
-  c
+fn match_entity(entity: &str) -> u32 {
+  match entity {
+    "amp" => 0x26,
+    "gt" => 0x3E,
+    "lt" => 0x3C,
+    "quot" => 0x22,
+    "apos" => 0x027,
+    "AElig" => 0xc6,
+    "Aacute" => 0xc1,
+    "Acirc" => 0xc2,
+    "Agrave" => 0xc0,
+    "Aring" => 0xc5,
+    "Atilde" => 0xc3,
+    "Auml" => 0xc4,
+    "Ccedil" => 0xc7,
+    "ETH" => 0xd0,
+    "Eacute" => 0xc9,
+    "Ecirc" => 0xca,
+    "Egrave" => 0xc8,
+    "Euml" => 0xcb,
+    "Iacute" => 0xcd,
+    "Icirc" => 0xce,
+    "Igrave" => 0xcc,
+    "Iuml" => 0xcf,
+    "Ntilde" => 0xd1,
+    "Oacute" => 0xd3,
+    "Ocirc" => 0xd4,
+    "Ograve" => 0xd2,
+    "Oslash" => 0xd8,
+    "Otilde" => 0xd5,
+    "Ouml" => 0xd6,
+    "THORN" => 0xde,
+    "Uacute" => 0xda,
+    "Ucirc" => 0xdb,
+    "Ugrave" => 0xd9,
+    "Uuml" => 0xdc,
+    "Yacute" => 0xdd,
+    "aacute" => 0xe1,
+    "acirc" => 0xe2,
+    "aelig" => 0xe6,
+    "agrave" => 0xe0,
+    "aring" => 0xe5,
+    "atilde" => 0xe3,
+    "auml" => 0xe4,
+    "ccedil" => 0xe7,
+    "eacute" => 0xe9,
+    "ecirc" => 0xea,
+    "egrave" => 0xe8,
+    "eth" => 0xf0,
+    "euml" => 0xeb,
+    "iacute" => 0xed,
+    "icirc" => 0xee,
+    "igrave" => 0xec,
+    "iuml" => 0xef,
+    "ntilde" => 0xf1,
+    "oacute" => 0xf3,
+    "ocirc" => 0xf4,
+    "ograve" => 0xf2,
+    "oslash" => 0xf8,
+    "otilde" => 0xf5,
+    "ouml" => 0xf6,
+    "szlig" => 0xdf,
+    "thorn" => 0xfe,
+    "uacute" => 0xfa,
+    "ucirc" => 0xfb,
+    "ugrave" => 0xf9,
+    "uuml" => 0xfc,
+    "yacute" => 0xfd,
+    "yuml" => 0xff,
+    "copy" => 0xa9,
+    "reg" => 0xae,
+    "nbsp" => 0xa0,
+    "iexcl" => 0xa1,
+    "cent" => 0xa2,
+    "pound" => 0xa3,
+    "curren" => 0xa4,
+    "yen" => 0xa5,
+    "brvbar" => 0xa6,
+    "sect" => 0xa7,
+    "uml" => 0xa8,
+    "ordf" => 0xaa,
+    "laquo" => 0xab,
+    "not" => 0xac,
+    "shy" => 0xad,
+    "macr" => 0xaf,
+    "deg" => 0xb0,
+    "plusmn" => 0xb1,
+    "sup1" => 0xb9,
+    "sup2" => 0xb2,
+    "sup3" => 0xb3,
+    "acute" => 0xb4,
+    "micro" => 0xb5,
+    "para" => 0xb6,
+    "middot" => 0xb7,
+    "cedil" => 0xb8,
+    "ordm" => 0xba,
+    "raquo" => 0xbb,
+    "frac14" => 0xbc,
+    "frac12" => 0xbd,
+    "frac34" => 0xbe,
+    "iquest" => 0xbf,
+    "times" => 0xd7,
+    "divide" => 0xf7,
+    "OElig" => 0x152,
+    "oelig" => 0x0153,
+    "Scaron" => 0x0160,
+    "scaron" => 0x0161,
+    "Yuml" => 0x0178,
+    "fnof" => 0x0192,
+    "circ" => 0x02c6,
+    "tilde" => 0x02dc,
+    "Alpha" => 0x0391,
+    "Beta" => 0x0392,
+    "Gamma" => 0x0393,
+    "Delta" => 0x0394,
+    "Epsilon" => 0x0395,
+    "Zeta" => 0x0396,
+    "Eta" => 0x0397,
+    "Theta" => 0x0398,
+    "Iota" => 0x0399,
+    "Kappa" => 0x039a,
+    "Lambda" => 0x039b,
+    "Mu" => 0x039c,
+    "Nu" => 0x039d,
+    "Xi" => 0x039e,
+    "Omicron" => 0x039f,
+    "Pi" => 0x03a0,
+    "Rho" => 0x03a1,
+    "Sigma" => 0x03a3,
+    "Tau" => 0x03a4,
+    "Upsilon" => 0x03a5,
+    "Phi" => 0x03a6,
+    "Chi" => 0x03a7,
+    "Psi" => 0x03a8,
+    "Omega" => 0x03a9,
+    "alpha" => 0x03b1,
+    "beta" => 0x03b2,
+    "gamma" => 0x03b3,
+    "delta" => 0x03b4,
+    "epsilon" => 0x03b5,
+    "zeta" => 0x03b6,
+    "eta" => 0x03b7,
+    "theta" => 0x03b8,
+    "iota" => 0x03b9,
+    "kappa" => 0x03ba,
+    "lambda" => 0x03bb,
+    "mu" => 0x03bc,
+    "nu" => 0x03bd,
+    "xi" => 0x03be,
+    "omicron" => 0x03bf,
+    "pi" => 0x03c0,
+    "rho" => 0x03c1,
+    "sigmaf" => 0x03c2,
+    "sigma" => 0x03c3,
+    "tau" => 0x03c4,
+    "upsilon" => 0x03c5,
+    "phi" => 0x03c6,
+    "chi" => 0x03c7,
+    "psi" => 0x03c8,
+    "omega" => 0x03c9,
+    "thetasym" => 0x03d1,
+    "upsih" => 0x03d2,
+    "piv" => 0x03d6,
+    "ensp" => 0x2002,
+    "emsp" => 0x2003,
+    "thinsp" => 0x2009,
+    "zwnj" => 0x200c,
+    "zwj" => 0x200d,
+    "lrm" => 0x200e,
+    "rlm" => 0x200f,
+    "ndash" => 0x2013,
+    "mdash" => 0x2014,
+    "lsquo" => 0x2018,
+    "rsquo" => 0x2019,
+    "sbquo" => 0x201a,
+    "ldquo" => 0x201c,
+    "rdquo" => 0x201d,
+    "bdquo" => 0x201e,
+    "dagger" => 0x2020,
+    "Dagger" => 0x2021,
+    "bull" => 0x2022,
+    "hellip" => 0x2026,
+    "permil" => 0x2030,
+    "prime" => 0x2032,
+    "Prime" => 0x2033,
+    "lsaquo" => 0x2039,
+    "rsaquo" => 0x203a,
+    "oline" => 0x203e,
+    "frasl" => 0x2044,
+    "euro" => 0x20ac,
+    "image" => 0x2111,
+    "weierp" => 0x2118,
+    "real" => 0x211c,
+    "trade" => 0x2122,
+    "alefsym" => 0x2135,
+    "larr" => 0x2190,
+    "uarr" => 0x2191,
+    "rarr" => 0x2192,
+    "darr" => 0x2193,
+    "harr" => 0x2194,
+    "crarr" => 0x21b5,
+    "lArr" => 0x21d0,
+    "uArr" => 0x21d1,
+    "rArr" => 0x21d2,
+    "dArr" => 0x21d3,
+    "hArr" => 0x21d4,
+    "forall" => 0x2200,
+    "part" => 0x2202,
+    "exist" => 0x2203,
+    "empty" => 0x2205,
+    "nabla" => 0x2207,
+    "isin" => 0x2208,
+    "notin" => 0x2209,
+    "ni" => 0x220b,
+    "prod" => 0x220f,
+    "sum" => 0x2211,
+    "minus" => 0x2212,
+    "lowast" => 0x2217,
+    "radic" => 0x221a,
+    "prop" => 0x221d,
+    "infin" => 0x221e,
+    "ang" => 0x2220,
+    "and" => 0x2227,
+    "or" => 0x2228,
+    "cap" => 0x2229,
+    "cup" => 0x222a,
+    "int" => 0x222b,
+    "there4" => 0x2234,
+    "sim" => 0x223c,
+    "cong" => 0x2245,
+    "asymp" => 0x2248,
+    "ne" => 0x2260,
+    "equiv" => 0x2261,
+    "le" => 0x2264,
+    "ge" => 0x2265,
+    "sub" => 0x2282,
+    "sup" => 0x2283,
+    "nsub" => 0x2284,
+    "sube" => 0x2286,
+    "supe" => 0x2287,
+    "oplus" => 0x2295,
+    "otimes" => 0x2297,
+    "perp" => 0x22a5,
+    "sdot" => 0x22c5,
+    "lceil" => 0x2308,
+    "rceil" => 0x2309,
+    "lfloor" => 0x230a,
+    "rfloor" => 0x230b,
+    "lang" => 0x2329,
+    "rang" => 0x232a,
+    "loz" => 0x25ca,
+    "spades" => 0x2660,
+    "clubs" => 0x2663,
+    "hearts" => 0x2665,
+    "diams" => 0x2666,
+    _ => 0x0
+  }
 }
 
 fn hex_to_dec(s: &str) -> u32 {
@@ -333,7 +328,7 @@ fn hex_to_dec(s: &str) -> u32 {
       break;
     }
     let sl = &s[i..i + 1];
-    let b = match sl.as_ref() {
+    let b = match sl {
       "1" => { 0b0001 }
       "2" => { 0b0010 }
       "3" => { 0b0011 }
@@ -363,7 +358,7 @@ fn hex_to_dec(s: &str) -> u32 {
   payload
 }
 
-unsafe fn to_dec(s: &str) -> u32 {
+pub fn to_int(s: &str) -> u32 {
   let mut i = 0;
   let len = s.len();
   let mut payload = 0b0;
@@ -371,8 +366,8 @@ unsafe fn to_dec(s: &str) -> u32 {
     if i == len {
       break;
     }
-    let sl = s.get_unchecked(i..i + 1);
-    let d = match sl.as_ref() {
+    let sl = unsafe { s.get_unchecked(i..i + 1) };
+    let mut d = match sl {
       "1" => { 1 }
       "2" => { 2 }
       "3" => { 3 }
@@ -384,8 +379,9 @@ unsafe fn to_dec(s: &str) -> u32 {
       "9" => { 9 }
       _ => { 0 }
     };
-    payload = payload + d;
-    i = i + 1;
+    i += 1;
+    d *= 10u32.pow((len - i) as u32);
+    payload += d;
   }
   payload
 }
