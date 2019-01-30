@@ -29,3 +29,4 @@ cache:
 matrix:
   include:
   - language: rust
+  - language: node
