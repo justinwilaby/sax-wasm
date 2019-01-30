@@ -1,4 +1,4 @@
-language: node_js
+language: rust
 
 node_js:
 - "lts/*"
@@ -7,8 +7,10 @@ notifications:
   email: false
 
 before_install:
+- sudo apt-get update
+- sudo apt-get install nodejs
+- sudo apt-get install npm
 - npm prune
-- rustup install stable
 - rustup target add wasm32-unknown-unknown --toolchain stable
 - rustup default stable
 - cwd=$(pwd -P)
@@ -25,8 +27,3 @@ script:
 cache:
   directories:
   - "node_modules"
-
-matrix:
-  include:
-  - language: rust
-  - language: node
