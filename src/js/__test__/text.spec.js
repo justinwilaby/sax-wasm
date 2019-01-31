@@ -4,7 +4,6 @@ const path = require('path');
 const expect = require('expect.js');
 
 const saxWasm = fs.readFileSync(path.resolve(__dirname, '../../../lib/sax-wasm.wasm'));
-
 describe('SaxWasm', () => {
   let parser;
   let _event;
@@ -42,7 +41,7 @@ describe('SaxWasm', () => {
     expect(_data[2].value).to.be(' to emphasize');
   });
 
-  it('should capture conrtol chars properly', () => {
+  it('should capture control chars properly', () => {
     const str = `<div>
 
 

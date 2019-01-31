@@ -52,10 +52,10 @@ describe('SaxWasm', () => {
   });
 
   it('should provide the attribute value when the value is not quoted', () => {
-    parser.write('<body app=buggyAngularApp></body>');
+    parser.write('<body app="buggyAngularApp=19"></body>');
     expect(_event).to.be(SaxEventType.Attribute);
     expect(_data[0].name).to.be('app');
-    expect(_data[0].value).to.be('buggyAngularApp');
+    expect(_data[0].value).to.be('buggyAngularApp=19');
   });
 
   it('should provide the attribute value when the value is a JSX expression', () => {

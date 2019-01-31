@@ -1,4 +1,4 @@
-# SAX (Simple API for XML) for Web Assembly
+# SAX (Simple API for XML) for WebAssembly
 
 [![Build Status](https://travis-ci.org/justinwilaby/sax-wasm.svg?branch=master)](https://travis-ci.org/justinwilaby/sax-wasm)
 [![Coverage Status](https://coveralls.io/repos/github/justinwilaby/sax-wasm/badge.svg?branch=master)](https://coveralls.io/github/justinwilaby/sax-wasm?branch=master)
@@ -8,8 +8,8 @@
 The first streamable, low memory XML, HTML, and JSX parser for [WebAssembly](https://developer.mozilla.org/en-US/docs/WebAssembly).
 
 Sax Wasm is a sax style parser for XML, HTML and JSX written in [Rust](https://www.rust-lang.org/en-US/), compiled for 
-Web Assembly with the sole motivation to bring **near native speeds** to XML and JSX parsing for node and the web. 
-Inspired by [sax js](https://github.com/isaacs/sax-js) and rebuilt with Rust for Web Assembly, sax-wasm brings optimizations 
+WebAssembly with the sole motivation to bring **near native speeds** to XML and JSX parsing for node and the web. 
+Inspired by [sax js](https://github.com/isaacs/sax-js) and rebuilt with Rust for WebAssembly, sax-wasm brings optimizations 
 for speed and support for JSX syntax. 
 
 Suitable for [LSP](https://langserver.org/) implementations, sax-wasm provides line numbers and character positions within the 
@@ -25,7 +25,7 @@ npm i -s sax-wasm
 const fs = require('fs');
 const { SaxEventType, SAXParser } = require('sax-wasm');
 
-// Get the path to the Web Assembly binary and load it
+// Get the path to the WebAssembly binary and load it
 const saxPath = require.resolve('sax-wasm/lib/sax-wasm.wasm');
 const saxWasmBuffer = fs.readFileSync(saxPath);
 
