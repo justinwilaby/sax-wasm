@@ -14,9 +14,9 @@
   "scripts": {
     "test": "nyc mocha src/js/__test__/",
     "test:coveralls": "npm run test && nyc report --reporter=text-lcov | coveralls",
-    "build:wasm": "rustc ./src/main.rs -C lto -O --target wasm32-unknown-unknown -o ./lib/sax-wasm.wasm",
-    "run:wasm-gc": "cd ./lib && wasm-gc sax-wasm.wasm",
-    "build": "tsc && npm run build:wasm && npm run run:wasm-gc"
+    "build:wasm": "rustc ./src/lib.rs -Clto -O --crate-type cdylib --target wasm32-unknown-unknown -o ./lib/sax-wasm.wasm",
+    "bindgen": "wasm-bindgen lib/sax-wasm.wasm --out-dir lib/ --remove-name-section --no-typescript --out-name sax-wasm.wasm",
+    "build": "tsc && npm run build:wasm && npm run bindgen"
   },
   "keywords": [
     "XML",

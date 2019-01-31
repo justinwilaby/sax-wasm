@@ -1,8 +1,7 @@
 /coverage
 /.nyc_output
 /target
-**/*.rs.bk
 /node_modules
 .idea
-main.wasm
 /lib
+/pkg

@@ -28,7 +28,7 @@ describe('When parsing JSX, the SaxWasm', () => {
     parser.end();
   });
 
-  it('should recognize child tags within Javascriopt', () => {
+  it('should recognize child tags within javascript', () => {
     parser.write(`
     <Component>
       {this.authenticated ? <User props={this.userProps}/> : <SignIn props={this.signInProps}/>}

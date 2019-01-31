@@ -1,4 +1,3 @@
-#![crate_type = "cdylib"]
 extern crate core;
 use sax::parser::*;
 use std::slice;
@@ -29,6 +28,7 @@ pub unsafe extern fn end() {
   (*SAX).identity();
 }
 
+#[no_mangle]
 extern "C" {
   fn event_listener(event: u32, ptr: *const u8, len: usize);
 }
