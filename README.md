@@ -169,7 +169,10 @@ Install [node with npm](https://nodejs.org/en/) then run the following command f
 ```bash
 npm install
 ```
-Follow the instructions to install [wasm-gc](https://github.com/alexcrichton/wasm-gc) based on your platform.
+Install the wasm-bindgen-cli tool
+```bash
+cargo install wasm-bindgen-cli
+```
 The project can now be built using: 
 ```bash
 npm run build
