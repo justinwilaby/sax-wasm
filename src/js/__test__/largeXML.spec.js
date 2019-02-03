@@ -9,7 +9,7 @@ describe('When parsing JSX, the SaxWasm', () => {
   let _event;
   let _data;
   before(async () => {
-    parser = new SAXParser(SaxEventType.Attribute);
+    parser = new SAXParser(SaxEventType.CloseTag);
     _data = [];
     _event = 0;
 
@@ -30,7 +30,10 @@ describe('When parsing JSX, the SaxWasm', () => {
 
   it('should process large XML files', () => {
     const document = fs.readFileSync(path.resolve(__dirname + '/xml.xml'), {encoding:'utf8'});
+    let t = Date.now();
     parser.write(document);
+    t = Date.now() - t;
+    debugger
     expect(_data.length).not.to.be(0);
     // const len = document.length;
     // const chunkSize = 10000;
