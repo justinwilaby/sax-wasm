@@ -11,7 +11,7 @@ describe('SaxWasm', () => {
   let _data;
   beforeEach(async () => {
     parser = new SAXParser();
-    parser.events = SaxEventType.OpenTag |
+    parser.events = SaxEventType.OpenTagStart |
       SaxEventType.OpenTag |
       SaxEventType.CloseTag;
 
@@ -64,8 +64,8 @@ describe('SaxWasm', () => {
     parser.events = SaxEventType.CloseTag;
     parser.write('<g><path d="M0,12.5 L50,12.5 L50,25 L0,25 L0,12.5z"/></g>');
     const [path, g] = _data ;
-    expect(path.selfClosing).to.be(1);
-    expect(g.selfClosing).to.be(0);
+    expect(path.selfClosing).to.be(true);
+    expect(g.selfClosing).to.be(false);
   });
 
   it('should handle the BOM', () => {

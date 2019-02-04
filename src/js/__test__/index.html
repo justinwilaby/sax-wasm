@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Title</title>
+</head>
+<body>
+<script>
+  fetch('https://raw.githubusercontent.com/isaacs/sax-js/master/lib/sax.js').then(async result => {
+    const js = await result.text();
+    new Function(js)();
+  });
+
+
+</script>
+
+</body>
+</html>
