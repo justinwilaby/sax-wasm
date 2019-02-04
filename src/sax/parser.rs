@@ -231,7 +231,7 @@ impl<'a> SAXParser<'a> {
       self.state = State::Cdata;
       self.cdata = String::new();
       if self.events & Event::OpenCDATA as u32 != 0 {
-        let v = [self.line - 7, self.character];
+        let v = [self.line, self.character - 7];
         (self.event_handler)(Event::OpenCDATA as u32, v.as_ptr(), v.len());
       }
     } else if self.sgml_decl == "--" {
