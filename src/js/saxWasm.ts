@@ -26,11 +26,11 @@ export class SaxEventType {
 }
 
 abstract class Reader<T> {
-  constructor(buf: Uint8Array, ptr: number) {
+  constructor(buf: Uint32Array, ptr: number = 0) {
     this.read(buf, ptr);
   }
 
-  protected abstract read(buf: Uint8Array, ptr: number): void;
+  protected abstract read(buf: Uint32Array, ptr: number): void;
 }
 
 export class Position {
@@ -44,7 +44,7 @@ export class Position {
 }
 
 export class Attribute extends Reader<string | number | Position> {
-  public static BYTES_IN_DESCRIPTOR = 48;
+  public static BYTES_IN_DESCRIPTOR = 12;
 
   public nameEnd: Position;
   public nameStart: Position;
@@ -53,35 +53,36 @@ export class Attribute extends Reader<string | number | Position> {
   public name: string;
   public value: string;
 
-  protected read(buf: Uint8Array, ptr: number): void {
-    const namePtr = readU32(buf, ptr);
-    const nameLen = readU32(buf, ptr + 4);
-
-    const valuePtr = readU32(buf, ptr + 24);
-    const valueLen = readU32(buf, ptr + 28);
-
-    this.nameEnd = readPosition(buf, ptr + 8);
-    this.nameStart = readPosition(buf, ptr + 16); // 8 bytes
-    this.valueEnd = readPosition(buf, ptr + 32); // 8 bytes
-    this.valueStart = readPosition(buf, ptr + 40); // 8 bytes
+  protected read(buf: Uint32Array, ptr: number): void {
+    const namePtr = buf[ptr];
+    const nameLen = buf[ptr + 1];
     this.name = readString(buf.buffer, namePtr, nameLen);
+
+    this.nameEnd = new Position(buf[ptr + 2], buf[ptr + 3]);
+    this.nameStart = new Position(buf[ptr + 4], buf[ptr + 5]);
+
+    const valuePtr = buf[ptr + 6];
+    const valueLen = buf[ptr + 7];
     this.value = readString(buf.buffer, valuePtr, valueLen);
+
+    this.valueEnd = new Position(buf[ptr + 8], buf[ptr + 9]);
+    this.valueStart = new Position(buf[ptr + 10], buf[ptr + 11]);
   }
 }
 
 export class Text extends Reader<string | Position> {
-  public static BYTES_IN_DESCRIPTOR = 24;
+  public static BYTES_IN_DESCRIPTOR = 6;
 
   public end: Position;
   public start: Position;
   public value: string;
 
-  protected read(buf: Uint8Array, ptr: number): void {
-    const valuePtr = readU32(buf, ptr + 16);
-    const valueLen = readU32(buf, ptr + 20);
+  protected read(buf: Uint32Array, ptr: number): void {
+    const valuePtr = buf[ptr + 4];
+    const valueLen = buf[ptr + 5];
 
-    this.end = readPosition(buf, ptr);
-    this.start = readPosition(buf, ptr + 8);
+    this.end = new Position(buf[ptr], buf[ptr + 1]);
+    this.start = new Position(buf[ptr + 2], buf[ptr + 3]);
     this.value = readString(buf.buffer, valuePtr, valueLen);
   }
 }
@@ -96,23 +97,22 @@ export class Tag extends Reader<Attribute[] | Text[] | Position | string | numbe
   public closeStart: Position;
   public closeEnd: Position;
 
-  protected read(buf: Uint8Array, ptr: number): void {
+  protected read(buf: Uint32Array): void {
+    this.closeEnd = new Position(buf[0], buf[1]);
+    this.closeStart = new Position(buf[2], buf[3]);
+    this.openEnd = new Position(buf[4], buf[5]);
+    this.openStart = new Position(buf[6], buf[7]);
 
-    this.closeEnd = readPosition(buf, ptr);
-    this.closeStart = readPosition(buf, ptr + 8);
-    this.openEnd = readPosition(buf, ptr + 16);
-    this.openStart = readPosition(buf, ptr + 24);
-
-    const namePtr = readU32(buf, ptr + 32);
-    const nameLen = readU32(buf, ptr + 36);
+    const namePtr = buf[8];
+    const nameLen = buf[9];
     this.name = readString(buf.buffer, namePtr, nameLen);
 
-    this.selfClosing = !!buf[ptr + 40];
+    this.selfClosing = !!buf[10];
 
-    let offset = ptr + 41;
+    let offset = 11;
     const attributes = [] as Attribute[];
-    let numAttrs = readU32(buf, offset);
-    offset += 4;
+    let numAttrs = buf[offset];
+    offset ++;
     for (let i = 0; i < numAttrs; i++) {
       attributes[i] = new Attribute(buf, offset);
       offset += Attribute.BYTES_IN_DESCRIPTOR;
@@ -120,8 +120,8 @@ export class Tag extends Reader<Attribute[] | Text[] | Position | string | numbe
     this.attributes = attributes;
 
     const textNodes = [] as Text[];
-    let numNodes = readU32(buf, offset);
-    offset += 4;
+    let numNodes = buf[offset];
+    offset ++;
     for (let i = 0; i < numNodes; i++) {
       textNodes[i] = new Text(buf, offset);
       offset += Text.BYTES_IN_DESCRIPTOR;
@@ -189,30 +189,29 @@ export class SAXParser {
       parser(this.events);
       return true;
     }
-    return false;
   }
 
   protected eventTrap = (event: number, ptr: number, len: number): void => {
     const buffer = this.wasmSaxParser.memory.buffer;
     let payload: Reader<any> | string | Position;
-
     switch (event) {
       case SaxEventType.Attribute:
-        payload = new Attribute(new Uint8Array(buffer), ptr);
+        payload = new Attribute(new Uint32Array(buffer, ptr));
         break;
 
       case SaxEventType.OpenTag:
       case SaxEventType.CloseTag:
       case SaxEventType.OpenTagStart:
-        payload = new Tag(new Uint8Array(buffer), ptr);
+        payload = new Tag(new Uint32Array(buffer, ptr));
         break;
 
       case SaxEventType.Text:
-        payload = new Text(new Uint8Array(buffer), ptr);
+        payload = new Text(new Uint32Array(buffer, ptr));
         break;
 
       case SaxEventType.OpenCDATA:
-        payload = readPosition(new Uint8Array(buffer), ptr);
+        const b = new Uint32Array(buffer, ptr, 2);
+        payload = new Position(b[0], b[1]);
         break;
 
       default:
@@ -234,12 +233,6 @@ function stringToUtf8Buffer(value: string): Uint8Array {
   return (SAXParser.textEncoder || (SAXParser.textEncoder = new TextEncoder())).encode(value);
 }
 
-function readPosition(data: Uint8Array, ptr: number = 0): Position {
-  const line = readU32(data, ptr);
-  const character = readU32(data, ptr + 4);
-  return new Position(line, character);
-}
-
 function readString(data: ArrayBuffer, byteOffset: number, length: number): string {
   const env = (global || window);
   // Node
@@ -249,8 +242,4 @@ function readString(data: ArrayBuffer, byteOffset: number, length: number): stri
   // Web
   return (SAXParser.textDecoder || (SAXParser.textDecoder = new TextDecoder()))
     .decode(new Uint8Array(data, byteOffset, length));
-}
-
-function readU32(buffer: Uint8Array, ptr: number): number {
-  return buffer[ptr + 3] << 24 | buffer[ptr + 2] << 16 | buffer[ptr + 1] << 8 | buffer[ptr];
 }

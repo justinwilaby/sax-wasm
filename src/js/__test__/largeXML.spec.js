@@ -30,7 +30,10 @@ describe('When parsing XML, the SaxWasm', () => {
 
   it('should process large XML files', () => {
     const doc = fs.readFileSync(path.resolve(__dirname + '/xml.xml'), {encoding:'utf8'});
+    let t = Date.now();
     parser.write(doc);
+    t = Date.now() - t;
+    debugger
     expect(_data.length).not.to.be(0);
     // const len = document.length;
     // const chunkSize = 10000;
