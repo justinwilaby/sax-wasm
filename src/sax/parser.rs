@@ -226,29 +226,28 @@ impl<'a> SAXParser<'a> {
   }
 
   fn sgml_decl(&mut self, grapheme: &str) {
-    let mut sgml = mem::replace(&mut self.sgml_decl, String::new());
-    sgml.push_str(grapheme);
-
-    if sgml == "[CDATA[" {
+    self.sgml_decl.push_str(grapheme);
+    if self.sgml_decl == "[CDATA[" {
       self.state = State::Cdata;
       self.cdata = String::new();
       if self.events & Event::OpenCDATA as u32 != 0 {
         let v = [self.line - 7, self.character];
         (self.event_handler)(Event::OpenCDATA as u32, v.as_ptr(), v.len());
       }
-    } else if sgml == "--" {
+    } else if self.sgml_decl == "--" {
       self.state = State::Comment;
-    } else if sgml == "DOCTYPE" {
+      self.sgml_decl = String::new();
+    } else if self.sgml_decl == "DOCTYPE" {
       self.state = State::Doctype;
       if self.doctype.len() != 0 {
         self.doctype = String::new();
-      } else {
-        self.sgml_decl = sgml;
+        self.sgml_decl = String::new();
       }
     } else if grapheme == ">" {
       if self.events & Event::SGMLDeclaration as u32 != 0 {
         (self.event_handler)(Event::SGMLDeclaration as u32, self.sgml_decl.as_ptr() as *const u32, self.sgml_decl.len());
       }
+      self.sgml_decl = String::new();
       self.new_text();
       return;
     }

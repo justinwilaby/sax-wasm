@@ -9,7 +9,7 @@ describe('When parsing XML, the SaxWasm', () => {
   let _event;
   let _data;
   before(async () => {
-    parser = new SAXParser(SaxEventType.CloseTag);
+    parser = new SAXParser(SaxEventType.Cdata);
     _data = [];
     _event = 0;
 
@@ -28,16 +28,8 @@ describe('When parsing XML, the SaxWasm', () => {
     parser.end();
   });
 
-  it('should process large XML files', () => {
-    const doc = fs.readFileSync(path.resolve(__dirname + '/xml.xml'), {encoding:'utf8'});
-    parser.write(doc);
-    expect(_data.length).not.to.be(0);
-    // const len = document.length;
-    // const chunkSize = 10000;
-    // let idx = 0;
-    // while (idx < len) {
-    //   parser.write(document.substr(idx, chunkSize));
-    //   idx += chunkSize;
-    // }
+  it('should report CDATA correctly', () => {
+    parser.write('<div><![CDATA[ did you know "x < y" & "z > y"? so I guess that means that z > x ]]></div>');
+    expect(_data[0]).to.be(' did you know "x < y" & "z > y"? so I guess that means that z > x ');
   });
 });
