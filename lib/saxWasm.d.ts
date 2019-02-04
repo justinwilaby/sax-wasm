@@ -13,8 +13,8 @@ export declare class SaxEventType {
     static CloseCDATA: number;
 }
 declare abstract class Reader<T> {
-    constructor(buf: Uint8Array, ptr: number);
-    protected abstract read(buf: Uint8Array, ptr: number): void;
+    constructor(buf: Uint32Array, ptr?: number);
+    protected abstract read(buf: Uint32Array, ptr: number): void;
 }
 export declare class Position {
     line: number;
@@ -29,14 +29,14 @@ export declare class Attribute extends Reader<string | number | Position> {
     valueStart: Position;
     name: string;
     value: string;
-    protected read(buf: Uint8Array, ptr: number): void;
+    protected read(buf: Uint32Array, ptr: number): void;
 }
 export declare class Text extends Reader<string | Position> {
     static BYTES_IN_DESCRIPTOR: number;
     end: Position;
     start: Position;
     value: string;
-    protected read(buf: Uint8Array, ptr: number): void;
+    protected read(buf: Uint32Array, ptr: number): void;
 }
 export declare class Tag extends Reader<Attribute[] | Text[] | Position | string | number | boolean> {
     name: string;
@@ -47,7 +47,7 @@ export declare class Tag extends Reader<Attribute[] | Text[] | Position | string
     openEnd: Position;
     closeStart: Position;
     closeEnd: Position;
-    protected read(buf: Uint8Array, ptr: number): void;
+    protected read(buf: Uint32Array): void;
 }
 export declare class SAXParser {
     static textDecoder: TextDecoder;

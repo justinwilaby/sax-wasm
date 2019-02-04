@@ -185,7 +185,7 @@ impl<'a> SAXParser<'a> {
     } else {
       if self.events & Event::OpenTagStart as u32 != 0 {
         let v = self.tag.encode();
-        (self.event_handler)(Event::OpenTagStart as u32, v.as_ptr() as *const u32, v.len());
+        (self.event_handler)(Event::OpenTagStart as u32, v.as_ptr(), v.len());
       }
       if grapheme == ">" {
         self.process_open_tag(false);
@@ -218,7 +218,7 @@ impl<'a> SAXParser<'a> {
         }
         if self.events & Event::Text as u32 != 0 {
           let v = self.text.encode();
-          (self.event_handler)(Event::Text as u32, v.as_ptr() as *const u32, v.len());
+          (self.event_handler)(Event::Text as u32, v.as_ptr(), v.len());
         }
       }
       self.new_tag();
@@ -362,10 +362,10 @@ impl<'a> SAXParser<'a> {
         (self.event_handler)(Event::Cdata as u32, self.cdata.as_ptr() as *const u32, self.cdata.len());
       }
       if self.events & Event::CloseCDATA as u32 != 0 {
-        let mut buf: [u8; 8] = [0; 8];
-        read_u32_into(self.line, &mut buf, 0);
-        read_u32_into(self.character, &mut buf, 4);
-        (self.event_handler)(Event::CloseCDATA as u32, buf.as_ptr() as *const u32, buf.len());
+        let mut buf: [u32; 2] = [0; 2];
+        buf[0] = self.line.clone();
+        buf[1] = self.character.clone();
+        (self.event_handler)(Event::CloseCDATA as u32, buf.as_ptr(), buf.len());
       }
       return;
     } else if grapheme == "]" {
@@ -562,7 +562,7 @@ impl<'a> SAXParser<'a> {
     let attr = mem::replace(&mut self.attribute, Attribute::new());
     if self.events & Event::Attribute as u32 != 0 {
       let v = attr.encode();
-      (self.event_handler)(Event::Attribute as u32, v.as_ptr() as *const u32, v.len());
+      (self.event_handler)(Event::Attribute as u32, v.as_ptr(), v.len());
     }
     self.tag.attributes.push(attr);
   }
@@ -573,7 +573,7 @@ impl<'a> SAXParser<'a> {
     self.tags.push(self.tag.clone());
     if self.events & Event::OpenTag as u32 != 0 {
       let v = self.tag.encode();
-      (self.event_handler)(Event::OpenTag as u32, v.as_ptr() as *const u32, v.len());
+      (self.event_handler)(Event::OpenTag as u32, v.as_ptr(), v.len());
     }
     if !self_closing {
       self.new_text();
@@ -614,7 +614,7 @@ impl<'a> SAXParser<'a> {
       self.tag.close_end = (self.line, self.character);
       if self.events & Event::CloseTag as u32 != 0 {
         let v = self.tag.encode();
-        (self.event_handler)(Event::CloseTag as u32, v.as_ptr() as *const u32, v.len());
+        (self.event_handler)(Event::CloseTag as u32, v.as_ptr(), v.len());
       }
     }
   }
