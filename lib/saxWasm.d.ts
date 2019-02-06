@@ -1,4 +1,3 @@
-/// <reference types="webassembly-js-api" />
 export declare class SaxEventType {
     static Text: number;
     static ProcessingInstruction: number;
@@ -14,8 +13,8 @@ export declare class SaxEventType {
     static CloseCDATA: number;
 }
 declare abstract class Reader<T> {
-    constructor(uint8Array: Uint8Array, ptr?: number);
-    protected abstract read(uint8Array: Uint8Array, ptr: number): void;
+    constructor(buf: Uint32Array, ptr?: number);
+    protected abstract read(buf: Uint32Array, ptr: number): void;
 }
 export declare class Position {
     line: number;
@@ -30,14 +29,14 @@ export declare class Attribute extends Reader<string | number | Position> {
     valueStart: Position;
     name: string;
     value: string;
-    protected read(uint8Array: Uint8Array, ptr: number): void;
+    protected read(buf: Uint32Array, ptr: number): void;
 }
 export declare class Text extends Reader<string | Position> {
     static BYTES_IN_DESCRIPTOR: number;
     end: Position;
     start: Position;
     value: string;
-    protected read(uint8Array: Uint8Array, ptr: number): void;
+    protected read(buf: Uint32Array, ptr: number): void;
 }
 export declare class Tag extends Reader<Attribute[] | Text[] | Position | string | number | boolean> {
     name: string;
@@ -48,24 +47,18 @@ export declare class Tag extends Reader<Attribute[] | Text[] | Position | string
     openEnd: Position;
     closeStart: Position;
     closeEnd: Position;
-    protected read(uint8Array: Uint8Array, ptr: number): void;
-}
-export interface SaxParserOptions {
-    highWaterMark: number;
+    protected read(buf: Uint32Array): void;
 }
 export declare class SAXParser {
     static textDecoder: TextDecoder;
     static textEncoder: TextEncoder;
     events: number;
     eventHandler: (type: SaxEventType, detail: Reader<any> | Position | string) => void;
-    private readonly options;
     private wasmSaxParser;
-    private writeBuffer;
-    private readBuffer;
-    constructor(events?: number, options?: SaxParserOptions);
-    write(slice: Uint8Array, offset?: number): void;
+    constructor(events?: number);
+    write(value: string): void;
     end(): void;
-    prepareWasm(saxWasm: Uint8Array): Promise<WebAssembly.Memory>;
+    prepareWasm(saxWasm: Uint8Array): Promise<boolean>;
     protected eventTrap: (event: number, ptr: number, len: number) => void;
 }
 export {};

@@ -29,7 +29,7 @@ describe('When parsing XML, the SaxWasm', () => {
   });
 
   it('should report CDATA correctly', () => {
-    parser.write(Buffer.from('<div><![CDATA[ did you know "x < y" & "z > y"? so I guess that means that z > x ]]></div>'));
+    parser.write('<div><![CDATA[ did you know "x < y" & "z > y"? so I guess that means that z > x ]]></div>');
     expect(_data[ 0 ]).to.eql({ line: 0, character: 7 });
     expect(_data[ 1 ]).to.be(' did you know "x < y" & "z > y"? so I guess that means that z > x ');
   });

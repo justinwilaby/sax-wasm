@@ -28,7 +28,7 @@ describe('When parsing JSX, the SaxWasm', () => {
   });
 
   it('should recognize Processing Instructions', () => {
-    parser.write(Buffer.from('<?xml version="1.0" encoding="utf-8"?>'));
+    parser.write('<?xml version="1.0" encoding="utf-8"?>');
     expect(_event).to.be(SaxEventType.ProcessingInstruction);
     expect(_data).to.be('version="1.0" encoding="utf-8"');
   });

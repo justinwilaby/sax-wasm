@@ -29,10 +29,10 @@ describe('When parsing JSX, the SaxWasm', () => {
   });
 
   it('should recognize child tags within javascript', () => {
-    parser.write(Buffer.from(`
+    parser.write(`
     <Component>
       {this.authenticated ? <User props={this.userProps}/> : <SignIn props={this.signInProps}/>}
-    </Component>`));
+    </Component>`);
 
     expect(_event).to.be(SaxEventType.CloseTag);
     expect(_data[0].name).to.be('User');
@@ -41,7 +41,7 @@ describe('When parsing JSX, the SaxWasm', () => {
   });
 
   it('should recognize tags within javascript', () => {
-    parser.write(Buffer.from(`
+    parser.write(`
     <ul>
       {(function (
         if (this.index > 1) {
@@ -50,7 +50,7 @@ describe('When parsing JSX, the SaxWasm', () => {
         return <li>{this.getDefault()}</li>
       ))()}
     </ul>
-    `));
+    `);
 
     expect(_event).to.be(SaxEventType.CloseTag);
     expect(_data[0].name).to.be('li');
@@ -59,7 +59,7 @@ describe('When parsing JSX, the SaxWasm', () => {
   });
 
   it('should recognize JSX Fragments', () => {
-    parser.write(Buffer.from('<> <div></div> <p></p> </>'));
+    parser.write('<> <div></div> <p></p> </>');
     expect(_data[0].name).to.be('div');
     expect(_data[1].name).to.be('p');
     expect(_data[2].name).to.be('');

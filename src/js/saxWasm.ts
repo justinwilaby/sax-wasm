@@ -26,11 +26,11 @@ export class SaxEventType {
 }
 
 abstract class Reader<T> {
-  constructor(uint8Array: Uint8Array, ptr: number = 0) {
-    this.read(uint8Array, ptr);
+  constructor(buf: Uint32Array, ptr: number = 0) {
+    this.read(buf, ptr);
   }
 
-  protected abstract read(uint8Array: Uint8Array, ptr: number): void;
+  protected abstract read(buf: Uint32Array, ptr: number): void;
 }
 
 export class Position {
@@ -44,7 +44,7 @@ export class Position {
 }
 
 export class Attribute extends Reader<string | number | Position> {
-  public static BYTES_IN_DESCRIPTOR = 48;
+  public static BYTES_IN_DESCRIPTOR = 12;
 
   public nameEnd: Position;
   public nameStart: Position;
@@ -53,37 +53,37 @@ export class Attribute extends Reader<string | number | Position> {
   public name: string;
   public value: string;
 
-  protected read(uint8Array: Uint8Array, ptr: number): void {
-    const namePtr = readU32(uint8Array, ptr);
-    const nameLen = readU32(uint8Array, ptr + 4);
-    this.name = readString(uint8Array.buffer, namePtr, nameLen);
+  protected read(buf: Uint32Array, ptr: number): void {
+    const namePtr = buf[ptr];
+    const nameLen = buf[ptr + 1];
+    this.name = readString(buf.buffer, namePtr, nameLen);
 
-    this.nameEnd = readPosition(uint8Array, ptr + 8);
-    this.nameStart = readPosition(uint8Array, ptr + 16);
+    this.nameEnd = new Position(buf[ptr + 2], buf[ptr + 3]);
+    this.nameStart = new Position(buf[ptr + 4], buf[ptr + 5]);
 
-    const valuePtr = readU32(uint8Array, ptr + 24);
-    const valueLen = readU32(uint8Array, ptr + 28);
-    this.value = readString(uint8Array.buffer, valuePtr, valueLen);
+    const valuePtr = buf[ptr + 6];
+    const valueLen = buf[ptr + 7];
+    this.value = readString(buf.buffer, valuePtr, valueLen);
 
-    this.valueEnd = readPosition(uint8Array, ptr + 32);
-    this.valueStart = readPosition(uint8Array, ptr + 40);
+    this.valueEnd = new Position(buf[ptr + 8], buf[ptr + 9]);
+    this.valueStart = new Position(buf[ptr + 10], buf[ptr + 11]);
   }
 }
 
 export class Text extends Reader<string | Position> {
-  public static BYTES_IN_DESCRIPTOR = 24;
+  public static BYTES_IN_DESCRIPTOR = 6;
 
   public end: Position;
   public start: Position;
   public value: string;
 
-  protected read(uint8Array: Uint8Array, ptr: number): void {
-    const valuePtr = readU32(uint8Array, ptr + 16);
-    const valueLen = readU32(uint8Array, ptr + 20);
+  protected read(buf: Uint32Array, ptr: number): void {
+    const valuePtr = buf[ptr + 4];
+    const valueLen = buf[ptr + 5];
 
-    this.end = readPosition(uint8Array, ptr);
-    this.start = readPosition(uint8Array, ptr + 8);
-    this.value = readString(uint8Array.buffer, valuePtr, valueLen);
+    this.end = new Position(buf[ptr], buf[ptr + 1]);
+    this.start = new Position(buf[ptr + 2], buf[ptr + 3]);
+    this.value = readString(buf.buffer, valuePtr, valueLen);
   }
 }
 
@@ -97,33 +97,33 @@ export class Tag extends Reader<Attribute[] | Text[] | Position | string | numbe
   public closeStart: Position;
   public closeEnd: Position;
 
-  protected read(uint8Array: Uint8Array, ptr: number): void {
-    this.closeEnd = readPosition(uint8Array, ptr);
-    this.closeStart = readPosition(uint8Array, ptr + 8);
-    this.openEnd = readPosition(uint8Array, ptr + 16);
-    this.openStart = readPosition(uint8Array, ptr + 24);
+  protected read(buf: Uint32Array): void {
+    this.closeEnd = new Position(buf[0], buf[1]);
+    this.closeStart = new Position(buf[2], buf[3]);
+    this.openEnd = new Position(buf[4], buf[5]);
+    this.openStart = new Position(buf[6], buf[7]);
 
-    const namePtr = readU32(uint8Array,ptr + 32);
-    const nameLen = readU32(uint8Array, ptr + 36);
-    this.name = readString(uint8Array.buffer, namePtr, nameLen);
+    const namePtr = buf[8];
+    const nameLen = buf[9];
+    this.name = readString(buf.buffer, namePtr, nameLen);
 
-    this.selfClosing = !!uint8Array[ptr + 40];
+    this.selfClosing = !!buf[10];
 
-    let offset = ptr + 41;
+    let offset = 11;
     const attributes = [] as Attribute[];
-    let numAttrs = readU32(uint8Array, offset);
-    offset += 4;
+    let numAttrs = buf[offset];
+    offset ++;
     for (let i = 0; i < numAttrs; i++) {
-      attributes[i] = new Attribute(uint8Array, offset);
+      attributes[i] = new Attribute(buf, offset);
       offset += Attribute.BYTES_IN_DESCRIPTOR;
     }
     this.attributes = attributes;
 
     const textNodes = [] as Text[];
-    let numNodes = uint8Array[offset];
-    offset += 4;
+    let numNodes = buf[offset];
+    offset ++;
     for (let i = 0; i < numNodes; i++) {
-      textNodes[i] = new Text(uint8Array, offset);
+      textNodes[i] = new Text(buf, offset);
       offset += Text.BYTES_IN_DESCRIPTOR;
     }
     this.textNodes = textNodes;
@@ -137,24 +137,15 @@ interface WasmSaxParser {
   end: () => void;
 }
 
-export interface SaxParserOptions {
-  highWaterMark: number
-}
-
 export class SAXParser {
   public static textDecoder: TextDecoder; // Web only
   public static textEncoder: TextEncoder; // web only
 
   public events: number;
   public eventHandler: (type: SaxEventType, detail: Reader<any> | Position | string) => void;
-
-  private readonly options: SaxParserOptions;
   private wasmSaxParser: WasmSaxParser;
-  private writeBuffer: Uint8Array;
-  private readBuffer: Uint8Array;
 
-  constructor(events = 0, options: SaxParserOptions = { highWaterMark: 64 * 1024 }) {
-    this.options = options;
+  constructor(events = 0) {
     const self = this;
     Object.defineProperties(this, {
       events: {
@@ -171,60 +162,60 @@ export class SAXParser {
     });
   }
 
-  public write(slice: Uint8Array, offset: number = 0): void {
-    const { write } = this.wasmSaxParser;
-    if (!this.writeBuffer) {
-      this.writeBuffer = new Uint8Array(this.wasmSaxParser.memory.buffer, 0, this.options.highWaterMark);
-      this.readBuffer = new Uint8Array(this.wasmSaxParser.memory.buffer);
-    }
-    this.writeBuffer.set(slice);
-    write(offset, slice.length);
+  public write(value: string): void {
+    const { memory, write } = this.wasmSaxParser;
+    const slice = stringToUtf8Buffer(value);
+    const memBuff = new Uint8Array(memory.buffer, 0, slice.length);
+    memBuff.set(slice);
+    write(0, memBuff.length);
   }
 
   public end(): void {
     this.wasmSaxParser.end();
   }
 
-  public async prepareWasm(saxWasm: Uint8Array): Promise<WebAssembly.Memory> {
+  public async prepareWasm(saxWasm: Uint8Array): Promise<boolean> {
     const result = await WebAssembly.instantiate(saxWasm, {
       env: {
         memoryBase: 0,
         tableBase: 0,
-        memory: new WebAssembly.Memory({ initial: 32 } as WebAssembly.MemoryDescriptor),
-        table: new WebAssembly.Table({ initial: 1, element: 'anyfunc' } as WebAssembly.TableDescriptor),
+        memory: new WebAssembly.Memory({ initial: 256 } as WebAssembly.MemoryDescriptor),
+        table: new WebAssembly.Table({ initial: 4, element: 'anyfunc' } as WebAssembly.TableDescriptor),
         event_listener: this.eventTrap
       }
     });
     if (result) {
       const { parser } = this.wasmSaxParser = result.instance.exports;
       parser(this.events);
-      return parser;
+      return true;
     }
   }
 
   protected eventTrap = (event: number, ptr: number, len: number): void => {
+    const buffer = this.wasmSaxParser.memory.buffer;
     let payload: Reader<any> | string | Position;
     switch (event) {
       case SaxEventType.Attribute:
-        payload = new Attribute(this.readBuffer, ptr);
+        payload = new Attribute(new Uint32Array(buffer, ptr));
         break;
 
       case SaxEventType.OpenTag:
       case SaxEventType.CloseTag:
       case SaxEventType.OpenTagStart:
-        payload = new Tag(this.readBuffer, ptr);
+        payload = new Tag(new Uint32Array(buffer, ptr));
         break;
 
       case SaxEventType.Text:
-        payload = new Text(this.readBuffer, ptr);
+        payload = new Text(new Uint32Array(buffer, ptr));
         break;
 
       case SaxEventType.OpenCDATA:
-        payload = readPosition(this.readBuffer, ptr);
+        const b = new Uint32Array(buffer, ptr, 2);
+        payload = new Position(b[0], b[1]);
         break;
 
       default:
-        payload = readString(this.readBuffer.buffer, ptr, len);
+        payload = readString(buffer, ptr, len);
         break;
     }
 
@@ -251,14 +242,4 @@ function readString(data: ArrayBuffer, byteOffset: number, length: number): stri
   // Web
   return (SAXParser.textDecoder || (SAXParser.textDecoder = new TextDecoder()))
     .decode(new Uint8Array(data, byteOffset, length));
-}
-
-function readU32(uint8Array: Uint8Array, ptr: number): number {
-  return (uint8Array[ptr + 3] << 24) | (uint8Array[ptr + 2] << 16) | (uint8Array[ptr + 1] << 8) | uint8Array[ptr];
-}
-
-function readPosition(uint8Array: Uint8Array, ptr: number = 0): Position {
-  const line = readU32(uint8Array, ptr);
-  const character = readU32(uint8Array, ptr + 4);
-  return new Position(line, character);
 }

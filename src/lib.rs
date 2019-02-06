@@ -11,7 +11,7 @@ static mut SAX: *mut SAXParser = 0 as *mut SAXParser;
 #[no_mangle]
 pub unsafe extern fn parser(events: u32) {
   if SAX == 0 as *mut SAXParser {
-    let eh: fn(u32, *const u8, usize) = |event: u32, ptr: *const u8, len: usize| { event_listener(event, ptr, len) };
+    let eh: fn(u32, *const u32, usize) = |event: u32, ptr: *const u32, len: usize| { event_listener(event, ptr, len) };
     let sax_parse = SAXParser::new(eh);
     SAX = mem::transmute(Box::new(sax_parse));
   }
@@ -31,5 +31,5 @@ pub unsafe extern fn end() {
 
 #[no_mangle]
 extern "C" {
-  fn event_listener(event: u32, ptr: *const u8, len: usize);
+  fn event_listener(event: u32, ptr: *const u32, len: usize);
 }

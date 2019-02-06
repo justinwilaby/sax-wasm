@@ -28,7 +28,7 @@ describe('SaxWasm', () => {
   });
 
   it('should recognize attribute names', () => {
-    parser.write(Buffer.from('<body class="main"></body>'));
+    parser.write('<body class="main"></body>');
     expect(_event).to.be(SaxEventType.Attribute);
     expect(_data.length).to.be(1);
     expect(_data[0].name).to.be('class');
@@ -36,7 +36,7 @@ describe('SaxWasm', () => {
   });
 
   it('should recognize attribute names when no spaces separate them', () => {
-    parser.write(Buffer.from('<component data-id="user_1234"key="23"/>'));
+    parser.write('<component data-id="user_1234"key="23"/>');
     expect(_event).to.be(SaxEventType.Attribute);
     expect(_data[0].name).to.be('data-id');
     expect(_data[0].value).to.be('user_1234');
@@ -45,21 +45,21 @@ describe('SaxWasm', () => {
   });
 
   it('should preserve grapheme clusters as attribute values', () => {
-    parser.write(Buffer.from('<div id="👅"></div>'));
+    parser.write('<div id="👅"></div>');
     expect(_event).to.be(SaxEventType.Attribute);
     expect(_data[0].name).to.be('id');
     expect(_data[0].value).to.be('👅');
   });
 
   it('should provide the attribute value when the value is not quoted', () => {
-    parser.write(Buffer.from('<body app="buggyAngularApp=19"></body>'));
+    parser.write('<body app="buggyAngularApp=19"></body>');
     expect(_event).to.be(SaxEventType.Attribute);
     expect(_data[0].name).to.be('app');
     expect(_data[0].value).to.be('buggyAngularApp=19');
   });
 
   it('should provide the attribute value when the value is a JSX expression', () => {
-    parser.write(Buffer.from('<Component props={() => { return this.props } }></Component>'));
+    parser.write('<Component props={() => { return this.props } }></Component>');
     expect(_event).to.be(SaxEventType.Attribute);
     expect(_data[0].name).to.be('props');
     expect(_data[0].value).to.be('() => { return this.props } ');
@@ -72,7 +72,7 @@ describe('SaxWasm', () => {
   class="grapheme cluster">
 </div>`;
 
-    parser.write(Buffer.from(html));
+    parser.write(html);
     expect(_event).to.be(SaxEventType.Attribute);
     expect(_data[0].nameStart).to.eql({line: 2, character: 2});
     expect(_data[0].nameEnd).to.eql({line: 2, character: 12});
@@ -86,7 +86,7 @@ describe('SaxWasm', () => {
   });
 
   it('should report namespaces as attributes', () => {
-    parser.write(Buffer.from(`<x xmlns:edi='http://ecommerce.example.org/schema'></x>`));
+    parser.write(`<x xmlns:edi='http://ecommerce.example.org/schema'></x>`);
     expect(_event).to.be(SaxEventType.Attribute);
     expect(_data[0].name).to.be('xmlns:edi');
     expect(_data[0].value).to.be('http://ecommerce.example.org/schema');

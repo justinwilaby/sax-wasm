@@ -28,12 +28,12 @@ describe('SaxWasm', () => {
   });
 
   it('should report text that occurs outside of an element', () => {
-    parser.write(Buffer.from('this is just plain text <br>'));
+    parser.write('this is just plain text <br>');
     expect(_data[0].value).to.be('this is just plain text ');
   });
 
   it('should report multiple text blocks when child nodes exist between them', () => {
-    parser.write(Buffer.from('<div>I like to use <bold>bold text</bold> to emphasize</div>'));
+    parser.write('<div>I like to use <bold>bold text</bold> to emphasize</div>');
 
     expect(_data.length).to.be(3);
     expect(_data[0].value).to.be('I like to use ');
@@ -46,7 +46,7 @@ describe('SaxWasm', () => {
 
 
 </div>`;
-  parser.write(Buffer.from(str));
+  parser.write(str);
 
   expect(_data[0].value).to.be('\n\n\n');
   });

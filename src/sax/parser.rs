@@ -26,12 +26,11 @@ pub struct SAXParser<'a> {
   tag: Tag,
   brace_ct: u32,
 
-  event_handler: fn(u32, *const u8, usize),
-  fragment: [u8; 4],
+  event_handler: fn(u32, *const u32, usize),
 }
 
 impl<'a> SAXParser<'a> {
-  pub fn new(event_handler: fn(u32, *const u8, usize)) -> SAXParser<'a> {
+  pub fn new(event_handler: fn(u32, *const u32, usize)) -> SAXParser<'a> {
     SAXParser {
       event_handler,
       state: State::Begin,
@@ -52,16 +51,15 @@ impl<'a> SAXParser<'a> {
       attribute: Attribute::new(),
       text: Text::new((0, 0)),
       brace_ct: 0,
-      fragment: [0; 4],
     }
   }
 
   pub fn write(&mut self, source: &'a [u8]) {
     let mut idx = 0;
     let len = source.len();
-    'outer: while idx < len {
+    while idx < len {
       let byte = source[idx];
-      let mut bytes: usize = 1;
+      let mut bytes = 1;
       if ((byte & 0b10000000) >> 7) == 1 && ((byte & 0b1000000) >> 6) == 1 {
         bytes += 1;
       }
@@ -71,25 +69,12 @@ impl<'a> SAXParser<'a> {
       if bytes == 3 && ((byte & 0b10000) >> 4) == 1 {
         bytes += 1;
       }
-      // We don't have enough bytes
-      let end_idx = idx + bytes;
-      if end_idx > len {
-        let mut remaining_bytes = len - idx;
-        self.fragment = [0; 4];
-        loop {
-          remaining_bytes -= 1;
-          self.fragment[0] = source[idx + remaining_bytes].clone();
-          if remaining_bytes == 0 {
-            break 'outer;
-          }
-        }
-      }
-      let s = &source[idx..end_idx];
+      let s = &source[idx..idx + bytes as usize];
       unsafe {
         let st = str::from_utf8_unchecked(s);
         self.process_grapheme(st);
       }
-      idx = end_idx;
+      idx += bytes as usize;
     }
   }
 
@@ -246,10 +231,8 @@ impl<'a> SAXParser<'a> {
       self.state = State::Cdata;
       self.cdata = String::new();
       if self.events & Event::OpenCDATA as u32 != 0 {
-        let mut buf: [u8; 8] = [0; 8];
-        read_u32_into(self.line, &mut buf, 0);
-        read_u32_into(self.character - 7, &mut buf, 4);
-        (self.event_handler)(Event::OpenCDATA as u32, buf.as_ptr(), buf.len());
+        let v = [self.line, self.character - 7];
+        (self.event_handler)(Event::OpenCDATA as u32, v.as_ptr(), v.len());
       }
     } else if self.sgml_decl == "--" {
       self.state = State::Comment;
@@ -262,7 +245,7 @@ impl<'a> SAXParser<'a> {
       }
     } else if grapheme == ">" {
       if self.events & Event::SGMLDeclaration as u32 != 0 {
-        (self.event_handler)(Event::SGMLDeclaration as u32, self.sgml_decl.as_ptr(), self.sgml_decl.len());
+        (self.event_handler)(Event::SGMLDeclaration as u32, self.sgml_decl.as_ptr() as *const u32, self.sgml_decl.len());
       }
       self.sgml_decl = String::new();
       self.new_text();
@@ -285,7 +268,7 @@ impl<'a> SAXParser<'a> {
     if grapheme == ">" {
       self.new_text();
       if self.events & Event::Doctype as u32 != 0 {
-        (self.event_handler)(Event::Doctype as u32, self.doctype.as_ptr(), self.doctype.len());
+        (self.event_handler)(Event::Doctype as u32, self.doctype.as_ptr() as *const u32, self.doctype.len());
       }
       return;
     }
@@ -336,7 +319,7 @@ impl<'a> SAXParser<'a> {
     if grapheme == "-" {
       self.state = State::CommentEnded;
       if self.events & Event::Comment as u32 != 0 {
-        (self.event_handler)(Event::Comment as u32, self.comment.as_ptr(), self.comment.len());
+        (self.event_handler)(Event::Comment as u32, self.comment.as_ptr() as *const u32, self.comment.len());
       }
     } else {
       self.comment.push('-');
@@ -376,12 +359,12 @@ impl<'a> SAXParser<'a> {
     if grapheme == ">" && self.cdata.len() != 0 {
       self.new_text();
       if self.events & Event::Cdata as u32 != 0 {
-        (self.event_handler)(Event::Cdata as u32, self.cdata.as_ptr(), self.cdata.len());
+        (self.event_handler)(Event::Cdata as u32, self.cdata.as_ptr() as *const u32, self.cdata.len());
       }
       if self.events & Event::CloseCDATA as u32 != 0 {
-        let mut buf: [u8; 8] = [0; 8];
-        read_u32_into(self.line, &mut buf, 0);
-        read_u32_into(self.character, &mut buf, 4);
+        let mut buf: [u32; 2] = [0; 2];
+        buf[0] = self.line.clone();
+        buf[1] = self.character.clone();
         (self.event_handler)(Event::CloseCDATA as u32, buf.as_ptr(), buf.len());
       }
       return;
@@ -418,7 +401,7 @@ impl<'a> SAXParser<'a> {
     if grapheme == ">" {
       self.new_text();
       if self.events & Event::ProcessingInstruction as u32 != 0 {
-        (self.event_handler)(Event::ProcessingInstruction as u32, self.proc_inst_body.as_ptr(), self.proc_inst_body.len());
+        (self.event_handler)(Event::ProcessingInstruction as u32, self.proc_inst_body.as_ptr() as *const u32, self.proc_inst_body.len());
       }
     } else {
       self.proc_inst_body.push_str("?");
