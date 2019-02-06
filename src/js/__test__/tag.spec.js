@@ -30,7 +30,7 @@ describe('SaxWasm', () => {
   });
 
   it('should report the SaxEventType.OpenTagStart', () => {
-    parser.write('<div class="myDiv">This is my div</div>');
+    parser.write(Buffer.from('<div class="myDiv">This is my div</div>'));
     expect(_event & SaxEventType.OpenTagStart).to.be(32);
     const [tag] = _data ;
     expect(tag.name).to.be('div');
@@ -39,7 +39,7 @@ describe('SaxWasm', () => {
   });
 
   it('should report the SaxEventType.OpenTag', () => {
-    parser.write('<div class="myDiv">This is my div</div>');
+    parser.write(Buffer.from('<div class="myDiv">This is my div</div>'));
     expect(_event & SaxEventType.OpenTag).to.be(128);
     const [,tag] = _data ;
     expect(tag.name).to.be('div');
@@ -49,7 +49,7 @@ describe('SaxWasm', () => {
   });
 
   it('should report the SaxEventType.CloseTag', () => {
-    parser.write('<div class="myDiv">This is my div</div>');
+    parser.write(Buffer.from('<div class="myDiv">This is my div</div>'));
     expect(_event & SaxEventType.CloseTag).to.be(256);
     const [,,tag] = _data ;
     expect(tag.name).to.be('div');
@@ -62,7 +62,7 @@ describe('SaxWasm', () => {
 
   it('should report selfClosing tags correctly', () => {
     parser.events = SaxEventType.CloseTag;
-    parser.write('<g><path d="M0,12.5 L50,12.5 L50,25 L0,25 L0,12.5z"/></g>');
+    parser.write(Buffer.from('<g><path d="M0,12.5 L50,12.5 L50,25 L0,25 L0,12.5z"/></g>'));
     const [path, g] = _data ;
     expect(path.selfClosing).to.be(true);
     expect(g.selfClosing).to.be(false);
@@ -70,7 +70,7 @@ describe('SaxWasm', () => {
 
   it('should handle the BOM', () => {
     parser.events = SaxEventType.OpenTag;
-    parser.write('\uFEFF<div></div>');
+    parser.write(Buffer.from('\uFEFF<div></div>'));
     expect(_event).to.be(SaxEventType.OpenTag);
     const [tag] = _data ;
     expect(tag.name).to.be('div');
@@ -78,7 +78,7 @@ describe('SaxWasm', () => {
 
   it('should treat orphaned close tags as text', () => {
     parser.events = SaxEventType.Text;
-    parser.write('<div><a href="http://github.com">GitHub</a></orphan></div>');
+    parser.write(Buffer.from('<div><a href="http://github.com">GitHub</a></orphan></div>'));
     expect(_event).to.be(SaxEventType.Text);
     const [,text] = _data;
     expect(text.value).to.be('</orphan>');
@@ -86,7 +86,7 @@ describe('SaxWasm', () => {
 
   it('should treat empty self-closing tags as tags', () => {
     parser.events = SaxEventType.OpenTag | SaxEventType.CloseTag;
-    parser.write('<div></></div>');
+    parser.write(Buffer.from('<div></></div>'));
     expect(_event & SaxEventType.OpenTag).to.be(128);
     expect(_event & SaxEventType.CloseTag).to.be(256);
     const [, openTag, closeTag] = _data ;

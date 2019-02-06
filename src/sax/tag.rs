@@ -27,34 +27,35 @@ impl Tag {
   }
 }
 
-impl Encode<Vec<u32>> for Tag {
-  fn encode(&self) -> Vec<u32> {
-    let mut v: Vec<u32> = Vec::new();
+impl Encode<Vec<u8>> for Tag {
+  fn encode(&self) -> Vec<u8> {
+    let mut v: Vec<u8> = Vec::new();
     // known byte length
-    v.push(self.close_end.0.clone());
-    v.push(self.close_end.1.clone());
+    let mut u32bytes:[ u8; 4] = [0; 4];
+    v.extend_from_slice(read_u32_into(self.close_end.0 as u32, &mut u32bytes, 0));
+    v.extend_from_slice(read_u32_into(self.close_end.1 as u32, &mut u32bytes, 0));
 
-    v.push(self.close_start.0.clone());
-    v.push(self.close_start.1.clone());
+    v.extend_from_slice(read_u32_into(self.close_start.0 as u32, &mut u32bytes, 0));
+    v.extend_from_slice(read_u32_into(self.close_start.1 as u32, &mut u32bytes, 0));
 
-    v.push(self.open_end.0.clone());
-    v.push(self.open_end.1.clone());
+    v.extend_from_slice(read_u32_into(self.open_end.0 as u32, &mut u32bytes, 0));
+    v.extend_from_slice(read_u32_into(self.open_end.1 as u32, &mut u32bytes, 0));
 
-    v.push(self.open_start.0.clone());
-    v.push(self.open_start.1.clone());
+    v.extend_from_slice(read_u32_into(self.open_start.0 as u32, &mut u32bytes, 0));
+    v.extend_from_slice(read_u32_into(self.open_start.1 as u32, &mut u32bytes, 0));
 
-    v.push(self.name.as_ptr() as u32);
-    v.push(self.name.len() as u32);
+    v.extend_from_slice(read_u32_into(self.name.as_ptr() as u32, &mut u32bytes, 0));
+    v.extend_from_slice(read_u32_into(self.name.len() as u32, &mut u32bytes, 0));
 
-    v.push(self.self_closing.clone() as u32);
+    v.push(self.self_closing.clone() as u8);
 
     // unknown byte length
-    v.push(self.attributes.len() as u32);
+    v.extend_from_slice(read_u32_into(self.attributes.len() as u32, &mut u32bytes, 0));
     for a in &self.attributes {
       v.extend_from_slice(&mut a.encode());
     }
 
-    v.push(self.text_nodes.len() as u32);
+    v.extend_from_slice(read_u32_into(self.text_nodes.len() as u32, &mut u32bytes, 0));
     for t in &self.text_nodes {
       v.extend_from_slice(&mut t.encode());
     }
@@ -80,17 +81,17 @@ impl Text {
   }
 }
 
-impl Encode<[u32; 6]> for Text {
-  fn encode(&self) -> [u32; 6] {
-    let mut buf: [u32; 6] = [0; 6];
-    buf[0] = self.end.0.clone();
-    buf[1] = self.end.1.clone();
+impl Encode<[u8; 24]> for Text {
+  fn encode(&self) -> [u8; 24] {
+    let mut buf: [u8; 24] = [0; 24];
+    read_u32_into(self.end.0, &mut buf, 0);
+    read_u32_into(self.end.1, &mut buf, 4);
 
-    buf[2] = self.start.0.clone();
-    buf[3] = self.start.1.clone();
+    read_u32_into(self.start.0, &mut buf, 8);
+    read_u32_into(self.start.1, &mut buf, 12);
 
-    buf[4] = self.value.as_ptr() as u32;
-    buf[5] = self.value.len() as u32;
+    read_u32_into(self.value.as_ptr() as u32, &mut buf, 16);
+    read_u32_into(self.value.len() as u32, &mut buf, 20);
 
     buf
   }
@@ -119,26 +120,26 @@ impl Attribute {
   }
 }
 
-impl Encode<[u32; 12]> for Attribute {
-  fn encode(&self) -> [u32; 12] {
-    let mut buf: [u32; 12] = [0; 12];
-    buf[0] = self.name.as_ptr() as u32;
-    buf[1] = self.name.len() as u32;
+impl Encode<[u8; 48]> for Attribute {
+  fn encode(&self) -> [u8; 48] {
+    let mut buf: [u8; 48] = [0; 48];
+    read_u32_into(self.name.as_ptr() as u32, &mut buf, 0);
+    read_u32_into(self.name.len() as u32, &mut buf, 4);
 
-    buf[2] = self.name_end.0.clone();
-    buf[3] = self.name_end.1.clone();
+    read_u32_into(self.name_end.0, &mut buf, 8);
+    read_u32_into(self.name_end.1, &mut buf, 12);
 
-    buf[4] = self.name_start.0.clone();
-    buf[5] = self.name_start.1.clone();
+    read_u32_into(self.name_start.0, &mut buf, 16);
+    read_u32_into(self.name_start.1, &mut buf, 20);
 
-    buf[6] = self.value.as_ptr() as u32;
-    buf[7] = self.value.len() as u32;
+    read_u32_into(self.value.as_ptr() as u32, &mut buf, 24);
+    read_u32_into(self.value.len() as u32, &mut buf, 28);
 
-    buf[8] = self.value_end.0.clone();
-    buf[9] = self.value_end.1.clone();
+    read_u32_into(self.value_end.0, &mut buf, 32);
+    read_u32_into(self.value_end.1, &mut buf, 36);
 
-    buf[10] = self.value_start.0.clone();
-    buf[11] = self.value_start.1.clone();
+    read_u32_into(self.value_start.0, &mut buf, 40);
+    read_u32_into(self.value_start.1, &mut buf, 44);
 
     buf
   }
@@ -146,4 +147,14 @@ impl Encode<[u32; 12]> for Attribute {
 
 pub trait Encode<T> {
   fn encode(&self) -> T;
+}
+
+// Little Endian
+pub fn read_u32_into(x: u32, buf: &mut [u8], offset: usize) -> &[u8] {
+  buf[offset] = (x & 0xff) as u8;
+  buf[offset + 1] = ((x & 0xffff) >> 8) as u8;
+  buf[offset + 2] = ((x & 0xffffff) >> 16) as u8;
+  buf[offset + 3] = ((x & 0xffffffff) >> 24) as u8;
+
+  buf
 }
