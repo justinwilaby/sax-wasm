@@ -247,10 +247,10 @@ impl<'a> SAXParser<'a> {
       self.state = State::Cdata;
       self.cdata = String::new();
       if self.events & Event::OpenCDATA as u32 != 0 {
-        let mut buf: [u8; 8] = [0; 8];
-        read_u32_into(self.line, &mut buf, 0);
-        read_u32_into(self.character - 7, &mut buf, 4);
-        (self.event_handler)(Event::OpenCDATA as u32, buf.as_ptr(), buf.len());
+        let mut v = Vec::new();
+        read_u32_into(self.line, &mut v);
+        read_u32_into(self.character - 7, &mut v);
+        (self.event_handler)(Event::OpenCDATA as u32, v.as_ptr(), v.len());
       }
     } else if self.sgml_decl == "--" {
       self.state = State::Comment;
@@ -384,10 +384,10 @@ impl<'a> SAXParser<'a> {
         (self.event_handler)(Event::Cdata as u32, self.cdata.as_ptr(), self.cdata.len());
       }
       if self.events & Event::CloseCDATA as u32 != 0 {
-        let mut buf: [u8; 8] = [0; 8];
-        read_u32_into(self.line, &mut buf, 0);
-        read_u32_into(self.character, &mut buf, 4);
-        (self.event_handler)(Event::CloseCDATA as u32, buf.as_ptr(), buf.len());
+        let mut v= Vec::new();
+        read_u32_into(self.line, &mut v);
+        read_u32_into(self.character, &mut v);
+        (self.event_handler)(Event::CloseCDATA as u32, v.as_ptr(), v.len());
       }
       return;
     } else if grapheme == "]" {
