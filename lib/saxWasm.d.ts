@@ -1,4 +1,3 @@
-/// <reference types="webassembly-js-api" />
 export declare class SaxEventType {
     static Text: number;
     static ProcessingInstruction: number;
@@ -72,9 +71,9 @@ export declare class SAXParser {
     private wasmSaxParser;
     private writeBuffer;
     constructor(events?: number, options?: SaxParserOptions);
-    write(slice: Uint8Array, offset?: number): void;
+    write(chunk: Uint8Array, offset?: number): void;
     end(): void;
-    prepareWasm(saxWasm: Uint8Array): Promise<WebAssembly.Memory>;
+    prepareWasm(saxWasm: Uint8Array): Promise<boolean>;
     protected eventTrap: (event: number, ptr: number, len: number) => void;
 }
 export {};

@@ -30,7 +30,8 @@ const saxPath = require.resolve('sax-wasm/lib/sax-wasm.wasm');
 const saxWasmBuffer = fs.readFileSync(saxPath);
 
 // Instantiate 
-const parser = new SAXParser(SaxEventType.Attribute | SaxEventType.OpenTag);
+const options = {highWaterMark: 64 * 1024}; // 64k chunks
+const parser = new SAXParser(SaxEventType.Attribute | SaxEventType.OpenTag, options);
 parser.eventHandler = (event, data) => {
   if (event === SaxEventType.Attribute ) {
     // process attribute
@@ -42,8 +43,11 @@ parser.eventHandler = (event, data) => {
 // Instantiate and prepare the wasm for parsing
 parser.prepareWasm(saxWasmBuffer).then(ready => {
   if (ready) {
-    parser.write('<div class="modal"></div>');
-    parser.end();
+    const readable = fs.createReadStream(path.resolve(__dirname + '/path/to/doument.xml'), options);
+    readable.on('data', (chunk) => {
+      parser.write(chunk);
+    });
+    readable.on('end', parser.end);
   }
 });
 
@@ -56,7 +60,7 @@ import { SaxEventType, SAXParser } from 'sax-wasm';
 async function loadAndPrepareWasm() {
   const saxWasmResponse = await fetch('./path/to/wasm/sax-wasm.wasm');
   const saxWasmbuffer = await saxWasmResponse.arrayBuffer();
-  const parser = new SAXParser(SaxEventType.Attribute | SaxEventType.OpenTag);
+  const parser = new SAXParser(SaxEventType.Attribute | SaxEventType.OpenTag, {highWaterMark: 64 * 1024}); // 64k chunks
   
   // Instantiate and prepare the wasm for parsing
   const ready = await parser.prepareWasm(new Uint8Array(saxWasmbuffer));
@@ -75,8 +79,21 @@ function processDocument(parser) {
         // process open tag
       }
   }
-  parser.write('<div class="modal"></div>');
-  parser.end();
+  
+  fetch('path/to/document.xml').then(async response => {
+    if (!response.ok) {
+      // fail in some meaningful way
+    }
+    // Get the reader to stream the document to sax-wasm
+    const reader = response.body.getReader();
+    while(true) {
+      const chunk = await reader.read();
+      if (chunk.done) {
+        return parser.end();
+      }
+      parser.write(chunk);
+    }
+  });
 }
 ```
 
@@ -88,10 +105,10 @@ when migrating:
 1. No attempt is made to validate the document. sax-wasm reports what it sees. If you need strict mode or document validation, it may 
 be recreated by applying rules to the events that are reported by the parser.
 1. Namespaces are reported in attributes. No special events dedicated to namespaces.
-1. The parser is ready as soon as the promise is handled.
+1. Streaming utf-8 code points in a Uint8Array is required.
 
 ## Streaming 
-Streaming is supported with sax-wasm by writing utf-8 encoded text to the parser instance. Writes can occur safely 
+Streaming is supported with sax-wasm by writing utf-8 code points (Uint8Array) to the parser instance. Writes can occur safely 
 anywhere except within the `eventHandler` function or within the `eventTrap` (when extending `SAXParser` class). 
 Doing so anyway risks overwriting memory still in play.
 
@@ -107,31 +124,50 @@ Complete list of event/argument pairs:
 
 |Event                             |Mask          |Argument passed to handler                   |
 |----------------------------------|--------------|---------------------------------------------|
-|SaxEventType.Text                 |0b000000000001|text: [Text](src/js/saxWasm.ts#L42)          |
+|SaxEventType.Text                 |0b000000000001|text: [Text](src/js/saxWasm.ts#L91)          |
 |SaxEventType.ProcessingInstruction|0b000000000010|procInst: string                             |
 |SaxEventType.SGMLDeclaration      |0b000000000100|sgmlDecl: string                             |
 |SaxEventType.Doctype              |0b000000001000|doctype: string                              |
 |SaxEventType.Comment              |0b000000010000|comment: string                              |
 |SaxEventType.OpenTagStart         |0b000000100000|tag: [Tag](src/js/saxWasm.ts#L48)            |
-|SaxEventType.Attribute            |0b000001000000|attribute: [Attribute](src/js/saxWasm.ts#L33)|
+|SaxEventType.Attribute            |0b000001000000|attribute: [Attribute](src/js/saxWasm.ts#L51)|
 |SaxEventType.OpenTag              |0b000010000000|tag: [Tag](src/js/saxWasm.ts#L48)            |
 |SaxEventType.CloseTag             |0b000100000000|tag: [Tag](src/js/saxWasm.ts#L48)            |
-|SaxEventType.OpenCDATA            |0b001000000000|start: [Position](src/js/saxWasm.ts#L28)     |
+|SaxEventType.OpenCDATA            |0b001000000000|start: [Position](src/js/saxWasm.ts#L41)     |
 |SaxEventType.CDATA                |0b010000000000|cdata: string                                |
-|SaxEventType.CloseCDATA           |0b100000000000|end: [Position](src/js/saxWasm.ts#L28)       |
+|SaxEventType.CloseCDATA           |0b100000000000|end: [Position](src/js/saxWasm.ts#L41)       |
+
+## Speeding things up on large documents
+The speed of the sax-wasm parser is incredibly fast and can parse very large documents in a blink of an eye. Although 
+it's performance out of the box is ridiculous, the JavaScript thread *must* be involved with transforming raw 
+bytes to human readable data, there are times where slowdowns can occur if you're not careful. These are some of the 
+items to consider when top speed and performance is an absolute must:
+1. Stream your document from it's source as a `Uint8Array` - This is covered in the examples above. Things slow down 
+significantly when the document is loaded in JavaScript as a string, then encoded to bytes using `Buffer.from(document)` or 
+`new TextEncoder.encode(document)` before being passed to the parser. Encoding on the JavaScript thread is adds a non-trivial 
+amount of overhead so its best to keep the data as raw bytes. Streaming often means the parser will already be done once 
+the document finishes downloading!
+1. Keep the events bitmask to a bare minimum whenever possible - the more events that are required, the more work the 
+JavaScript thread must do once sax-wasm.wasm reports back.
+1. Limit property reads on the reported data to only what's necessary - this includes things like stringifying the data to 
+json using `JSON.stringify()`. The first read of a property on a data object reported by the `eventHandler` will
+retrieve the value from raw bytes and convert it to a `string`, `number` or `Position` on the JavaScript thread. This
+conversion time becomes noticeable on very large documents with many elements and attributes. **NOTE:** After
+the initial read, the value is cached and accessing it becomes faster.
 
 ## SAXParser.js
 ### Methods
 - `prepareWasm(wasm: Uint8Array): Promise<boolean>` - Instantiates the wasm binary with reasonable defaults and stores 
 the instance as a member of the class. Always resolves to true or throws if something went wrong.
 
-- `write(buffer: string): void;` - writes the supplied string to the wasm stream and kicks off processing. 
-The character and line counters are *not* reset.
+- `write(chunk: Uint8Array, offset: number = 0): void;` - writes the supplied bytes to the wasm memory buffer and kicks 
+off processing. An optional offset can be provided if the read should occur at an index other than `0`. **NOTE:** 
+The `line` and `character` counters are *not* reset.
 
-- `end(): void;` - Ends processing for the stream. The character and line counters are reset to zero and the parser is 
+- `end(): void;` - Ends processing for the stream. The `line` and `character` counters are reset to zero and the parser is 
 readied for the next document.
-### Properties
 
+### Properties
 - `events` - A bitmask containing the events to subscribe to. See the examples for creating the bitmask
 
 - `eventHandler` - A function reference used for event handling. The supplied function must have a signature that accepts 

@@ -221,13 +221,13 @@ export class SAXParser {
     });
   }
 
-  public write(slice: Uint8Array, offset: number = 0): void {
+  public write(chunk: Uint8Array, offset: number = 0): void {
     const { write } = this.wasmSaxParser;
     if (!this.writeBuffer) {
       this.writeBuffer = new Uint8Array(this.wasmSaxParser.memory.buffer, 0, this.options.highWaterMark);
     }
-    this.writeBuffer.set(slice);
-    write(offset, slice.length);
+    this.writeBuffer.set(chunk);
+    write(offset, chunk.byteLength);
   }
 
   public end(): void {
@@ -235,7 +235,7 @@ export class SAXParser {
     this.wasmSaxParser.end();
   }
 
-  public async prepareWasm(saxWasm: Uint8Array): Promise<WebAssembly.Memory> {
+  public async prepareWasm(saxWasm: Uint8Array): Promise<boolean> {
     const result = await WebAssembly.instantiate(saxWasm, {
       env: {
         memoryBase: 0,
@@ -248,8 +248,9 @@ export class SAXParser {
     if (result) {
       const { parser } = this.wasmSaxParser = result.instance.exports;
       parser(this.events);
-      return parser;
+      return true;
     }
+    throw new Error(`Failed to instantiate the parser.`);
   }
 
   protected eventTrap = (event: number, ptr: number, len: number): void => {
