@@ -30,7 +30,6 @@ impl Tag {
 impl Encode<Vec<u8>> for Tag {
   fn encode(&self) -> Vec<u8> {
     let mut v = Vec::new();
-
     // known byte length
     read_u32_into(self.open_start.0 as u32, &mut v);
     read_u32_into(self.open_start.1 as u32, &mut v);
@@ -43,13 +42,14 @@ impl Encode<Vec<u8>> for Tag {
 
     read_u32_into(self.close_end.0 as u32, &mut v);
     read_u32_into(self.close_end.1 as u32, &mut v);
+
     v.push(self.self_closing.clone() as u8);
 
     read_u32_into(self.name.len() as u32, &mut v);
     v.extend_from_slice(self.name.as_bytes());
 
     // unknown byte length
-    prepend_u32_into((v.len() - 1) as u32, 0, &mut v);
+    let attr_ptr = v.len();
     read_u32_into(self.attributes.len() as u32, &mut v);
     for a in &self.attributes {
       let mut attr = a.encode();
@@ -57,13 +57,15 @@ impl Encode<Vec<u8>> for Tag {
       v.append(&mut attr);
     }
 
-    prepend_u32_into((v.len() - 1) as u32, 4, &mut v);
+    let text_ptr = v.len();
     read_u32_into(self.text_nodes.len() as u32, &mut v);
     for t in &self.text_nodes {
       let mut text = t.encode();
       read_u32_into(text.len() as u32, &mut v);
       v.append(&mut text);
     }
+    read_u32_into(attr_ptr as u32, &mut v);
+    read_u32_into(text_ptr as u32, &mut v);
     v
   }
 }
@@ -149,13 +151,6 @@ impl Encode<Vec<u8>> for Attribute {
 
 pub trait Encode<T> {
   fn encode(&self) -> T;
-}
-
-pub fn prepend_u32_into(x: u32, start: usize, vec: &mut Vec<u8>) {
-  vec.insert(start, (x & 0xff) as u8);
-  vec.insert(start + 1, ((x & 0xffff) >> 8) as u8);
-  vec.insert(start + 2, ((x & 0xffffff) >> 16) as u8);
-  vec.insert(start + 3, ((x & 0xffffffff) >> 24) as u8);
 }
 
 // Little Endian

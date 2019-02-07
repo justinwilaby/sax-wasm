@@ -113,31 +113,31 @@ export class Text extends Reader<string | Position> {
 
 export class Tag extends Reader<Attribute[] | Text[] | Position | string | number | boolean> {
   get openStart(): Position {
-    return this.cache.openStart as Position || (this.cache.openStart = readPosition(this.data, this.ptr + 8));
+    return this.cache.openStart as Position || (this.cache.openStart = readPosition(this.data, 0));
   }
 
   get openEnd(): Position {
-    return this.cache.openEnd as Position || (this.cache.openEnd = readPosition(this.data, this.ptr + 16));
+    return this.cache.openEnd as Position || (this.cache.openEnd = readPosition(this.data, 8));
   }
 
   get closeStart(): Position {
-    return this.cache.closeStart as Position || (this.cache.closeStart = readPosition(this.data, this.ptr + 24));
+    return this.cache.closeStart as Position || (this.cache.closeStart = readPosition(this.data, 16));
   }
 
   get closeEnd(): Position {
-    return this.cache.closeEnd as Position || (this.cache.closeEnd = readPosition(this.data, this.ptr + 32));
+    return this.cache.closeEnd as Position || (this.cache.closeEnd = readPosition(this.data, 24));
   }
 
   get selfClosing(): boolean {
-    return !!this.data[this.ptr + 40];
+    return !!this.data[32];
   }
 
   get name(): string {
     if (this.cache.value) {
       return this.cache.name as string;
     }
-    const nameLen = readU32(this.data, this.ptr + 41);
-    return (this.cache.name = readString(this.data.buffer, this.ptr + 45, nameLen));
+    const nameLen = readU32(this.data, 33);
+    return (this.cache.name = readString(this.data.buffer, 37, nameLen));
   }
 
   get attributes(): Attribute[] {
@@ -145,7 +145,7 @@ export class Tag extends Reader<Attribute[] | Text[] | Position | string | numbe
       return this.cache.attributes as Attribute[];
     }
     // starting location of the attribute block
-    let ptr = readU32(this.data, 0);
+    let ptr = readU32(this.data, this.data.length - 8);
     let numAttrs = readU32(this.data, ptr);
     ptr += 4;
     const attributes = [] as Attribute[];
@@ -163,7 +163,7 @@ export class Tag extends Reader<Attribute[] | Text[] | Position | string | numbe
       return this.cache.textNodes as Text[];
     }
     // starting location of the text nodes block
-    let ptr = readU32(this.data, 4);
+    let ptr = readU32(this.data, this.data.length - 1);
     let numTextNodes = readU32(this.data, ptr);
     const textNodes = [] as Text[];
     ptr += 4;
