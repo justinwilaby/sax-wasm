@@ -156,7 +156,18 @@ conversion time becomes noticeable on very large documents with many elements an
 the initial read, the value is cached and accessing it becomes faster.
 
 ## SAXParser.js
+## Constructor
+`SaxParser([events: number, [options: SaxParserOptions]])`
+
+Constructs new SaxParser instance with the specified events bitmask and options
+### Parameters
+
+- `events` - A number representing a bitmask of events that should be reported by the parser.
+- `options` - When specified, the `highWaterMark` option is used to prepare the parser for the expected size of each chunk
+provided by the stream. The parser will throw if chunks written to it are larger.
+
 ### Methods
+
 - `prepareWasm(wasm: Uint8Array): Promise<boolean>` - Instantiates the wasm binary with reasonable defaults and stores 
 the instance as a member of the class. Always resolves to true or throws if something went wrong.
 
@@ -168,6 +179,7 @@ The `line` and `character` counters are *not* reset.
 readied for the next document.
 
 ### Properties
+
 - `events` - A bitmask containing the events to subscribe to. See the examples for creating the bitmask
 
 - `eventHandler` - A function reference used for event handling. The supplied function must have a signature that accepts 
@@ -175,17 +187,21 @@ readied for the next document.
 
 ## sax-wasm.wasm
 ### Methods
+
+The methods listed here can be used to create your own implementation of the SaxWasm class when extending it or composing
+it will not meet the needs of the program.
 - `parser(events: u32)` - Prepares the parser struct internally and supplies it with the specified events bitmask. Changing
-the events bitmask can be done at anytime during processing using this method.
+the events bitmask can be done at *anytime* during processing using this method.
 
 - `write(ptr: *mut u8, length: usize)` - Supplies the parser with the location and length of the newly written bytes in the 
-stream and kicks off processing. The parser assumes that the bytes are valid utf-8. Writing non utf-8 bytes may cause
-unpredictable behavior.
+stream and kicks off processing. The parser assumes that the bytes are valid utf-8 grapheme clusters. Writing non utf-8 bytes may cause
+unpredictable results but probably will not break.
 
-- `end()` - resets the character and line counts but does not halt processing of the current buffer. 
+- `end()` - resets the `character` and `line` counts but does not halt processing of the current buffer. 
 
 ## Building from source
 ### Prerequisites
+
 This project requires rust v1.30+ since it contains the `wasm32-unknown-unknown` target out of the box.
 
 Install rust:
