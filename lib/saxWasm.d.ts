@@ -13,8 +13,15 @@ export declare class SaxEventType {
     static CloseCDATA: number;
 }
 declare abstract class Reader<T> {
-    constructor(buf: Uint32Array, ptr?: number);
-    protected abstract read(buf: Uint32Array, ptr: number): void;
+    protected data: Uint8Array;
+    protected cache: {
+        [prop: string]: T;
+    };
+    protected ptr: number;
+    constructor(data: Uint8Array, ptr?: number);
+    abstract toJSON(): {
+        [prop: string]: T;
+    };
 }
 export declare class Position {
     line: number;
@@ -22,41 +29,49 @@ export declare class Position {
     constructor(line: number, character: number);
 }
 export declare class Attribute extends Reader<string | number | Position> {
-    static BYTES_IN_DESCRIPTOR: number;
-    nameEnd: Position;
-    nameStart: Position;
-    valueEnd: Position;
-    valueStart: Position;
-    name: string;
-    value: string;
-    protected read(buf: Uint32Array, ptr: number): void;
+    readonly nameStart: Position;
+    readonly nameEnd: Position;
+    readonly valueStart: Position;
+    readonly valueEnd: Position;
+    readonly name: string;
+    readonly value: string;
+    toJSON(): {
+        [prop: string]: string | number | Position;
+    };
 }
 export declare class Text extends Reader<string | Position> {
-    static BYTES_IN_DESCRIPTOR: number;
-    end: Position;
-    start: Position;
-    value: string;
-    protected read(buf: Uint32Array, ptr: number): void;
+    readonly start: Position;
+    readonly end: Position;
+    readonly value: string;
+    toJSON(): {
+        [prop: string]: string | Position;
+    };
 }
 export declare class Tag extends Reader<Attribute[] | Text[] | Position | string | number | boolean> {
-    name: string;
-    attributes: Attribute[];
-    textNodes: Text[];
-    selfClosing: boolean;
-    openStart: Position;
-    openEnd: Position;
-    closeStart: Position;
-    closeEnd: Position;
-    protected read(buf: Uint32Array): void;
+    readonly openStart: Position;
+    readonly openEnd: Position;
+    readonly closeStart: Position;
+    readonly closeEnd: Position;
+    readonly selfClosing: boolean;
+    readonly name: string;
+    readonly attributes: Attribute[];
+    readonly textNodes: Text[];
+    toJSON(): {
+        [p: string]: Attribute[] | Text[] | Position | string | number | boolean;
+    };
+}
+export interface SaxParserOptions {
+    highWaterMark: number;
 }
 export declare class SAXParser {
     static textDecoder: TextDecoder;
-    static textEncoder: TextEncoder;
     events: number;
     eventHandler: (type: SaxEventType, detail: Reader<any> | Position | string) => void;
+    private readonly options;
     private wasmSaxParser;
-    constructor(events?: number);
-    write(value: string): void;
+    private writeBuffer;
+    constructor(events?: number, options?: SaxParserOptions);
+    write(chunk: Uint8Array, offset?: number): void;
     end(): void;
     prepareWasm(saxWasm: Uint8Array): Promise<boolean>;
     protected eventTrap: (event: number, ptr: number, len: number) => void;
