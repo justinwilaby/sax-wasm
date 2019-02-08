@@ -78,7 +78,7 @@ impl<'a> SAXParser<'a> {
         self.fragment = [0; 4];
         loop {
           remaining_bytes -= 1;
-          self.fragment[0] = source[idx + remaining_bytes].clone();
+          self.fragment[remaining_bytes] = source[idx + remaining_bytes].clone();
           if remaining_bytes == 0 {
             break 'outer;
           }

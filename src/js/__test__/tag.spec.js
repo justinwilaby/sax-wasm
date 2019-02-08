@@ -54,10 +54,19 @@ describe('SaxWasm', () => {
     const [,,tag] = _data ;
     expect(tag.name).to.be('div');
     expect(tag.attributes.length).to.be(1);
+    expect(tag.attributes[0].name).to.be('class');
+    expect(tag.attributes[0].value).to.be('myDiv');
+    expect(tag.textNodes.length).to.be(1);
+    expect(tag.textNodes[0].value).to.be('This is my div');
     expect(tag.openStart).to.eql({line: 0, character: 0});
     expect(tag.openEnd).to.eql({line: 0, character: 19});
     expect(tag.closeStart).to.eql({line: 0, character: 33});
     expect(tag.closeEnd).to.eql({line: 0, character: 39});
+    expect(JSON.stringify(tag)).to.equal('{"openStart":{"line":0,"character":0},"openEnd":{"line":0,"character":19}' +
+      ',"closeStart":{"line":0,"character":33},"closeEnd":{"line":0,"character":39},"name":"div","attributes":' +
+      '[{"nameStart":{"line":0,"character":5},"nameEnd":{"line":0,"character":10},"valueStart":{"line":0,"character":12}' +
+      ',"valueEnd":{"line":0,"character":17},"name":"class","value":"myDiv"}],"textNodes":[{"start":{"line":0,' +
+      '"character":19},"end":{"line":0,"character":0},"value":"This is my div"}],"selfClosing":false}');
   });
 
   it('should report selfClosing tags correctly', () => {
@@ -93,13 +102,4 @@ describe('SaxWasm', () => {
     expect(openTag.name).to.be('');
     expect(closeTag.name).to.be('');
   });
-
-  it('should serialize to JSON as expected', () => {
-    parser.write(Buffer.from('<div class="myDiv">This is my div</div>'));
-    expect(JSON.stringify(_data[2])).to.equal('{"openStart":{"line":0,"character":0},"openEnd":{"line":0,"character":19}' +
-      ',"closeStart":{"line":0,"character":33},"closeEnd":{"line":0,"character":39},"name":"div","attributes":' +
-      '[{"nameStart":{"line":0,"character":5},"nameEnd":{"line":0,"character":10},"valueStart":{"line":0,"character":12}' +
-      ',"valueEnd":{"line":0,"character":17},"name":"class","value":"myDiv"}],"textNodes":[{"start":{"line":0,' +
-      '"character":19},"end":{"line":0,"character":0},"value":"This is my div"}],"selfClosing":false}');
-  })
 });
