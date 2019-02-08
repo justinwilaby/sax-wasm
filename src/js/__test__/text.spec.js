@@ -50,4 +50,9 @@ describe('SaxWasm', () => {
 
   expect(_data[0].value).to.be('\n\n\n');
   });
+
+  it('should serialize to JSON as expected', () => {
+    parser.write(Buffer.from('a happy little parser'));
+    expect(JSON.stringify(_data[0])).to.equal('{"start":{"line":0,"character":1},"end":{"line":0,"character":21},"value":"a happy little parser"}');
+  });
 });

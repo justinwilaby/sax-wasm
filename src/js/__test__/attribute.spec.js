@@ -92,4 +92,9 @@ describe('SaxWasm', () => {
     expect(_data[0].value).to.be('http://ecommerce.example.org/schema');
   });
 
+  it('should serialize to json as expected', () => {
+    parser.write(Buffer.from('<div class="testing"></div>'));
+    expect(JSON.stringify(_data[0])).to.equal('{"nameStart":{"line":0,"character":5},"nameEnd":{"line":0,"character":10},' +
+      '"valueStart":{"line":0,"character":12},"valueEnd":{"line":0,"character":19},"name":"class","value":"testing"}');
+  });
 });

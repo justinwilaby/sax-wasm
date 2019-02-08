@@ -133,7 +133,7 @@ export class Tag extends Reader<Attribute[] | Text[] | Position | string | numbe
   }
 
   get name(): string {
-    if (this.cache.value) {
+    if (this.cache.name) {
       return this.cache.name as string;
     }
     const nameLen = readU32(this.data, 33);
@@ -163,7 +163,7 @@ export class Tag extends Reader<Attribute[] | Text[] | Position | string | numbe
       return this.cache.textNodes as Text[];
     }
     // starting location of the text nodes block
-    let ptr = readU32(this.data, this.data.length - 1);
+    let ptr = readU32(this.data, this.data.length - 4);
     let numTextNodes = readU32(this.data, ptr);
     const textNodes = [] as Text[];
     ptr += 4;

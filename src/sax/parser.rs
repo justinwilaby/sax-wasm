@@ -91,6 +91,9 @@ impl<'a> SAXParser<'a> {
       }
       idx = end_idx;
     }
+    // flush text at the EOF
+    self.character += 1;
+    self.text("<");
   }
 
   pub fn identity(&mut self) {
