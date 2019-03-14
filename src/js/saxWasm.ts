@@ -83,8 +83,8 @@ export class Attribute extends Reader<string | number | Position> {
   }
 
   public toJSON(): { [prop: string]: string | number | Position } {
-    const {nameStart, nameEnd, valueStart, valueEnd, name, value} = this;
-    return {nameStart, nameEnd, valueStart, valueEnd, name, value};
+    const { nameStart, nameEnd, valueStart, valueEnd, name, value } = this;
+    return { nameStart, nameEnd, valueStart, valueEnd, name, value };
   }
 }
 
@@ -177,8 +177,8 @@ export class Tag extends Reader<Attribute[] | Text[] | Position | string | numbe
   }
 
   public toJSON(): { [p: string]: Attribute[] | Text[] | Position | string | number | boolean } {
-    const {openStart, openEnd, closeStart, closeEnd, name, attributes, textNodes, selfClosing} = this;
-    return {openStart, openEnd, closeStart, closeEnd, name, attributes, textNodes, selfClosing};
+    const { openStart, openEnd, closeStart, closeEnd, name, attributes, textNodes, selfClosing } = this;
+    return { openStart, openEnd, closeStart, closeEnd, name, attributes, textNodes, selfClosing };
   }
 }
 
@@ -203,7 +203,7 @@ export class SAXParser {
   private wasmSaxParser: WasmSaxParser;
   private writeBuffer: Uint8Array;
 
-  constructor(events = 0, options: SaxParserOptions = { highWaterMark: 64 * 1024 }) {
+  constructor(events = 0, options: SaxParserOptions = { highWaterMark: 32 * 1024 }) {
     this.options = options;
     const self = this;
     Object.defineProperties(this, {
@@ -222,9 +222,18 @@ export class SAXParser {
   }
 
   public write(chunk: Uint8Array, offset: number = 0): void {
-    const { write } = this.wasmSaxParser;
-    if (!this.writeBuffer) {
-      this.writeBuffer = new Uint8Array(this.wasmSaxParser.memory.buffer, 0, this.options.highWaterMark);
+    const { write, memory: { buffer } } = this.wasmSaxParser;
+
+    // Allocations within the WASM process
+    // invalidate reference to the memory buffer.
+    // We check for this and create a new Uint8Array
+    // with the new memory buffer reference if needed.
+    // **NOTE** These allocations can slow down parsing
+    // if they become excessive. Consider adjusting the
+    // highWaterMark in the options up or down to find the optimal
+    // memory allocation to prevent too many new Uint8Array instances.
+    if (!this.writeBuffer || this.writeBuffer.buffer !== buffer) {
+      this.writeBuffer = new Uint8Array(buffer, 0, this.options.highWaterMark);
     }
     this.writeBuffer.set(chunk);
     write(offset, chunk.byteLength);

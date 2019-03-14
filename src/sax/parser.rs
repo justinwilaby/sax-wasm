@@ -59,8 +59,18 @@ impl<'a> SAXParser<'a> {
   pub fn write(&mut self, source: &'a [u8]) {
     let mut idx = 0;
     let len = source.len();
+
+    let chunk = if self.fragment != [0; 4] {
+      let mut fragment = self.fragment.to_vec();
+      fragment.append(&mut source.to_vec());
+      fragment
+    } else { source.to_vec() };
+
     'outer: while idx < len {
-      let byte = source[idx];
+      let byte = unsafe { chunk.get_unchecked(idx) };
+      if *byte == 0 {
+        continue;
+      }
       let mut bytes: usize = 1;
       if ((byte & 0b10000000) >> 7) == 1 && ((byte & 0b1000000) >> 6) == 1 {
         bytes += 1;
@@ -387,7 +397,7 @@ impl<'a> SAXParser<'a> {
         (self.event_handler)(Event::Cdata as u32, self.cdata.as_ptr(), self.cdata.len());
       }
       if self.events & Event::CloseCDATA as u32 != 0 {
-        let mut v= Vec::new();
+        let mut v = Vec::new();
         read_u32_into(self.line, &mut v);
         read_u32_into(self.character, &mut v);
         (self.event_handler)(Event::CloseCDATA as u32, v.as_ptr(), v.len());
