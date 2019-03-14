@@ -6,7 +6,7 @@ use sax::tag::*;
 
 static BOM: &'static [u8; 3] = &[0xef, 0xbb, 0xbf];
 
-pub struct SAXParser<'a> {
+pub struct SAXParser {
   pub events: u32,
   pub line: u32,
   pub character: u32,
@@ -20,7 +20,7 @@ pub struct SAXParser<'a> {
   close_tag_name: String,
   proc_inst_body: String,
   proc_inst_name: String,
-  quote: &'a str,
+  quote: u8,
   sgml_decl: String,
   attribute: Attribute,
   tag: Tag,
@@ -30,8 +30,8 @@ pub struct SAXParser<'a> {
   fragment: [u8; 4],
 }
 
-impl<'a> SAXParser<'a> {
-  pub fn new(event_handler: fn(u32, *const u8, usize)) -> SAXParser<'a> {
+impl SAXParser {
+  pub fn new(event_handler: fn(u32, *const u8, usize)) -> SAXParser {
     SAXParser {
       event_handler,
       state: State::Begin,
@@ -46,7 +46,7 @@ impl<'a> SAXParser<'a> {
       close_tag_name: String::new(),
       proc_inst_name: String::new(),
       proc_inst_body: String::new(),
-      quote: "",
+      quote: 0,
       sgml_decl: String::new(),
       tag: Tag::new((0, 0)),
       attribute: Attribute::new(),
@@ -56,9 +56,8 @@ impl<'a> SAXParser<'a> {
     }
   }
 
-  pub fn write(&mut self, source: &'a [u8]) {
+  pub fn write(&mut self, source: &[u8]) {
     let mut idx = 0;
-    let len = source.len();
 
     let chunk = if self.fragment != [0; 4] {
       let mut fragment = self.fragment.to_vec();
@@ -66,9 +65,12 @@ impl<'a> SAXParser<'a> {
       fragment
     } else { source.to_vec() };
 
+    self.fragment = [0; 4];
+    let len = chunk.len();
+
     'outer: while idx < len {
-      let byte = unsafe { chunk.get_unchecked(idx) };
-      if *byte == 0 {
+      let byte = chunk[idx];
+      if byte == 0 {
         continue;
       }
       let mut bytes: usize = 1;
@@ -88,13 +90,13 @@ impl<'a> SAXParser<'a> {
         self.fragment = [0; 4];
         loop {
           remaining_bytes -= 1;
-          self.fragment[remaining_bytes] = source[idx + remaining_bytes].clone();
+          self.fragment[remaining_bytes] = chunk[idx + remaining_bytes].clone();
           if remaining_bytes == 0 {
             break 'outer;
           }
         }
       }
-      let s = &source[idx..end_idx];
+      let s = &chunk[idx..end_idx];
       unsafe {
         let st = str::from_utf8_unchecked(s);
         self.process_grapheme(st);
@@ -113,7 +115,7 @@ impl<'a> SAXParser<'a> {
     self.attribute = Attribute::new();
   }
 
-  fn process_grapheme(&mut self, grapheme: &'a str) {
+  fn process_grapheme(&mut self, grapheme: &str) {
     if grapheme == "\n" {
       self.line += 1;
       self.character = 0;
@@ -287,15 +289,15 @@ impl<'a> SAXParser<'a> {
     }
   }
 
-  fn sgml_quoted(&mut self, grapheme: &'a str) {
-    if grapheme == self.quote {
-      self.quote = "";
+  fn sgml_quoted(&mut self, grapheme: &str) {
+    if grapheme.as_bytes()[0] == self.quote {
+      self.quote = 0;
       self.state = State::SgmlDecl;
     }
     self.sgml_decl.push_str(grapheme);
   }
 
-  fn doctype(&mut self, grapheme: &'a str) {
+  fn doctype(&mut self, grapheme: &str) {
     if grapheme == ">" {
       self.new_text();
       if self.events & Event::Doctype as u32 != 0 {
@@ -308,33 +310,33 @@ impl<'a> SAXParser<'a> {
       self.state = State::DoctypeDtd;
     } else if SAXParser::is_quote(grapheme) {
       self.state = State::DoctypeQuoted;
-      self.quote = grapheme;
+      self.quote = grapheme.as_bytes()[0];
     }
   }
 
-  fn doctype_quoted(&mut self, grapheme: &'a str) {
+  fn doctype_quoted(&mut self, grapheme: &str) {
     self.doctype.push_str(grapheme);
-    if grapheme == self.quote {
-      self.quote = "";
+    if grapheme.as_bytes()[0] == self.quote {
+      self.quote = 0;
       self.state = State::Doctype;
     }
   }
 
-  fn doctype_dtd(&mut self, grapheme: &'a str) {
+  fn doctype_dtd(&mut self, grapheme: &str) {
     self.doctype.push_str(grapheme);
     if grapheme == "]" {
       self.state = State::Doctype;
     } else if SAXParser::is_quote(grapheme) {
       self.state = State::DoctypeDtdQuoted;
-      self.quote = grapheme;
+      self.quote = grapheme.as_bytes()[0];
     }
   }
 
   fn doctype_dtd_quoted(&mut self, grapheme: &str) {
     self.doctype.push_str(grapheme);
-    if self.quote == grapheme {
+    if self.quote == grapheme.as_bytes()[0] {
       self.state = State::DoctypeDtd;
-      self.quote = "";
+      self.quote = 0;
     }
   }
 
@@ -506,13 +508,13 @@ impl<'a> SAXParser<'a> {
     }
   }
 
-  fn attribute_value(&mut self, grapheme: &'a str) {
+  fn attribute_value(&mut self, grapheme: &str) {
     if SAXParser::is_whitespace(grapheme) {
       return;
     }
     self.attribute.value_start = (self.line, self.character);
     if SAXParser::is_quote(grapheme) {
-      self.quote = grapheme;
+      self.quote = grapheme.as_bytes()[0];
       self.state = State::AttribValueQuoted;
     } else if grapheme == "{" {
       self.state = State::JSXAttributeExpression;
@@ -524,12 +526,12 @@ impl<'a> SAXParser<'a> {
   }
 
   fn attribute_value_quoted(&mut self, grapheme: &str) {
-    if grapheme != self.quote {
+    if grapheme.as_bytes()[0] != self.quote {
       self.attribute.value.push_str(grapheme);
     } else {
       self.attribute.value_end = (self.line, self.character - 1);
       self.process_attribute();
-      self.quote = "";
+      self.quote = 0;
       self.state = State::AttribValueClosed;
     }
   }
