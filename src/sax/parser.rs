@@ -27,7 +27,7 @@ pub struct SAXParser {
   brace_ct: u32,
 
   event_handler: fn(u32, *const u8, usize),
-  fragment: [u8; 4],
+  fragment: Vec<u8>,
 }
 
 impl SAXParser {
@@ -52,27 +52,18 @@ impl SAXParser {
       attribute: Attribute::new(),
       text: Text::new((0, 0)),
       brace_ct: 0,
-      fragment: [0; 4],
+      fragment: Vec::new(),
     }
   }
 
   pub fn write(&mut self, source: &[u8]) {
     let mut idx = 0;
-
-    let chunk = if self.fragment != [0; 4] {
-      let mut fragment = self.fragment.to_vec();
-      fragment.append(&mut source.to_vec());
-      fragment
-    } else { source.to_vec() };
-
-    self.fragment = [0; 4];
-    let len = chunk.len();
+    let len = source.len();
+    let mut chunk = self.fragment.clone();
+    chunk.extend_from_slice(source);
 
     'outer: while idx < len {
-      let byte = chunk[idx];
-      if byte == 0 {
-        continue;
-      }
+      let byte = &chunk[idx];
       let mut bytes: usize = 1;
       if ((byte & 0b10000000) >> 7) == 1 && ((byte & 0b1000000) >> 6) == 1 {
         bytes += 1;
@@ -86,12 +77,12 @@ impl SAXParser {
       // We don't have enough bytes
       let end_idx = idx + bytes;
       if end_idx > len {
-        let mut remaining_bytes = len - idx;
-        self.fragment = [0; 4];
+        let mut ct = len - idx;
+        self.fragment.truncate(0);
         loop {
-          remaining_bytes -= 1;
-          self.fragment[remaining_bytes] = chunk[idx + remaining_bytes].clone();
-          if remaining_bytes == 0 {
+          self.fragment.push(chunk[ct]);
+          ct += 1;
+          if ct == len {
             break 'outer;
           }
         }
@@ -653,6 +644,7 @@ impl SAXParser {
       let idx = len - s;
       if idx > 1 {
         self.tags.truncate(idx);
+        return;
       }
 
       self.tag = self.tags.remove(s);

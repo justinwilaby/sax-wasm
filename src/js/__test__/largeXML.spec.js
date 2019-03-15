@@ -5,7 +5,7 @@ const expect = require('expect.js');
 
 const saxWasm = fs.readFileSync(path.resolve(__dirname, '../../../lib/sax-wasm.wasm'));
 // fs.writeFileSync(path.resolve(__dirname, '../../../lib/sax-wasm.base64'), saxWasm.toString('base64'));
-const options = {highWaterMark: 32 * 1024};
+const options = {highWaterMark: 64 * 1024};
 describe('When parsing XML, the SaxWasm', () => {
   let parser;
   let _event;
@@ -50,7 +50,7 @@ describe('When parsing XML, the SaxWasm', () => {
       readable.on('end', () => {
         t = Date.now() - t;
         debugger
-        resolve();
+        resolve()
       });
     });
     expect(_data.length).not.to.be(0);
