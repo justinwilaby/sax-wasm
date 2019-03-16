@@ -30,7 +30,7 @@ const saxPath = require.resolve('sax-wasm/lib/sax-wasm.wasm');
 const saxWasmBuffer = fs.readFileSync(saxPath);
 
 // Instantiate 
-const options = {highWaterMark: 64 * 1024}; // 64k chunks
+const options = {highWaterMark: 32 * 1024}; // 32k chunks
 const parser = new SAXParser(SaxEventType.Attribute | SaxEventType.OpenTag, options);
 parser.eventHandler = (event, data) => {
   if (event === SaxEventType.Attribute ) {
@@ -47,7 +47,7 @@ parser.prepareWasm(saxWasmBuffer).then(ready => {
     readable.on('data', (chunk) => {
       parser.write(chunk);
     });
-    readable.on('end', parser.end);
+    readable.on('end', () => parser.end());
   }
 });
 
