@@ -129,7 +129,7 @@ Complete list of event/argument pairs:
 |SaxEventType.SGMLDeclaration      |0b000000000100|sgmlDecl: string                             |
 |SaxEventType.Doctype              |0b000000001000|doctype: string                              |
 |SaxEventType.Comment              |0b000000010000|comment: string                              |
-|SaxEventType.OpenTagStart         |0b000000100000|tag: [Tag](src/js/saxWasm.ts#L48)            |
+|SaxEventType.OpenTagStart         |0b000000100000|tag: [Tag](src/js/saxWasm.ts#L114)            |
 |SaxEventType.Attribute            |0b000001000000|attribute: [Attribute](src/js/saxWasm.ts#L51)|
 |SaxEventType.OpenTag              |0b000010000000|tag: [Tag](src/js/saxWasm.ts#L48)            |
 |SaxEventType.CloseTag             |0b000100000000|tag: [Tag](src/js/saxWasm.ts#L48)            |
