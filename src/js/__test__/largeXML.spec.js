@@ -49,7 +49,7 @@ describe('When parsing XML, the SaxWasm', () => {
       });
       readable.on('end', () => {
         t = Date.now() - t;
-        debugger
+        console.log(t)
         resolve()
       });
     });
