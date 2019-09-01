@@ -12,7 +12,8 @@ export declare class SaxEventType {
     static Cdata: number;
     static CloseCDATA: number;
 }
-declare abstract class Reader<T> {
+export declare type Detail = Position | Attribute | Text | Tag | StringReader;
+export declare abstract class Reader<T = Detail> {
     protected data: Uint8Array;
     protected cache: {
         [prop: string]: T;
@@ -22,6 +23,7 @@ declare abstract class Reader<T> {
     abstract toJSON(): {
         [prop: string]: T;
     };
+    abstract readonly value: any;
 }
 export declare class Position {
     line: number;
@@ -47,6 +49,13 @@ export declare class Text extends Reader<string | Position> {
         [prop: string]: string | Position;
     };
 }
+export declare class StringReader extends Reader<string> {
+    readonly value: string;
+    toJSON(): {
+        [p: string]: string;
+    };
+    toString(): string;
+}
 export declare class Tag extends Reader<Attribute[] | Text[] | Position | string | number | boolean> {
     readonly openStart: Position;
     readonly openEnd: Position;
@@ -59,6 +68,7 @@ export declare class Tag extends Reader<Attribute[] | Text[] | Position | string
     toJSON(): {
         [p: string]: Attribute[] | Text[] | Position | string | number | boolean;
     };
+    readonly value: string;
 }
 export interface SaxParserOptions {
     highWaterMark: number;
@@ -66,7 +76,7 @@ export interface SaxParserOptions {
 export declare class SAXParser {
     static textDecoder: TextDecoder;
     events: number;
-    eventHandler: (type: SaxEventType, detail: Reader<any> | Position | string) => void;
+    eventHandler: (type: SaxEventType, detail: Detail) => void;
     private readonly options;
     private wasmSaxParser;
     private writeBuffer;
@@ -76,4 +86,3 @@ export declare class SAXParser {
     prepareWasm(saxWasm: Uint8Array): Promise<boolean>;
     protected eventTrap: (event: number, ptr: number, len: number) => void;
 }
-export {};
