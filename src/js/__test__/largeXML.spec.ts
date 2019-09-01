@@ -1,9 +1,9 @@
-const {SaxEventType, SAXParser}  = require('../../../lib/');
-const fs = require('fs');
-const path = require('path');
-const expect = require('expect.js');
+import { SaxEventType, SAXParser } from '../../../lib/';
+import { readFileSync, createReadStream } from 'fs';
+import { resolve as pathResolve } from 'path';
+import {notStrictEqual} from 'assert';
 
-const saxWasm = fs.readFileSync(path.resolve(__dirname, '../../../lib/sax-wasm.wasm'));
+const saxWasm = readFileSync(pathResolve(__dirname, '../../../lib/sax-wasm.wasm'));
 // fs.writeFileSync(path.resolve(__dirname, '../../../lib/sax-wasm.base64'), saxWasm.toString('base64'));
 const options = {highWaterMark: 64 * 1024};
 describe('When parsing XML, the SaxWasm', () => {
@@ -32,7 +32,7 @@ describe('When parsing XML, the SaxWasm', () => {
 
   it('should read', async () => {
     await new Promise(resolve => {
-      const readable = fs.createReadStream(path.resolve(__dirname + '/xml.xml'), options);
+      const readable = createReadStream(pathResolve(__dirname + '/xml.xml'), options);
       readable.on('data', (chunk) => {
         parser.write(chunk);
       });
@@ -42,17 +42,17 @@ describe('When parsing XML, the SaxWasm', () => {
 
   it('should process large XML files', async () => {
     await new Promise(resolve => {
-      const readable = fs.createReadStream(path.resolve(__dirname + '/xml.xml'), options);
+      const readable = createReadStream(pathResolve(__dirname + '/xml.xml'), options);
       let t = Date.now();
       readable.on('data', (chunk) => {
         parser.write(chunk);
       });
       readable.on('end', () => {
         t = Date.now() - t;
-        debugger
+        console.log(t);
         resolve()
       });
     });
-    expect(_data.length).not.to.be(0);
+    notStrictEqual(_data.length, 0);
   });
 });

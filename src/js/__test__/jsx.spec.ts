@@ -1,13 +1,15 @@
-const {SaxEventType, SAXParser}  = require('../../../lib/');
-const fs = require('fs');
-const path = require('path');
-const expect = require('expect.js');
+import { SaxEventType, SAXParser } from '../saxWasm';
+import { readFileSync } from 'fs';
+import { resolve } from 'path';
+import {deepStrictEqual} from 'assert';
+import { Detail, Tag } from '../saxWasm';
 
-const saxWasm = fs.readFileSync(path.resolve(__dirname, '../../../lib/sax-wasm.wasm'));
+const saxWasm = readFileSync(resolve(__dirname, '../../../lib/sax-wasm.wasm'));
 describe('When parsing JSX, the SaxWasm', () => {
-  let parser;
-  let _event;
-  let _data;
+  let parser: SAXParser;
+  let _event: SaxEventType;
+  let _data: Tag[];
+  
   before(async () => {
     parser = new SAXParser(SaxEventType.CloseTag);
     _data = [];
@@ -15,14 +17,14 @@ describe('When parsing JSX, the SaxWasm', () => {
 
     parser.eventHandler = function (event, data) {
       _event = event;
-      _data.push(data);
+      _data.push(data as Tag);
     };
     return parser.prepareWasm(saxWasm);
   });
 
   beforeEach(() => {
     _data = [];
-  })
+  });
 
   afterEach(() => {
     parser.end();
@@ -34,10 +36,10 @@ describe('When parsing JSX, the SaxWasm', () => {
       {this.authenticated ? <User props={this.userProps}/> : <SignIn props={this.signInProps}/>}
     </Component>`));
 
-    expect(_event).to.be(SaxEventType.CloseTag);
-    expect(_data[0].name).to.be('User');
-    expect(_data[1].name).to.be('SignIn');
-    expect(_data[2].name).to.be('Component');
+    deepStrictEqual(_event,SaxEventType.CloseTag);
+    deepStrictEqual(_data[0].name,'User');
+    deepStrictEqual(_data[1].name,'SignIn');
+    deepStrictEqual(_data[2].name,'Component');
   });
 
   it('should recognize tags within javascript', () => {
@@ -52,17 +54,16 @@ describe('When parsing JSX, the SaxWasm', () => {
     </ul>
     `));
 
-    expect(_event).to.be(SaxEventType.CloseTag);
-    expect(_data[0].name).to.be('li');
-    expect(_data[1].name).to.be('li');
-    expect(_data[2].name).to.be('ul');
+    deepStrictEqual(_event,SaxEventType.CloseTag);
+    deepStrictEqual(_data[0].name,'li');
+    deepStrictEqual(_data[1].name,'li');
+    deepStrictEqual(_data[2].name,'ul');
   });
 
   it('should recognize JSX Fragments', () => {
     parser.write(Buffer.from('<> <div></div> <p></p> </>'));
-    expect(_data[0].name).to.be('div');
-    expect(_data[1].name).to.be('p');
-    expect(_data[2].name).to.be('');
+    deepStrictEqual(_data[0].name,'div');
+    deepStrictEqual(_data[1].name,'p');
+    deepStrictEqual(_data[2].name,'');
   });
-
 });
