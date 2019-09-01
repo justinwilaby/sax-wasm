@@ -24,8 +24,9 @@ export class SaxEventType {
   // 2048
   public static CloseCDATA = 0b100000000000;
 }
+export type Detail = Position | Attribute | Text | Tag | StringReader;
 
-abstract class Reader<T> {
+export abstract class Reader<T = Detail> {
   protected data: Uint8Array;
   protected cache = {} as { [prop: string]: T };
   protected ptr: number;
@@ -36,7 +37,10 @@ abstract class Reader<T> {
   }
 
   public abstract toJSON(): { [prop: string]: T };
+
+  public abstract get value()
 }
+
 
 export class Position {
   public line: number;
@@ -111,6 +115,22 @@ export class Text extends Reader<string | Position> {
   }
 }
 
+export class StringReader extends Reader<string> {
+  get value(): string {
+    if (this.cache.value) {
+      return this.cache.value as string;
+    }
+    return (this.cache.value = readString(this.data.buffer, this.ptr, this.data.length));
+  }
+  public toJSON(): { [p: string]: string } {
+    return {value: this.value}
+  }
+
+  public toString() {
+    return this.value
+  }
+}
+
 export class Tag extends Reader<Attribute[] | Text[] | Position | string | number | boolean> {
   get openStart(): Position {
     return this.cache.openStart as Position || (this.cache.openStart = readPosition(this.data, 0));
@@ -180,6 +200,10 @@ export class Tag extends Reader<Attribute[] | Text[] | Position | string | numbe
     const { openStart, openEnd, closeStart, closeEnd, name, attributes, textNodes, selfClosing } = this;
     return { openStart, openEnd, closeStart, closeEnd, name, attributes, textNodes, selfClosing };
   }
+
+  get value() {
+    return this.name
+  }
 }
 
 interface WasmSaxParser {
@@ -197,7 +221,7 @@ export class SAXParser {
   public static textDecoder: TextDecoder; // Web only
 
   public events: number;
-  public eventHandler: (type: SaxEventType, detail: Reader<any> | Position | string) => void;
+  public eventHandler: (type: SaxEventType, detail: Detail) => void;
 
   private readonly options: SaxParserOptions;
   private wasmSaxParser: WasmSaxParser;
@@ -265,32 +289,32 @@ export class SAXParser {
   protected eventTrap = (event: number, ptr: number, len: number): void => {
     const uint8array = new Uint8Array(this.wasmSaxParser.memory.buffer.slice(ptr, ptr + len));
 
-    let payload: Reader<any> | string | Position;
+    let detail: Detail;
     switch (event) {
       case SaxEventType.Attribute:
-        payload = new Attribute(uint8array);
+        detail = new Attribute(uint8array);
         break;
 
       case SaxEventType.OpenTag:
       case SaxEventType.CloseTag:
       case SaxEventType.OpenTagStart:
-        payload = new Tag(uint8array);
+        detail = new Tag(uint8array);
         break;
 
       case SaxEventType.Text:
-        payload = new Text(uint8array);
+        detail = new Text(uint8array);
         break;
 
       case SaxEventType.OpenCDATA:
-        payload = readPosition(uint8array);
+        detail = readPosition(uint8array);
         break;
 
       default:
-        payload = readString(this.wasmSaxParser.memory.buffer, ptr, len);
+        detail = new StringReader(uint8array);
         break;
     }
 
-    this.eventHandler(event, payload);
+    this.eventHandler(event, detail);
   }
 }
 

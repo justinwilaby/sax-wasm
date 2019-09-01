@@ -1,13 +1,14 @@
-const {SaxEventType, SAXParser}  = require('../../../lib/');
-const fs = require('fs');
-const path = require('path');
-const expect = require('expect.js');
+import { Detail, SaxEventType, SAXParser } from '../saxWasm';
+import { readFileSync } from 'fs';
+import { resolve } from 'path';
+import { deepStrictEqual } from 'assert';
 
-const saxWasm = fs.readFileSync(path.resolve(__dirname, '../../../lib/sax-wasm.wasm'));
+const saxWasm = readFileSync(resolve(__dirname, '../../../lib/sax-wasm.wasm'));
+
 describe('When parsing JSX, the SaxWasm', () => {
-  let parser;
-  let _event;
-  let _data;
+  let parser: SAXParser;
+  let _event: SaxEventType;
+  let _data: Detail;
 
   before(async () => {
     parser = new SAXParser(SaxEventType.ProcessingInstruction);
@@ -20,7 +21,7 @@ describe('When parsing JSX, the SaxWasm', () => {
   });
 
   beforeEach(() => {
-    _data = '';
+    _data = null;
   });
 
   afterEach(() => {
@@ -29,7 +30,7 @@ describe('When parsing JSX, the SaxWasm', () => {
 
   it('should recognize Processing Instructions', () => {
     parser.write(Buffer.from('<?xml version="1.0" encoding="utf-8"?>'));
-    expect(_event).to.be(SaxEventType.ProcessingInstruction);
-    expect(_data).to.be('version="1.0" encoding="utf-8"');
+    deepStrictEqual(_event, SaxEventType.ProcessingInstruction);
+    deepStrictEqual('' + _data, 'version="1.0" encoding="utf-8"');
   });
 });

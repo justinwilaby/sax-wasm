@@ -4,7 +4,9 @@
     "target": "esnext",
     "outDir": "lib",
     "sourceMap": true,
-    "declaration": true
+    "declaration": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true
   },
   "lib": [
     "es2017",
