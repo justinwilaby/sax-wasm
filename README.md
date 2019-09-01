@@ -122,20 +122,20 @@ parser.events = SaxEventType.Text | SaxEventType.OpenTag | SaxEventType.Attribut
 ```
 Complete list of event/argument pairs:
 
-|Event                             |Mask          |Argument passed to handler                   |
-|----------------------------------|--------------|---------------------------------------------|
-|SaxEventType.Text                 |0b000000000001|text: [Text](src/js/saxWasm.ts#L91)          |
-|SaxEventType.ProcessingInstruction|0b000000000010|procInst: string                             |
-|SaxEventType.SGMLDeclaration      |0b000000000100|sgmlDecl: string                             |
-|SaxEventType.Doctype              |0b000000001000|doctype: string                              |
-|SaxEventType.Comment              |0b000000010000|comment: string                              |
-|SaxEventType.OpenTagStart         |0b000000100000|tag: [Tag](src/js/saxWasm.ts#L114)            |
-|SaxEventType.Attribute            |0b000001000000|attribute: [Attribute](src/js/saxWasm.ts#L51)|
-|SaxEventType.OpenTag              |0b000010000000|tag: [Tag](src/js/saxWasm.ts#L48)            |
-|SaxEventType.CloseTag             |0b000100000000|tag: [Tag](src/js/saxWasm.ts#L48)            |
-|SaxEventType.OpenCDATA            |0b001000000000|start: [Position](src/js/saxWasm.ts#L41)     |
-|SaxEventType.CDATA                |0b010000000000|cdata: string                                |
-|SaxEventType.CloseCDATA           |0b100000000000|end: [Position](src/js/saxWasm.ts#L41)       |
+|Event                             |Mask          |Argument passed to handler                      |
+|----------------------------------|--------------|------------------------------------------------|
+|SaxEventType.Text                 |0b000000000001|text: [Text](src/js/saxWasm.ts#L95)             |
+|SaxEventType.ProcessingInstruction|0b000000000010|procInst: [StringReader](src/js/saxWasm.ts#L118)|
+|SaxEventType.SGMLDeclaration      |0b000000000100|sgmlDecl: [StringReader](src/js/saxWasm.ts#L118)|
+|SaxEventType.Doctype              |0b000000001000|doctype: [StringReader](src/js/saxWasm.ts#L118) |
+|SaxEventType.Comment              |0b000000010000|comment: [StringReader](src/js/saxWasm.ts#L118) |
+|SaxEventType.OpenTagStart         |0b000000100000|tag: [Tag](src/js/saxWasm.ts#L135)              |
+|SaxEventType.Attribute            |0b000001000000|attribute: [Attribute](src/js/saxWasm.ts#L55)   |
+|SaxEventType.OpenTag              |0b000010000000|tag: [Tag](src/js/saxWasm.ts#L135)              |
+|SaxEventType.CloseTag             |0b000100000000|tag: [Tag](src/js/saxWasm.ts#L135)              |
+|SaxEventType.OpenCDATA            |0b001000000000|start: [Position](src/js/saxWasm.ts#L45)        |
+|SaxEventType.CDATA                |0b010000000000|cdata: [StringReader](src/js/saxWasm.ts#L118)   |
+|SaxEventType.CloseCDATA           |0b100000000000|end: [Position](src/js/saxWasm.ts#L45)          |
 
 ## Speeding things up on large documents
 The speed of the sax-wasm parser is incredibly fast and can parse very large documents in a blink of an eye. Although 

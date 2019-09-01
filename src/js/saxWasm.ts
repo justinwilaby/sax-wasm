@@ -24,6 +24,7 @@ export class SaxEventType {
   // 2048
   public static CloseCDATA = 0b100000000000;
 }
+
 export type Detail = Position | Attribute | Text | Tag | StringReader;
 
 export abstract class Reader<T = Detail> {
@@ -40,7 +41,6 @@ export abstract class Reader<T = Detail> {
 
   public abstract get value()
 }
-
 
 export class Position {
   public line: number;
@@ -122,8 +122,9 @@ export class StringReader extends Reader<string> {
     }
     return (this.cache.value = readString(this.data.buffer, this.ptr, this.data.length));
   }
+
   public toJSON(): { [p: string]: string } {
-    return {value: this.value}
+    return { value: this.value }
   }
 
   public toString() {
@@ -256,7 +257,7 @@ export class SAXParser {
     // if they become excessive. Consider adjusting the
     // highWaterMark in the options up or down to find the optimal
     // memory allocation to prevent too many new Uint8Array instances.
-    if (!this.writeBuffer || this.writeBuffer.buffer !== buffer) {
+    if (!this.writeBuffer || this.writeBuffer.buffer!==buffer) {
       this.writeBuffer = new Uint8Array(buffer, 0, this.options.highWaterMark);
     }
     this.writeBuffer.set(chunk);
@@ -321,12 +322,12 @@ export class SAXParser {
 function readString(data: ArrayBuffer, byteOffset: number, length: number): string {
   const env = (global || window);
   // Node
-  if ((env as any).Buffer !== undefined) {
+  if ((env as any).Buffer!==undefined) {
     return Buffer.from(data, byteOffset, length).toString();
   }
   // Web
   return (SAXParser.textDecoder || (SAXParser.textDecoder = new TextDecoder()))
-    .decode(new Uint8Array(data, byteOffset, length));
+      .decode(new Uint8Array(data, byteOffset, length));
 }
 
 function readU32(uint8Array: Uint8Array, ptr: number): number {
