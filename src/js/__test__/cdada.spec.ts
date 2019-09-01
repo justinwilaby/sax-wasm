@@ -1,13 +1,13 @@
-import { Detail, SaxEventType, SAXParser, StringReader } from '../saxWasm';
+import { SaxEventType, SAXParser, StringReader } from '../saxWasm';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
-import {strictEqual, deepStrictEqual} from 'assert';
+import { deepStrictEqual, strictEqual } from 'assert';
 
 const saxWasm = readFileSync(resolve(__dirname, '../../../lib/sax-wasm.wasm'));
 describe('When parsing XML, the SaxWasm', () => {
   let parser: SAXParser;
   let _event: SaxEventType;
-  let _data: Detail[];
+  let _data: StringReader[];
 
   before(async () => {
     parser = new SAXParser(SaxEventType.Cdata | SaxEventType.OpenCDATA);
@@ -32,6 +32,7 @@ describe('When parsing XML, the SaxWasm', () => {
   it('should report CDATA correctly', () => {
     parser.write(Buffer.from('<div><![CDATA[ did you know "x < y" & "z > y"? so I guess that means that z > x ]]></div>'));
     deepStrictEqual(JSON.parse(JSON.stringify(_data[0])), { line: 0, character: 7 });
-    strictEqual('' + _data[1],' did you know "x < y" & "z > y"? so I guess that means that z > x ');
+    strictEqual(_data[1].value, ' did you know "x < y" & "z > y"? so I guess that means that z > x ');
+    deepStrictEqual(_data[1].toJSON(), { value: ' did you know "x < y" & "z > y"? so I guess that means that z > x ' });
   });
 });
