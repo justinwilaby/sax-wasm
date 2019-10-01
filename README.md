@@ -7,13 +7,13 @@
 
 The first streamable, low memory XML, HTML, and JSX parser for [WebAssembly](https://developer.mozilla.org/en-US/docs/WebAssembly).
 
-Sax Wasm is a sax style parser for XML, HTML and JSX written in [Rust](https://www.rust-lang.org/en-US/), compiled for 
-WebAssembly with the sole motivation to bring **near native speeds** to XML and JSX parsing for node and the web. 
-Inspired by [sax js](https://github.com/isaacs/sax-js) and rebuilt with Rust for WebAssembly, sax-wasm brings optimizations 
-for speed and support for JSX syntax. 
+Sax Wasm is a sax style parser for XML, HTML and JSX written in [Rust](https://www.rust-lang.org/en-US/), compiled for
+WebAssembly with the sole motivation to bring **near native speeds** to XML and JSX parsing for node and the web.
+Inspired by [sax js](https://github.com/isaacs/sax-js) and rebuilt with Rust for WebAssembly, sax-wasm brings optimizations
+for speed and support for JSX syntax.
 
-Suitable for [LSP](https://langserver.org/) implementations, sax-wasm provides line numbers and character positions within the 
-document for elements, attributes and text node which provides the raw building blocks for linting, transpilation and lexing. 
+Suitable for [LSP](https://langserver.org/) implementations, sax-wasm provides line numbers and character positions within the
+document for elements, attributes and text node which provides the raw building blocks for linting, transpilation and lexing.
 
 
 ## Installation
@@ -23,17 +23,18 @@ npm i -s sax-wasm
 ## Usage in Node
 ```js
 const fs = require('fs');
+const path = require('path');
 const { SaxEventType, SAXParser } = require('sax-wasm');
 
 // Get the path to the WebAssembly binary and load it
 const saxPath = require.resolve('sax-wasm/lib/sax-wasm.wasm');
 const saxWasmBuffer = fs.readFileSync(saxPath);
 
-// Instantiate 
+// Instantiate
 const options = {highWaterMark: 32 * 1024}; // 32k chunks
 const parser = new SAXParser(SaxEventType.Attribute | SaxEventType.OpenTag, options);
 parser.eventHandler = (event, data) => {
-  if (event === SaxEventType.Attribute ) {
+  if (event === SaxEventType.Attribute) {
     // process attribute
   } else {
     // process open tag
@@ -43,14 +44,14 @@ parser.eventHandler = (event, data) => {
 // Instantiate and prepare the wasm for parsing
 parser.prepareWasm(saxWasmBuffer).then(ready => {
   if (ready) {
-    const readable = fs.createReadStream(path.resolve(__dirname + '/path/to/doument.xml'), options);
+    // stream from a file in the current directory
+    const readable = fs.createReadStream(path.resolve(path.resolve('.', 'path/to/document.xml')), options);
     readable.on('data', (chunk) => {
       parser.write(chunk);
     });
     readable.on('end', () => parser.end());
   }
 });
-
 ```
 ## Usage for the web
 
@@ -61,7 +62,7 @@ async function loadAndPrepareWasm() {
   const saxWasmResponse = await fetch('./path/to/wasm/sax-wasm.wasm');
   const saxWasmbuffer = await saxWasmResponse.arrayBuffer();
   const parser = new SAXParser(SaxEventType.Attribute | SaxEventType.OpenTag, {highWaterMark: 64 * 1024}); // 64k chunks
-  
+
   // Instantiate and prepare the wasm for parsing
   const ready = await parser.prepareWasm(new Uint8Array(saxWasmbuffer));
   if (ready) {
@@ -79,7 +80,7 @@ function processDocument(parser) {
         // process open tag
       }
   }
-  
+
   fetch('path/to/document.xml').then(async response => {
     if (!response.ok) {
       // fail in some meaningful way
@@ -102,18 +103,18 @@ Besides being incredibly fast, there are some notable differences between sax-wa
 when migrating:
 
 1. JSX is supported including JSX fragments. Things like `<foo bar={this.bar()}></bar>` and `<><foo/><bar/></>` will parse as expected.
-1. No attempt is made to validate the document. sax-wasm reports what it sees. If you need strict mode or document validation, it may 
+1. No attempt is made to validate the document. sax-wasm reports what it sees. If you need strict mode or document validation, it may
 be recreated by applying rules to the events that are reported by the parser.
 1. Namespaces are reported in attributes. No special events dedicated to namespaces.
 1. Streaming utf-8 code points in a Uint8Array is required.
 
-## Streaming 
-Streaming is supported with sax-wasm by writing utf-8 code points (Uint8Array) to the parser instance. Writes can occur safely 
-anywhere except within the `eventHandler` function or within the `eventTrap` (when extending `SAXParser` class). 
+## Streaming
+Streaming is supported with sax-wasm by writing utf-8 code points (Uint8Array) to the parser instance. Writes can occur safely
+anywhere except within the `eventHandler` function or within the `eventTrap` (when extending `SAXParser` class).
 Doing so anyway risks overwriting memory still in play.
 
 ## Events
-Events are subscribed to using a bitmask composed from flags representing the event type. 
+Events are subscribed to using a bitmask composed from flags representing the event type.
 Bit positions along a 12 bit integer can be masked on to tell the parser to emit the event of that type.
 For example, passing in the following bitmask to the parser instructs it to emit events for text, open tags and attributes:
 ```js
@@ -138,18 +139,18 @@ Complete list of event/argument pairs:
 |SaxEventType.CloseCDATA           |0b100000000000|end: [Position](src/js/saxWasm.ts#L45)          |
 
 ## Speeding things up on large documents
-The speed of the sax-wasm parser is incredibly fast and can parse very large documents in a blink of an eye. Although 
-it's performance out of the box is ridiculous, the JavaScript thread *must* be involved with transforming raw 
-bytes to human readable data, there are times where slowdowns can occur if you're not careful. These are some of the 
+The speed of the sax-wasm parser is incredibly fast and can parse very large documents in a blink of an eye. Although
+it's performance out of the box is ridiculous, the JavaScript thread *must* be involved with transforming raw
+bytes to human readable data, there are times where slowdowns can occur if you're not careful. These are some of the
 items to consider when top speed and performance is an absolute must:
-1. Stream your document from it's source as a `Uint8Array` - This is covered in the examples above. Things slow down 
-significantly when the document is loaded in JavaScript as a string, then encoded to bytes using `Buffer.from(document)` or 
-`new TextEncoder.encode(document)` before being passed to the parser. Encoding on the JavaScript thread is adds a non-trivial 
-amount of overhead so its best to keep the data as raw bytes. Streaming often means the parser will already be done once 
+1. Stream your document from it's source as a `Uint8Array` - This is covered in the examples above. Things slow down
+significantly when the document is loaded in JavaScript as a string, then encoded to bytes using `Buffer.from(document)` or
+`new TextEncoder.encode(document)` before being passed to the parser. Encoding on the JavaScript thread is adds a non-trivial
+amount of overhead so its best to keep the data as raw bytes. Streaming often means the parser will already be done once
 the document finishes downloading!
-1. Keep the events bitmask to a bare minimum whenever possible - the more events that are required, the more work the 
+1. Keep the events bitmask to a bare minimum whenever possible - the more events that are required, the more work the
 JavaScript thread must do once sax-wasm.wasm reports back.
-1. Limit property reads on the reported data to only what's necessary - this includes things like stringifying the data to 
+1. Limit property reads on the reported data to only what's necessary - this includes things like stringifying the data to
 json using `JSON.stringify()`. The first read of a property on a data object reported by the `eventHandler` will
 retrieve the value from raw bytes and convert it to a `string`, `number` or `Position` on the JavaScript thread. This
 conversion time becomes noticeable on very large documents with many elements and attributes. **NOTE:** After
@@ -168,21 +169,21 @@ provided by the stream. The parser will throw if chunks written to it are larger
 
 ### Methods
 
-- `prepareWasm(wasm: Uint8Array): Promise<boolean>` - Instantiates the wasm binary with reasonable defaults and stores 
+- `prepareWasm(wasm: Uint8Array): Promise<boolean>` - Instantiates the wasm binary with reasonable defaults and stores
 the instance as a member of the class. Always resolves to true or throws if something went wrong.
 
-- `write(chunk: Uint8Array, offset: number = 0): void;` - writes the supplied bytes to the wasm memory buffer and kicks 
-off processing. An optional offset can be provided if the read should occur at an index other than `0`. **NOTE:** 
+- `write(chunk: Uint8Array, offset: number = 0): void;` - writes the supplied bytes to the wasm memory buffer and kicks
+off processing. An optional offset can be provided if the read should occur at an index other than `0`. **NOTE:**
 The `line` and `character` counters are *not* reset.
 
-- `end(): void;` - Ends processing for the stream. The `line` and `character` counters are reset to zero and the parser is 
+- `end(): void;` - Ends processing for the stream. The `line` and `character` counters are reset to zero and the parser is
 readied for the next document.
 
 ### Properties
 
 - `events` - A bitmask containing the events to subscribe to. See the examples for creating the bitmask
 
-- `eventHandler` - A function reference used for event handling. The supplied function must have a signature that accepts 
+- `eventHandler` - A function reference used for event handling. The supplied function must have a signature that accepts
 2 arguments: 1. The `event` which is one of the `SaxEventTypes` and the `body` (listed in the table above)
 
 ## sax-wasm.wasm
@@ -193,11 +194,11 @@ it will not meet the needs of the program.
 - `parser(events: u32)` - Prepares the parser struct internally and supplies it with the specified events bitmask. Changing
 the events bitmask can be done at *anytime* during processing using this method.
 
-- `write(ptr: *mut u8, length: usize)` - Supplies the parser with the location and length of the newly written bytes in the 
+- `write(ptr: *mut u8, length: usize)` - Supplies the parser with the location and length of the newly written bytes in the
 stream and kicks off processing. The parser assumes that the bytes are valid utf-8 grapheme clusters. Writing non utf-8 bytes may cause
 unpredictable results but probably will not break.
 
-- `end()` - resets the `character` and `line` counts but does not halt processing of the current buffer. 
+- `end()` - resets the `character` and `line` counts but does not halt processing of the current buffer.
 
 ## Building from source
 ### Prerequisites
@@ -225,7 +226,7 @@ Install the wasm-bindgen-cli tool
 ```bash
 cargo install wasm-bindgen-cli
 ```
-The project can now be built using: 
+The project can now be built using:
 ```bash
 npm run build
 ```
