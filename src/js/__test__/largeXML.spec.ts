@@ -5,13 +5,13 @@ import {notStrictEqual} from 'assert';
 
 const saxWasm = readFileSync(pathResolve(__dirname, '../../../lib/sax-wasm.wasm'));
 // fs.writeFileSync(path.resolve(__dirname, '../../../lib/sax-wasm.base64'), saxWasm.toString('base64'));
-const options = {highWaterMark: 64 * 1024};
+const options = {highWaterMark: 32 * 1024};
 describe('When parsing XML, the SaxWasm', () => {
   let parser;
   let _event;
   let _data;
   before(async () => {
-    parser = new SAXParser(SaxEventType.CloseTag, options);
+    parser = new SAXParser(SaxEventType.OpenTag | SaxEventType.CloseTag, options);
     _data = [];
     _event = 0;
 
