@@ -94,12 +94,13 @@ impl SAXParser {
       }
       idx = end_idx;
     }
-    // flush text at the EOF
-    self.character += 1;
-    self.text("<");
   }
 
   pub fn identity(&mut self) {
+    // flush text at the EOF
+    self.character += 1;
+    self.text("<");
+
     self.character = 0;
     self.line = 0;
     self.state = State::Begin;
