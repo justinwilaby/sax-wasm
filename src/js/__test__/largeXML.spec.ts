@@ -43,13 +43,13 @@ describe('When parsing XML, the SaxWasm', () => {
   it('should process large XML files', async () => {
     await new Promise(resolve => {
       const readable = createReadStream(pathResolve(__dirname + '/xml.xml'), options);
-      let t = Date.now();
+      let t = process.hrtime();
       readable.on('data', (chunk) => {
         parser.write(chunk);
       });
       readable.on('end', () => {
-        t = Date.now() - t;
-        console.log(t);
+        let [s, n] = process.hrtime(t);
+        process.stdout.write(`XML parsed in ${(s * 1000) + n / 1000 / 1000} ms\n`);
         resolve()
       });
     });
