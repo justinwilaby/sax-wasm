@@ -3,6 +3,7 @@ use std::str;
 
 use sax::names::*;
 use sax::tag::*;
+use std::mem::transmute;
 
 static BOM: &'static [u8; 3] = &[0xef, 0xbb, 0xbf];
 
@@ -232,7 +233,7 @@ impl SAXParser {
     if grapheme != "<" {
       self.write_text(grapheme);
     } else {
-      if self.text.value != "" {
+      if !self.text.value.is_empty() {
         let len = self.tags.len();
         // Store these only if we're interested in CloseTag events
         if len != 0 && self.events & Event::CloseTag as u32 != 0 {
@@ -250,19 +251,21 @@ impl SAXParser {
 
   fn sgml_decl(&mut self, grapheme: &str) {
     self.sgml_decl.push_str(grapheme);
-    if self.sgml_decl == "[CDATA[" {
+    if &self.sgml_decl == "[CDATA[" {
       self.state = State::Cdata;
       self.cdata = String::new();
       if self.events & Event::OpenCDATA as u32 != 0 {
         let mut v = Vec::new();
-        read_u32_into(self.line, &mut v);
-        read_u32_into(self.character - 7, &mut v);
+        unsafe {
+          v.extend_from_slice(&transmute::<u32, [u8; 4]>(self.line));
+          v.extend_from_slice(&transmute::<u32, [u8; 4]>(self.character - 7));
+        }
         (self.event_handler)(Event::OpenCDATA as u32, v.as_ptr(), v.len());
       }
-    } else if self.sgml_decl == "--" {
+    } else if &self.sgml_decl == "--" {
       self.state = State::Comment;
       self.sgml_decl = String::new();
-    } else if self.sgml_decl == "DOCTYPE" {
+    } else if &self.sgml_decl == "DOCTYPE" {
       self.state = State::Doctype;
       if self.doctype.len() != 0 {
         self.doctype = String::new();
@@ -392,8 +395,10 @@ impl SAXParser {
       }
       if self.events & Event::CloseCDATA as u32 != 0 {
         let mut v = Vec::new();
-        read_u32_into(self.line, &mut v);
-        read_u32_into(self.character, &mut v);
+        unsafe {
+          v.extend_from_slice(&transmute::<u32, [u8; 4]>(self.line));
+          v.extend_from_slice(&transmute::<u32, [u8; 4]>(self.character));
+        }
         (self.event_handler)(Event::CloseCDATA as u32, v.as_ptr(), v.len());
       }
       return;
@@ -560,7 +565,7 @@ impl SAXParser {
     if grapheme == ">" {
       // Weird </> tag
       let len = self.tags.len();
-      if self.close_tag_name == "" && (len == 0 || self.tags[len - 1].name != "") {
+      if self.close_tag_name.is_empty() && (len == 0 || !self.tags[len - 1].name.is_empty()) {
         self.process_open_tag(true);
       }
       self.process_close_tag();
@@ -614,16 +619,16 @@ impl SAXParser {
 
   fn process_close_tag(&mut self) {
     self.new_text();
-    let mut s = self.tags.len();
+    let mut tags_len = self.tags.len();
     {
       let mut close_tag_name = mem::replace(&mut self.close_tag_name, String::new());
       let mut found = false;
-      if close_tag_name == "" && self.tag.self_closing {
+      if close_tag_name.is_empty() && self.tag.self_closing {
         close_tag_name = self.tag.name.clone();
       }
-      while s != 0 {
-        s -= 1;
-        let tag = &mut self.tags[s];
+      while tags_len != 0 {
+        tags_len -= 1;
+        let tag = &mut self.tags[tags_len];
         if tag.name == close_tag_name {
           tag.close_start = self.tag.open_start;
           tag.close_end = (self.line, self.character);
@@ -642,17 +647,17 @@ impl SAXParser {
 
     let mut len = self.tags.len();
     if self.events & Event::CloseTag as u32 == 0 {
-      let idx = len - s;
+      let idx = len - tags_len;
       if idx > 1 {
         self.tags.truncate(idx);
         return;
       }
 
-      self.tag = self.tags.remove(s);
+      self.tag = self.tags.remove(tags_len);
       return;
     }
 
-    while len > s {
+    while len > tags_len {
       len -= 1;
       self.tag = self.tags.remove(len);
       self.tag.close_end = (self.line, self.character);
