@@ -14,6 +14,7 @@ before_install:
 
 install:
   - nvm install node
+  - npm i -g node-pre-gyp
   - npm install
 
 script:
