@@ -4,7 +4,6 @@ import { resolve as pathResolve } from 'path';
 import {notStrictEqual} from 'assert';
 
 const saxWasm = readFileSync(pathResolve(__dirname, '../../../lib/sax-wasm.wasm'));
-// fs.writeFileSync(path.resolve(__dirname, '../../../lib/sax-wasm.base64'), saxWasm.toString('base64'));
 const options = {highWaterMark: 32 * 1024};
 describe('When parsing XML, the SaxWasm', () => {
   let parser;

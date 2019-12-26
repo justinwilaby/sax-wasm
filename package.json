@@ -16,7 +16,8 @@
     "test:coveralls": "npm run test && nyc report --reporter=text-lcov | coveralls",
     "build:wasm": "rustc ./src/lib.rs -Clto -O --crate-type cdylib --target wasm32-unknown-unknown -o ./lib/sax-wasm.wasm",
     "bindgen": "wasm-bindgen lib/sax-wasm.wasm --out-dir lib/ --remove-name-section --no-typescript --out-name sax-wasm.wasm",
-    "build": "tsc && npm run build:wasm && npm run bindgen"
+    "build": "tsc && npm run build:wasm && npm run bindgen",
+    "benchmark": "node src/js/__test__/benchmark.js"
   },
   "keywords": [
     "XML",
@@ -34,8 +35,13 @@
     "@types/node": "^12.0.8",
     "coveralls": "^3.0.6",
     "expect.js": "^0.3.1",
+    "libxmljs": "^0.19.7",
+    "ltx": "^2.9.2",
     "mocha": "^6.2.0",
+    "node-expat": "^2.3.18",
+    "node-xml": "^1.0.2",
     "nyc": "^14.1.1",
+    "sax": "^1.2.4",
     "source-map-support": "^0.5.13",
     "ts-node": "^8.3.0",
     "typescript": "^3.6.2"
