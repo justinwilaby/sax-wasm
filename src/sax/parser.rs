@@ -364,7 +364,7 @@ impl SAXParser {
         self.comment.push_str("--");
         self.comment.push_str(grapheme);
       }
-      self.state = State::Comment;
+      self.state = State::BeginWhitespace;
     } else {
       self.new_text();
     }
