@@ -489,7 +489,6 @@ impl SAXParser {
     }
     if grapheme == "=" {
       self.state = State::AttribValue;
-      self.attribute.name_end = (self.line, self.character - 1);
     } else {
       if grapheme == ">" {
         self.process_attribute();

@@ -28,6 +28,25 @@ describe('SaxWasm', () => {
     parser.end();
   });
 
+  it('should recognize boolean attributes', () => {
+    parser.write(Buffer.from('<button disabled class="primary-btn"></button>'));
+    deepStrictEqual(_event, SaxEventType.Attribute);
+    deepStrictEqual(_data.length, 2);
+    deepStrictEqual(_data[0].name, 'disabled');
+    deepStrictEqual(_data[0].value, '');
+  })
+
+  it('should not include whitespace in the attribute\'s nameEnd value', () => {
+    parser.write(Buffer.from(`<?xml version="1.0" encoding="UTF-8"?>
+<plugin
+    version       =   "1.0.0"   >
+</plugin>`));
+    deepStrictEqual(_event, SaxEventType.Attribute);
+    deepStrictEqual(_data.length, 1);
+    deepStrictEqual(_data[0].name, 'version');
+    deepStrictEqual(_data[0].nameEnd.character, 11);
+  })
+
   it('should recognize attribute names', () => {
     parser.write(Buffer.from('<body class="main"></body>'));
     deepStrictEqual(_event, SaxEventType.Attribute);
