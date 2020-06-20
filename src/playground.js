@@ -8,12 +8,9 @@ async function runProgram() {
     const linearMemory = result.instance.exports.memory;
     const memBuff = Buffer.from(linearMemory.buffer, ptr, len);
     const rawString = memBuff.toString();
+    // Note that this is low level encoded data
+    // See SAXParser.eventTrap for examples on how this is decoded
     console.log(event, rawString);
-    try {
-      JSON.parse(rawString);
-    } catch (e) {
-      debugger;
-    }
   }
 
   function error_handler(error, ptr, len) {
@@ -34,6 +31,8 @@ async function runProgram() {
   const wasm = fs.readFileSync(path.resolve(__dirname, '../lib/sax-wasm.wasm'));
   result = await WebAssembly.instantiate(wasm, imports);
   const linearMemory = result.instance.exports.memory;
+  result.instance.exports.parser(0b111111111111);
+
   const document = `export class Sample {
   render() {
     return (
@@ -49,7 +48,6 @@ async function runProgram() {
 
   let memBuff = new Uint8Array(linearMemory.buffer, 0, docBuff.length);
   memBuff.set(docBuff, 0);
-  result.instance.exports.parser(0b111111111111);
   result.instance.exports.write(0, memBuff.length);
 }
 
