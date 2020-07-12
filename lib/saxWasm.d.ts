@@ -73,6 +73,11 @@ export declare class Tag extends Reader<Attribute[] | Text[] | Position | string
 export interface SaxParserOptions {
     highWaterMark: number;
 }
+declare type TextDecoder = {
+    decode: (input?: ArrayBufferView | ArrayBuffer, options?: {
+        stream?: boolean;
+    }) => string;
+};
 export declare class SAXParser {
     static textDecoder: TextDecoder;
     events: number;
@@ -86,3 +91,4 @@ export declare class SAXParser {
     prepareWasm(saxWasm: Uint8Array): Promise<boolean>;
     protected eventTrap: (event: number, ptr: number, len: number) => void;
 }
+export {};
