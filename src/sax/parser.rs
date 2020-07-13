@@ -59,9 +59,9 @@ impl SAXParser {
 
   pub fn write(&mut self, source: &[u8]) {
     let mut idx = 0;
-    let len = source.len();
     let mut chunk = self.fragment.clone();
     chunk.extend_from_slice(source);
+    let len = chunk.len();
 
     'outer: while idx < len {
       let byte = &chunk[idx];
@@ -78,12 +78,11 @@ impl SAXParser {
       // We don't have enough bytes
       let end_idx = idx + bytes;
       if end_idx > len {
-        let mut ct = len - idx;
         self.fragment.truncate(0);
         loop {
-          self.fragment.push(chunk[ct]);
-          ct += 1;
-          if ct == len {
+          self.fragment.push(chunk[idx]);
+          idx += 1;
+          if idx == len {
             break 'outer;
           }
         }

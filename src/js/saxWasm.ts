@@ -218,6 +218,8 @@ export interface SaxParserOptions {
   highWaterMark: number
 }
 
+type TextDecoder = {decode: (input?: ArrayBufferView | ArrayBuffer, options?: {stream?: boolean}) => string;};
+
 export class SAXParser {
   public static textDecoder: TextDecoder; // Web only
 
