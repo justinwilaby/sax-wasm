@@ -8,11 +8,9 @@ export declare class SaxEventType {
     static Attribute: number;
     static OpenTag: number;
     static CloseTag: number;
-    static OpenCDATA: number;
     static Cdata: number;
-    static CloseCDATA: number;
 }
-export declare type Detail = Position | Attribute | Text | Tag | StringReader;
+export declare type Detail = Position | Attribute | Text | Tag | ProcInst;
 export declare abstract class Reader<T = Detail> {
     protected data: Uint8Array;
     protected cache: {
@@ -23,52 +21,54 @@ export declare abstract class Reader<T = Detail> {
     abstract toJSON(): {
         [prop: string]: T;
     };
-    abstract readonly value: any;
 }
 export declare class Position {
     line: number;
     character: number;
     constructor(line: number, character: number);
 }
-export declare class Attribute extends Reader<string | number | Position> {
-    readonly nameStart: Position;
-    readonly nameEnd: Position;
-    readonly valueStart: Position;
-    readonly valueEnd: Position;
-    readonly name: string;
-    readonly value: string;
+export declare class Attribute extends Reader<Text> {
+    name: Text;
+    value: Text;
+    constructor(buffer: Uint8Array, ptr?: number);
     toJSON(): {
-        [prop: string]: string | number | Position;
+        [prop: string]: Text;
     };
+    toString(): string;
+}
+export declare class ProcInst extends Reader<Position | Text> {
+    target: Text;
+    content: Text;
+    constructor(buffer: Uint8Array, ptr?: number);
+    get start(): Position;
+    get end(): Position;
+    toJSON(): {
+        [p: string]: Position | Text;
+    };
+    toString(): string;
 }
 export declare class Text extends Reader<string | Position> {
-    readonly start: Position;
-    readonly end: Position;
-    readonly value: string;
+    get start(): Position;
+    get end(): Position;
+    get value(): string;
     toJSON(): {
         [prop: string]: string | Position;
-    };
-}
-export declare class StringReader extends Reader<string> {
-    readonly value: string;
-    toJSON(): {
-        [p: string]: string;
     };
     toString(): string;
 }
 export declare class Tag extends Reader<Attribute[] | Text[] | Position | string | number | boolean> {
-    readonly openStart: Position;
-    readonly openEnd: Position;
-    readonly closeStart: Position;
-    readonly closeEnd: Position;
-    readonly selfClosing: boolean;
-    readonly name: string;
-    readonly attributes: Attribute[];
-    readonly textNodes: Text[];
+    get openStart(): Position;
+    get openEnd(): Position;
+    get closeStart(): Position;
+    get closeEnd(): Position;
+    get selfClosing(): boolean;
+    get name(): string;
+    get attributes(): Attribute[];
+    get textNodes(): Text[];
     toJSON(): {
         [p: string]: Attribute[] | Text[] | Position | string | number | boolean;
     };
-    readonly value: string;
+    get value(): string;
 }
 export interface SaxParserOptions {
     highWaterMark: number;
@@ -86,7 +86,7 @@ export declare class SAXParser {
     private wasmSaxParser;
     private writeBuffer;
     constructor(events?: number, options?: SaxParserOptions);
-    write(chunk: Uint8Array, offset?: number): void;
+    write(chunk: Uint8Array): void;
     end(): void;
     prepareWasm(saxWasm: Uint8Array): Promise<boolean>;
     protected eventTrap: (event: number, ptr: number, len: number) => void;

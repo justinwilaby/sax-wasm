@@ -5,9 +5,9 @@
 
 *When you absolutely, positively have to have the fastest parser in the room, accept no substitutes.*
 
-The first streamable, low memory XML, HTML, and JSX parser for [WebAssembly](https://developer.mozilla.org/en-US/docs/WebAssembly).
+The first streamable, low memory XML, HTML, JSX and Angular Template parser for [WebAssembly](https://developer.mozilla.org/en-US/docs/WebAssembly).
 
-Sax Wasm is a sax style parser for XML, HTML and JSX written in [Rust](https://www.rust-lang.org/en-US/), compiled for
+Sax Wasm is a sax style parser for XML, HTML, JSX anf Angular Templates written in [Rust](https://www.rust-lang.org/en-US/), compiled for
 WebAssembly with the sole motivation to bring **faster than native speeds** to XML and JSX parsing for node and the web.
 Inspired by [sax js](https://github.com/isaacs/sax-js) and rebuilt with Rust for WebAssembly, sax-wasm brings optimizations
 for speed and support for JSX syntax.
@@ -15,7 +15,7 @@ for speed and support for JSX syntax.
 Suitable for [LSP](https://langserver.org/) implementations, sax-wasm provides line numbers and character positions within the
 document for elements, attributes and text node which provides the raw building blocks for linting, transpilation and lexing.
 
-## Benchmarks (Node v14.5.0 / 2.7 GHz Quad-Core Intel Core i7)
+## Benchmarks (Node v14.13.0 / 2.7 GHz Quad-Core Intel Core i7)
 All parsers are tested using a large XML document (2.1 MB) containing a variety of elements and is streamed when supported 
 by the parser. This attempts to recreate the best real-world use case for parsing XML. Other libraries test benchmarks using a 
 very small XML fragment such as `<foo bar="baz">quux</foo>` which does not hit all code branches responsible for processing the 
@@ -23,11 +23,11 @@ document and heavily skews the results in their favor.
 
 | Parser with Advanced Features                                                              | time/ms (lower is better) | JS     | Runs in browser |
 |--------------------------------------------------------------------------------------------|--------------------------:|:------:|:---------------:|
-| [sax-wasm](https://github.com/justinwilaby/sax-wasm)                                       |  143.14                   | ☑      | ☑               |
-| [sax-js](https://github.com/isaacs/sax-js)                                                 |  158.47                   | ☑      | ☑*              |
-| [node-expat](https://github.com/node-xmpp/node-expat)                                      |  273.22                   | ☐      | ☐               |
-| [libxmljs](https://github.com/polotek/libxmljs)                                            |  358.91                   | ☐      | ☐               |
-| [node-xml](https://github.com/dylang/node-xml)                                             |  638.00                   | ☑      | ☐               |
+| [sax-wasm](https://github.com/justinwilaby/sax-wasm)                                       |  95.08                    | ☑      | ☑               |
+| [sax-js](https://github.com/isaacs/sax-js)                                                 |  167.33                   | ☑      | ☑*              |
+| [node-expat](https://github.com/node-xmpp/node-expat)                                      |  242.82                   | ☐      | ☐               |
+| [libxmljs](https://github.com/polotek/libxmljs)                                            |  287.00                   | ☐      | ☐               |
+| [node-xml](https://github.com/dylang/node-xml)                                             |  621.26                   | ☑      | ☐               |
 <sub>*built for node but *should* run in the browser</sub>
 
 ## Installation
@@ -140,17 +140,15 @@ Complete list of event/argument pairs:
 |Event                             |Mask          |Argument passed to handler                      |
 |----------------------------------|--------------|------------------------------------------------|
 |SaxEventType.Text                 |0b000000000001|text: [Text](src/js/saxWasm.ts#L95)             |
-|SaxEventType.ProcessingInstruction|0b000000000010|procInst: [StringReader](src/js/saxWasm.ts#L118)|
-|SaxEventType.SGMLDeclaration      |0b000000000100|sgmlDecl: [StringReader](src/js/saxWasm.ts#L118)|
-|SaxEventType.Doctype              |0b000000001000|doctype: [StringReader](src/js/saxWasm.ts#L118) |
-|SaxEventType.Comment              |0b000000010000|comment: [StringReader](src/js/saxWasm.ts#L118) |
+|SaxEventType.ProcessingInstruction|0b000000000010|procInst: [Text](src/js/saxWasm.ts#L95)         |
+|SaxEventType.SGMLDeclaration      |0b000000000100|sgmlDecl: [Text](src/js/saxWasm.ts#L95)         |
+|SaxEventType.Doctype              |0b000000001000|doctype: [Text](src/js/saxWasm.ts#L95)          |
+|SaxEventType.Comment              |0b000000010000|comment: [Text](src/js/saxWasm.ts#L95)          |
 |SaxEventType.OpenTagStart         |0b000000100000|tag: [Tag](src/js/saxWasm.ts#L135)              |
 |SaxEventType.Attribute            |0b000001000000|attribute: [Attribute](src/js/saxWasm.ts#L55)   |
 |SaxEventType.OpenTag              |0b000010000000|tag: [Tag](src/js/saxWasm.ts#L135)              |
 |SaxEventType.CloseTag             |0b000100000000|tag: [Tag](src/js/saxWasm.ts#L135)              |
-|SaxEventType.OpenCDATA            |0b001000000000|start: [Position](src/js/saxWasm.ts#L45)        |
-|SaxEventType.CDATA                |0b010000000000|cdata: [StringReader](src/js/saxWasm.ts#L118)   |
-|SaxEventType.CloseCDATA           |0b100000000000|end: [Position](src/js/saxWasm.ts#L45)          |
+|SaxEventType.CDATA                |0b001000000000|start: [Position](src/js/saxWasm.ts#L45)        |
 
 ## Speeding things up on large documents
 The speed of the sax-wasm parser is incredibly fast and can parse very large documents in a blink of an eye. Although

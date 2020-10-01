@@ -40,15 +40,15 @@ describe('SaxWasm', () => {
 
 </plugin>`));
         const names = [
-            "name",
-            "plugin",
-            "name",
-            "name",
-            undefined,
-            "name",
-            "keywords"
+            'name',
+            'plugin',
+            'name',
+            'name',
+            'undefined',
+            'name',
+            'keywords'
         ];
         deepStrictEqual(_data.length, 7);
-        _data.forEach((data, index) => deepStrictEqual(data.name, names[index]));
+        _data.forEach((data, index) => deepStrictEqual('' + data.name, names[index]));
     });
 });

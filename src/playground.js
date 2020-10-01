@@ -21,7 +21,7 @@ async function runProgram() {
     env: {
       memoryBase: 0,
       tableBase: 0,
-      memory: new WebAssembly.Memory({initial: 10, maximum: 100}),
+      memory: new WebAssembly.Memory({initial: 10, maximum: 100, shared: true}),
       table: new WebAssembly.Table({initial: 4, element: 'anyfunc'}),
       event_listener,
       error_handler
