@@ -7,7 +7,7 @@
 
 The first streamable, low memory XML, HTML, JSX and Angular Template parser for [WebAssembly](https://developer.mozilla.org/en-US/docs/WebAssembly).
 
-Sax Wasm is a sax style parser for XML, HTML, JSX anf Angular Templates written in [Rust](https://www.rust-lang.org/en-US/), compiled for
+Sax Wasm is a sax style parser for XML, HTML, JSX and Angular Templates written in [Rust](https://www.rust-lang.org/en-US/), compiled for
 WebAssembly with the sole motivation to bring **faster than native speeds** to XML and JSX parsing for node and the web.
 Inspired by [sax js](https://github.com/isaacs/sax-js) and rebuilt with Rust for WebAssembly, sax-wasm brings optimizations
 for speed and support for JSX syntax.
@@ -117,6 +117,7 @@ Besides being incredibly fast, there are some notable differences between sax-wa
 when migrating:
 
 1. JSX is supported including JSX fragments. Things like `<foo bar={this.bar()}></bar>` and `<><foo/><bar/></>` will parse as expected.
+1. Angular 2+ templates are supported. Things like <button type="submit" [disabled]=disabled *ngIf=boolean (click)="clickHandler(event)"></button> will parse as expected.
 1. No attempt is made to validate the document. sax-wasm reports what it sees. If you need strict mode or document validation, it may
 be recreated by applying rules to the events that are reported by the parser.
 1. Namespaces are reported in attributes. No special events dedicated to namespaces.
@@ -139,16 +140,16 @@ Complete list of event/argument pairs:
 
 |Event                             |Mask          |Argument passed to handler                      |
 |----------------------------------|--------------|------------------------------------------------|
-|SaxEventType.Text                 |0b000000000001|text: [Text](src/js/saxWasm.ts#L95)             |
-|SaxEventType.ProcessingInstruction|0b000000000010|procInst: [Text](src/js/saxWasm.ts#L95)         |
-|SaxEventType.SGMLDeclaration      |0b000000000100|sgmlDecl: [Text](src/js/saxWasm.ts#L95)         |
-|SaxEventType.Doctype              |0b000000001000|doctype: [Text](src/js/saxWasm.ts#L95)          |
-|SaxEventType.Comment              |0b000000010000|comment: [Text](src/js/saxWasm.ts#L95)          |
-|SaxEventType.OpenTagStart         |0b000000100000|tag: [Tag](src/js/saxWasm.ts#L135)              |
-|SaxEventType.Attribute            |0b000001000000|attribute: [Attribute](src/js/saxWasm.ts#L55)   |
-|SaxEventType.OpenTag              |0b000010000000|tag: [Tag](src/js/saxWasm.ts#L135)              |
-|SaxEventType.CloseTag             |0b000100000000|tag: [Tag](src/js/saxWasm.ts#L135)              |
-|SaxEventType.CDATA                |0b001000000000|start: [Position](src/js/saxWasm.ts#L45)        |
+|SaxEventType.Text                 |0b000000000001|text: [Text](src/js/saxWasm.ts#L106)            |
+|SaxEventType.ProcessingInstruction|0b000000000010|procInst: [Text](src/js/saxWasm.ts#L106)        |
+|SaxEventType.SGMLDeclaration      |0b000000000100|sgmlDecl: [Text](src/js/saxWasm.ts#L106)        |
+|SaxEventType.Doctype              |0b000000001000|doctype: [Text](src/js/saxWasm.ts#L106)         |
+|SaxEventType.Comment              |0b000000010000|comment: [Text](src/js/saxWasm.ts#L106)         |
+|SaxEventType.OpenTagStart         |0b000000100000|tag: [Tag](src/js/saxWasm.ts#L133)              |
+|SaxEventType.Attribute            |0b000001000000|attribute: [Attribute](src/js/saxWasm.ts#L49)   |
+|SaxEventType.OpenTag              |0b000010000000|tag: [Tag](src/js/saxWasm.ts#L133)              |
+|SaxEventType.CloseTag             |0b000100000000|tag: [Tag](src/js/saxWasm.ts#L133)              |
+|SaxEventType.CDATA                |0b001000000000|start: [Position](src/js/saxWasm.ts#L39)        |
 
 ## Speeding things up on large documents
 The speed of the sax-wasm parser is incredibly fast and can parse very large documents in a blink of an eye. Although
