@@ -28,7 +28,7 @@ describe('SaxWasm', () => {
   });
 
   it('should preserve structural directives', () => {
-    parser.write(Buffer.from(`<button *ngIf="something" (click)="changeHour(hourStep)"</button>`));
+    parser.write(Buffer.from(`<button *ngIf="something" (click)="changeHour(hourStep)"> </button>`));
     deepStrictEqual(JSON.parse(JSON.stringify(_data[0])), {
       "name": {
         "end": {
