@@ -3,6 +3,7 @@ use std::str;
 
 use sax::names::*;
 use sax::tag::*;
+use sax::utils::ascii_icompare;
 
 static BOM: &'static [u8; 3] = &[0xef, 0xbb, 0xbf];
 
@@ -245,22 +246,25 @@ impl SAXParser {
 
     fn sgml_decl(&mut self, grapheme: &str) {
         let is_sgml_char = match &self.sgml_decl.value as &str {
-            "[CDATA[" => {
+            sgml if ascii_icompare("[cdata[", sgml) == true => {
                 self.state = State::Cdata;
                 self.cdata.value.push_str(grapheme);
                 self.cdata.start = (self.line, self.character - 8);
                 false
             }
+
             "--" => {
                 self.state = State::Comment;
                 self.comment.start = (self.line, self.character - 4);
                 false
             }
-            "DOCTYPE" => {
+
+            sgml if ascii_icompare("doctype", sgml) == true => {
                 self.state = State::Doctype;
                 self.doctype.start = (self.line, self.character - 8);
                 false
             }
+
             _ => true,
         };
 

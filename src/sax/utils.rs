@@ -24,6 +24,19 @@ pub fn uint_to_string(mut uint: u32) -> String {
     s
 }
 
+pub fn ascii_icompare(expected: &str, test: &str) -> bool {
+    if expected.len() != test.len() {
+        return false;
+    }
+    for (e, t) in expected.chars().zip(test.chars()) {
+        let char_diff = (e as i8) - (t as i8);
+        if !(char_diff == 0 || char_diff == 32) {
+            return false;
+        }
+    }
+    true
+}
+
 pub fn to_char_code(grapheme: &str) -> u32 {
     let bytes = grapheme.as_bytes();
     let len = bytes.len();
