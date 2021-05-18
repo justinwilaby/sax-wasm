@@ -27,48 +27,9 @@ impl Tag {
     }
 }
 
-impl Encode<Vec<u8>> for Tag {
-    fn encode(&self) -> Vec<u8> {
-        let mut v = vec![0, 0, 0, 0, 0, 0, 0, 0];
-
-        // known byte length
-        v.extend_from_slice(&u32::to_le_bytes(self.open_start.0));
-        v.extend_from_slice(&u32::to_le_bytes(self.open_start.1));
-
-        v.extend_from_slice(&u32::to_le_bytes(self.open_end.0));
-        v.extend_from_slice(&u32::to_le_bytes(self.open_end.1));
-
-        v.extend_from_slice(&u32::to_le_bytes(self.close_start.0));
-        v.extend_from_slice(&u32::to_le_bytes(self.close_start.1));
-
-        v.extend_from_slice(&u32::to_le_bytes(self.close_end.0));
-        v.extend_from_slice(&u32::to_le_bytes(self.close_end.1));
-
-        v.push(self.self_closing.clone() as u8);
-
-        v.extend_from_slice(&u32::to_le_bytes(self.name.len() as u32));
-        v.extend_from_slice(self.name.as_bytes());
-
-        // write the starting location for the attributes at bytes 0..4
-        v.splice(0..4, u32::to_le_bytes(v.len() as u32).to_vec());
-        // write the number of attributes
-        v.extend_from_slice(&u32::to_le_bytes(self.attributes.len() as u32));
-        for a in &self.attributes {
-            let mut attr = a.encode();
-            v.extend_from_slice(&u32::to_le_bytes(attr.len() as u32));
-            v.append(&mut attr);
-        }
-
-        // write the starting location for the text node at bytes 4..8
-        v.splice(4..8, u32::to_le_bytes(v.len() as u32).to_vec());
-        // write the number of text nodes
-        v.extend_from_slice(&u32::to_le_bytes(self.text_nodes.len() as u32));
-        for t in &self.text_nodes {
-            let mut text = t.encode();
-            v.extend_from_slice(&u32::to_le_bytes(text.len() as u32));
-            v.append(&mut text);
-        }
-        v
+impl Readable for Tag {
+    fn read(&self, entity: u32) -> (u32, u32) {
+        unimplemented!()
     }
 }
 
@@ -89,20 +50,9 @@ impl Text {
     }
 }
 
-impl Encode<Vec<u8>> for Text {
-    fn encode(&self) -> Vec<u8> {
-        let mut v = Vec::new();
-
-        v.extend_from_slice(&u32::to_le_bytes(self.start.0));
-        v.extend_from_slice(&u32::to_le_bytes(self.start.1));
-
-        v.extend_from_slice(&u32::to_le_bytes(self.end.0));
-        v.extend_from_slice(&u32::to_le_bytes(self.end.1));
-
-        v.extend_from_slice(&u32::to_le_bytes(self.value.len() as u32));
-
-        v.extend_from_slice(self.value.as_bytes());
-        v
+impl Readable for Text {
+    fn read(&self, entity: u32) -> (u32, u32) {
+        unimplemented!()
     }
 }
 
@@ -121,19 +71,18 @@ impl Attribute {
     }
 }
 
-impl Encode<Vec<u8>> for Attribute {
-    fn encode(&self) -> Vec<u8> {
-        let mut v: Vec<u8> = Vec::new();
-
-        let name = self.name.encode();
-        v.extend_from_slice(&u32::to_le_bytes(name.len() as u32));
-        v.extend_from_slice(name.as_slice());
-
-        v.extend(self.value.encode());
-        v
+impl Readable for Attribute {
+    fn read(&self, entity: u32) -> (u32, u32) {
+        unimplemented!()
     }
 }
 
+enum AttributeField {
+    Name = 0,
+    Value = 1,
+}
+
+#[derive(Clone)]
 pub struct ProcInst {
     pub start: (u32, u32),
     pub end: (u32, u32),
@@ -142,9 +91,9 @@ pub struct ProcInst {
 }
 
 impl ProcInst {
-    pub fn new() -> ProcInst {
+    pub fn new(start: (u32, u32)) -> ProcInst {
         return ProcInst {
-            start: (0, 0),
+            start,
             end: (0, 0),
             target: Text::new((0, 0)),
             content: Text::new((0, 0)),
@@ -152,27 +101,6 @@ impl ProcInst {
     }
 }
 
-impl Encode<Vec<u8>> for ProcInst {
-    fn encode(&self) -> Vec<u8> {
-        let mut v: Vec<u8> = Vec::new();
-
-        v.extend_from_slice(&u32::to_le_bytes(self.start.0));
-        v.extend_from_slice(&u32::to_le_bytes(self.start.1));
-        v.extend_from_slice(&u32::to_le_bytes(self.end.0));
-        v.extend_from_slice(&u32::to_le_bytes(self.end.1));
-
-        let target = self.target.encode();
-        v.extend_from_slice(&u32::to_le_bytes(target.len() as u32));
-        v.extend(target);
-
-        v.extend(self.content.encode());
-        v
-    }
-}
-
-pub trait Encode<T>
-where
-    T: IntoIterator,
-{
-    fn encode(&self) -> T;
+pub trait Readable {
+    fn read(&self, entity: u32) -> (u32, u32);
 }

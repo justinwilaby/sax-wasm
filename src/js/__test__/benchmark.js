@@ -7,6 +7,7 @@ const nodeXml = require('node-xml');
 const libxml = require('libxmljs');
 const expat = require('node-expat');
 const sax = require('sax');
+const {SaxesParser} = require("saxes");
 const LtxSaxParser = require('ltx/lib/parsers/ltx');
 
 async function benchmarkSaxWasmParser() {
@@ -77,6 +78,23 @@ async function benchmarkSaxParser() {
     return (s * 1000) + n / 1000 / 1000;
 }
 
+async function benchmarkSaxesParser() {
+    const parser = new SaxesParser();
+    parser.on("opentag", function (node) {
+
+    });
+    const readable = createReadStream(resolve(__dirname + '/xml.xml'));
+    let t = process.hrtime();
+    await new Promise(resolve => {
+        readable.on('data', function (data) {
+            parser.write(data);
+        });
+        readable.once('end', resolve);
+    });
+    let [s, n] = process.hrtime(t);
+    return (s * 1000) + n / 1000 / 1000;
+}
+
 async function benchmarkExpatParser() {
     const parser = new expat.Parser();
     parser.on('startElement', (name, attrs) => {
@@ -109,25 +127,27 @@ async function benchmarkLtxParser() {
 
 async function benchmark() {
     let t = 10;
-    let benchmarks = {saxWasm: [], nodeXml: [], libXml: [], sax: [], expat: [], ltx: []};
+    let benchmarks = {saxWasm: [], nodeXml: [], libXml: [], sax: [], saxes:[], expat: [], ltx: []};
     while (t--) {
         benchmarks.saxWasm.push(await benchmarkSaxWasmParser());
-        benchmarks.nodeXml.push(await benchmarkNodeXmlParser());
-        benchmarks.libXml.push(await benchmarkLibXmlJsParser());
-        benchmarks.sax.push(await benchmarkSaxParser());
-        benchmarks.expat.push(await benchmarkExpatParser());
-        benchmarks.ltx.push(await benchmarkLtxParser());
+        // benchmarks.nodeXml.push(await benchmarkNodeXmlParser());
+        // benchmarks.libXml.push(await benchmarkLibXmlJsParser());
+        // benchmarks.sax.push(await benchmarkSaxParser());
+        // benchmarks.saxes.push(await benchmarkSaxesParser());
+        // benchmarks.expat.push(await benchmarkExpatParser());
+        // benchmarks.ltx.push(await benchmarkLtxParser());
     }
     return benchmarks;
 }
 
 benchmark().then(benchmarks => {
-    const {saxWasm, nodeXml, libXml, sax, expat, ltx} = benchmarks;
+    const {saxWasm, nodeXml, libXml, sax, saxes, expat, ltx} = benchmarks;
     process.stdout.write(Buffer.from(`sax-wasm: ${saxWasm.reduce((ct = 0, t) => (ct += t)) / saxWasm.length} ms with ${saxWasm.length} runs\n`));
-    process.stdout.write(Buffer.from(`nodeXml: ${nodeXml.reduce((ct = 0, t) => (ct += t)) / nodeXml.length} ms with ${nodeXml.length} runs\n`));
-    process.stdout.write(Buffer.from(`libXml: ${libXml.reduce((ct = 0, t) => (ct += t)) / libXml.length} ms with ${libXml.length} runs\n`));
-    process.stdout.write(Buffer.from(`sax: ${sax.reduce((ct = 0, t) => (ct += t)) / sax.length} ms with ${sax.length} runs\n`));
-    process.stdout.write(Buffer.from(`expat: ${expat.reduce((ct = 0, t) => (ct += t)) / expat.length} ms with ${expat.length} runs\n`));
-    process.stdout.write(Buffer.from(`ltx: ${ltx.reduce((ct = 0, t) => (ct += t)) / ltx.length} ms with ${ltx.length} runs\n`));
+    // process.stdout.write(Buffer.from(`nodeXml: ${nodeXml.reduce((ct = 0, t) => (ct += t)) / nodeXml.length} ms with ${nodeXml.length} runs\n`));
+    // process.stdout.write(Buffer.from(`libXml: ${libXml.reduce((ct = 0, t) => (ct += t)) / libXml.length} ms with ${libXml.length} runs\n`));
+    // process.stdout.write(Buffer.from(`sax: ${sax.reduce((ct = 0, t) => (ct += t)) / sax.length} ms with ${sax.length} runs\n`));
+    // process.stdout.write(Buffer.from(`saxes: ${saxes.reduce((ct = 0, t) => (ct += t)) / saxes.length} ms with ${saxes.length} runs\n`));
+    // process.stdout.write(Buffer.from(`expat: ${expat.reduce((ct = 0, t) => (ct += t)) / expat.length} ms with ${expat.length} runs\n`));
+    // process.stdout.write(Buffer.from(`ltx: ${ltx.reduce((ct = 0, t) => (ct += t)) / ltx.length} ms with ${ltx.length} runs\n`));
     process.exit(0);
 });

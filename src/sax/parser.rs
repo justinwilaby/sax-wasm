@@ -3,30 +3,34 @@ use std::str;
 
 use sax::names::*;
 use sax::tag::*;
+use std::cell::RefCell;
+use std::sync::Arc;
 
 static BOM: &'static [u8; 3] = &[0xef, 0xbb, 0xbf];
 
-pub type EventListener = fn(event: Event, data: &dyn Encode<Vec<u8>>);
+pub type EventListener = fn(event: Event, idx: usize);
 
 pub struct SAXParser {
     pub events: u32,
     pub line: u32,
     pub character: u32,
-    pub tags: Vec<Tag>,
+
+    pub nodes: Vec<Arc<RefCell<dyn Readable>>>,
+    pub tags: Vec<Arc<RefCell<Tag>>>,
+    // cdata, comments, doctype, sgml declarations.
+    pub texts: Vec<Text>,
+    pub proc_insts: Vec<ProcInst>,
+
+    current_tag: Arc<RefCell<Tag>>,
+    current_attr: Option<Attribute>,
+    current_text: Option<Text>,
+    current_proc_inst: Option<ProcInst>,
 
     state: State,
-    cdata: Text,
-    comment: Text,
-    doctype: Text,
-    text: Text,
     close_tag_name: String,
-    proc_inst: ProcInst,
+    sgml_decl: String,
     quote: u8,
-    sgml_decl: Text,
-    attribute: Attribute,
-    tag: Tag,
     brace_ct: u32,
-
     event_handler: EventListener,
     fragment: Vec<u8>,
 }
@@ -39,18 +43,21 @@ impl SAXParser {
             events: 0,
             line: 0,
             character: 0,
-            tags: Vec::new(),
 
-            cdata: Text::new((0, 0)),
-            comment: Text::new((0, 0)),
-            doctype: Text::new((0, 0)),
+            nodes: Vec::new(),
+            tags: Vec::new(),
+            texts: Vec::new(),
+            proc_insts: Vec::new(),
+
             close_tag_name: String::new(),
-            proc_inst: ProcInst::new(),
+            sgml_decl: String::new(),
+
+            current_tag: Arc::new(RefCell::new(Tag::new((0, 0)))),
+            current_attr: None,
+            current_text: None,
+            current_proc_inst: None,
+
             quote: 0,
-            sgml_decl: Text::new((0, 0)),
-            tag: Tag::new((0, 0)),
-            attribute: Attribute::new(),
-            text: Text::new((0, 0)),
             brace_ct: 0,
             fragment: Vec::new(),
         }
@@ -103,7 +110,6 @@ impl SAXParser {
         self.character = 0;
         self.line = 0;
         self.state = State::Begin;
-        self.attribute = Attribute::new();
     }
 
     fn process_grapheme(&mut self, grapheme: &str) {
@@ -120,6 +126,7 @@ impl SAXParser {
             State::OpenTag => self.open_tag(grapheme),
             State::BeginWhitespace => self.begin_white_space(grapheme),
             State::Text => self.text(grapheme),
+            State::MaybeText => self.maybe_text(grapheme),
             State::SgmlDecl => self.sgml_decl(grapheme),
             State::SgmlDeclQuoted => self.sgml_quoted(grapheme),
             State::Doctype => self.doctype(grapheme),
@@ -166,14 +173,13 @@ impl SAXParser {
 
         if is_name_start_char(grapheme) {
             self.state = State::OpenTag;
-            self.tag.name = grapheme.to_string();
+            RefCell::borrow_mut(&self.current_tag).name = grapheme.to_string();
             return;
         }
 
         match grapheme {
             "!" => {
                 self.state = State::SgmlDecl;
-                self.sgml_decl.start = (self.line, self.character - 1);
             }
 
             "/" => {
@@ -183,27 +189,27 @@ impl SAXParser {
 
             "?" => {
                 self.state = State::ProcInst;
-                self.proc_inst.start = (self.line, self.character - 1);
+                if self.events & Event::ProcessingInstruction as u32 != 0 {
+                    self.current_proc_inst = Some(ProcInst::new((self.line, self.character - 1)))
+                }
             }
 
             ">" => {
                 self.open_tag(grapheme); // JSX fragment
             }
 
-            _ => {
-                self.new_text();
-                self.write_text("<");
-                self.write_text(grapheme);
-            }
+            _ => {}
         }
     }
 
     fn open_tag(&mut self, grapheme: &str) {
         if is_name_char(grapheme) {
-            self.tag.name.push_str(grapheme);
+            RefCell::borrow_mut(&self.current_tag)
+                .name
+                .push_str(grapheme);
         } else {
             if self.events & Event::OpenTagStart as u32 != 0 {
-                (self.event_handler)(Event::OpenTagStart, &self.tag);
+                (self.event_handler)(Event::OpenTagStart, 0);
             }
             if grapheme == ">" {
                 self.process_open_tag(false);
@@ -218,68 +224,95 @@ impl SAXParser {
     fn begin_white_space(&mut self, grapheme: &str) {
         if grapheme == "<" {
             self.new_tag();
-        } else {
-            self.new_text();
-            self.write_text(grapheme);
         }
     }
 
     fn text(&mut self, grapheme: &str) {
-        if grapheme != "<" {
-            self.write_text(grapheme);
-        } else {
-            if !self.text.value.is_empty() {
-                let len = self.tags.len();
-                // Store these only if we're interested in CloseTag events
-                if len != 0 && self.events & Event::CloseTag as u32 != 0 {
-                    self.tags[len - 1].text_nodes.push(self.text.clone());
-                }
-                if self.events & Event::Text as u32 != 0 {
-                    self.text.end = (self.line, self.character - 1);
-                    (self.event_handler)(Event::Text, &self.text);
+        let tag_ended = grapheme == "<";
+        match self.current_text {
+            Some(ref mut tx) => {
+                if tag_ended {
+                    tx.end = (self.line, self.character - 1);
+                } else {
+                    tx.value.push_str(grapheme);
                 }
             }
+            None => {}
+        };
+
+        if tag_ended {
+            let text = mem::replace(&mut self.current_text, None).unwrap();
+            RefCell::borrow_mut(&self.current_tag).text_nodes.push(text);
+            (self.event_handler)(Event::Text, 0);
             self.new_tag();
+        } else {
+            self.write_text(grapheme);
+        }
+    }
+
+    fn maybe_text(&mut self, grapheme: &str) {
+        if grapheme != "<" {
+            self.state = State::Text;
+            if self.events & Event::Text as u32 != 0 {
+                let mut text = Text::new((self.line, self.character));
+                text.value.push_str(grapheme);
+                self.current_text = Some(text);
+            }
+        } else {
+            self.text(grapheme);
         }
     }
 
     fn sgml_decl(&mut self, grapheme: &str) {
-        let is_sgml_char = match &self.sgml_decl.value as &str {
+        let is_sgml_char = match &self.sgml_decl as &str {
             "[CDATA[" => {
                 self.state = State::Cdata;
-                self.cdata.value.push_str(grapheme);
-                self.cdata.start = (self.line, self.character - 8);
+                if self.events & Event::Cdata as u32 != 0 {
+                    let mut cdata = Text::new((self.line, self.character - 8));
+                    cdata.value.push_str(grapheme);
+                    self.current_text = Some(cdata);
+                } else {
+                    self.current_text = None;
+                }
                 false
             }
             "--" => {
                 self.state = State::Comment;
-                self.comment.start = (self.line, self.character - 4);
+                if self.events & Event::Comment as u32 != 0 {
+                    let mut comment = Text::new((self.line, self.character - 4));
+                    comment.value.push_str(grapheme);
+                    self.current_text = Some(comment);
+                } else {
+                    self.current_text = None;
+                }
+
                 false
             }
             "DOCTYPE" => {
                 self.state = State::Doctype;
-                self.doctype.start = (self.line, self.character - 8);
+                if self.events as u32 & Event::Doctype as u32 != 0 {
+                    self.current_text = Some(Text::new((self.line, self.character - 8)));
+                } else {
+                    self.current_text = None;
+                }
+
                 false
             }
             _ => true,
         };
 
         if grapheme == ">" {
-            let mut sgml_decl = mem::replace(&mut self.sgml_decl, Text::new((0, 0)));
             if self.events & Event::SGMLDeclaration as u32 != 0 {
-                sgml_decl.value.push_str(grapheme);
-                sgml_decl.end = (self.line, self.character - 1);
-                (self.event_handler)(Event::SGMLDeclaration, &sgml_decl);
+                (self.event_handler)(Event::SGMLDeclaration, 0);
             }
-
-            self.new_text();
+            self.state = State::MaybeText;
             return;
         }
 
         if is_sgml_char {
-            self.sgml_decl.value.push_str(grapheme);
+            self.sgml_decl.push_str(grapheme);
         } else {
-            self.sgml_decl = Text::new((0, 0));
+            self.sgml_decl = String::new();
         }
 
         if SAXParser::is_quote(grapheme) {
@@ -292,20 +325,21 @@ impl SAXParser {
             self.quote = 0;
             self.state = State::SgmlDecl;
         }
-        self.sgml_decl.value.push_str(grapheme);
+        self.sgml_decl.push_str(grapheme);
     }
 
     fn doctype(&mut self, grapheme: &str) {
         if grapheme == ">" {
-            self.new_text();
-            if self.events & Event::Doctype as u32 != 0 {
-                let mut doctype = mem::replace(&mut self.doctype, Text::new((0, 0)));
+            self.state = State::MaybeText;
+            if self.current_text.is_some() {
+                let mut doctype = mem::replace(&mut self.current_text, None).unwrap();
                 doctype.end = (self.line, self.character - 1);
-                (self.event_handler)(Event::Doctype, &doctype);
+                self.texts.push(doctype);
+                (self.event_handler)(Event::Doctype, self.texts.len() - 1);
             }
             return;
         }
-        self.doctype.value.push_str(grapheme);
+        self.write_text(grapheme);
         if grapheme == "]" {
             self.state = State::DoctypeDtd;
         } else if SAXParser::is_quote(grapheme) {
@@ -315,7 +349,7 @@ impl SAXParser {
     }
 
     fn doctype_quoted(&mut self, grapheme: &str) {
-        self.doctype.value.push_str(grapheme);
+        self.write_text(grapheme);
         if grapheme.as_bytes()[0] == self.quote {
             self.quote = 0;
             self.state = State::Doctype;
@@ -323,7 +357,7 @@ impl SAXParser {
     }
 
     fn doctype_dtd(&mut self, grapheme: &str) {
-        self.doctype.value.push_str(grapheme);
+        self.write_text(grapheme);
         if grapheme == "]" {
             self.state = State::Doctype;
         } else if SAXParser::is_quote(grapheme) {
@@ -333,7 +367,7 @@ impl SAXParser {
     }
 
     fn doctype_dtd_quoted(&mut self, grapheme: &str) {
-        self.doctype.value.push_str(grapheme);
+        self.write_text(grapheme);
         if self.quote == grapheme.as_bytes()[0] {
             self.state = State::DoctypeDtd;
             self.quote = 0;
@@ -343,37 +377,39 @@ impl SAXParser {
     fn comment(&mut self, grapheme: &str) {
         if grapheme == "-" {
             self.state = State::CommentEnding;
-        } else if self.events & Event::Comment as u32 != 0 {
-            self.comment.value.push_str(grapheme);
+            return;
         }
+        self.write_text(grapheme);
     }
 
     fn comment_ending(&mut self, grapheme: &str) {
         if grapheme == "-" {
             self.state = State::CommentEnded;
-            if self.events & Event::Comment as u32 != 0 {
-                let mut comment = mem::replace(&mut self.comment, Text::new((0, 0)));
-                comment.end = (self.line, self.character - 1);
-                (self.event_handler)(Event::Comment, &comment);
+            if self.current_text.is_some() {
+                self.current_text.as_mut().unwrap().end = (self.line, self.character - 1);
+                (self.event_handler)(Event::Comment, 0);
             }
         } else {
-            if self.events & Event::Comment as u32 != 0 {
-                self.comment.value.push('-');
-                self.comment.value.push_str(grapheme);
-            }
+            self.write_text("-");
+            self.write_text(grapheme);
             self.state = State::Comment;
         }
     }
 
     fn comment_ended(&mut self, grapheme: &str) {
         if grapheme == ">" {
-            if self.events & Event::Comment as u32 != 0 {
-                self.comment.value.push_str("--");
-                self.comment.value.push_str(grapheme);
-            }
             self.state = State::BeginWhitespace;
+            self.write_text("-->");
+            let text = mem::replace(&mut self.current_text, None);
+            match text {
+                Some(tx) => {
+                    self.texts.push(tx);
+                    (self.event_handler)(Event::Comment, 0);
+                }
+                None => {}
+            }
         } else {
-            self.new_text();
+            self.state = State::MaybeText;
         }
     }
 
@@ -381,7 +417,7 @@ impl SAXParser {
         if grapheme == "]" {
             self.state = State::CdataEnding;
         } else {
-            self.cdata.value.push_str(grapheme);
+            self.write_text(grapheme);
         }
     }
 
@@ -390,25 +426,29 @@ impl SAXParser {
             self.state = State::CdataEnding2;
         } else {
             self.state = State::Cdata;
-            self.cdata.value.push_str(grapheme);
+            self.write_text(grapheme);
         }
     }
 
     fn cdata_ending_2(&mut self, grapheme: &str) {
-        if grapheme == ">" && self.cdata.value.len() != 0 {
-            self.new_text();
-            if self.events & Event::Cdata as u32 != 0 {
-                let mut cdata = mem::replace(&mut self.cdata, Text::new((0, 0)));
-                cdata.end = (self.line, self.character - 1);
-                (self.event_handler)(Event::Cdata, &cdata);
+        match self.current_text {
+            Some(ref mut tx) => {
+                if grapheme == ">" && tx.value.len() != 0 {
+                    self.state = State::MaybeText;
+                    if self.events & Event::Cdata as u32 != 0 {
+                        tx.end = (self.line, self.character - 1);
+                        (self.event_handler)(Event::Cdata, 0);
+                    }
+                    return;
+                } else if grapheme == "]" {
+                    tx.value.push_str(grapheme);
+                } else {
+                    tx.value.push_str("]]");
+                    tx.value.push_str(grapheme);
+                    self.state = State::Cdata;
+                }
             }
-            return;
-        } else if grapheme == "]" {
-            self.cdata.value.push_str(grapheme);
-        } else {
-            self.cdata.value.push_str("]]");
-            self.cdata.value.push_str(grapheme);
-            self.state = State::Cdata;
+            None => {}
         }
     }
 
@@ -417,44 +457,65 @@ impl SAXParser {
             self.state = State::ProcInstEnding;
             return;
         }
-        if self.proc_inst.target.value.len() == 0 {
-            self.proc_inst.target.start = (self.line, self.character);
-        } else if SAXParser::is_whitespace(grapheme) {
-            self.proc_inst.target.end = (self.line, self.character - 1);
-            self.state = State::ProcInstValue;
-            return;
+        match self.current_proc_inst {
+            Some(ref mut p) => {
+                if SAXParser::is_whitespace(grapheme) {
+                    p.target.end = (self.line, self.character - 1);
+                    self.state = State::ProcInstValue;
+                } else {
+                    p.target.value.push_str(grapheme);
+                }
+            }
+            None => {}
         }
-        self.proc_inst.target.value.push_str(grapheme);
     }
 
     fn proc_inst_value(&mut self, grapheme: &str) {
-        if self.proc_inst.content.value.len() == 0 {
-            if SAXParser::is_whitespace(grapheme) {
-                return;
+        match self.current_proc_inst {
+            Some(ref mut p) => {
+                let is_whitespace = SAXParser::is_whitespace(grapheme);
+                if p.content.value.len() == 0 && !is_whitespace {
+                    p.content.start = (self.line, self.character - 1);
+                }
+                if grapheme == "?" {
+                    self.state = State::ProcInstEnding;
+                    p.content.end = (self.line, self.character - 1);
+                } else if !is_whitespace {
+                    p.content.value.push_str(grapheme);
+                }
             }
-            self.proc_inst.content.start = (self.line, self.character - 1);
-        }
-
-        if grapheme == "?" {
-            self.state = State::ProcInstEnding;
-            self.proc_inst.content.end = (self.line, self.character - 1);
-        } else {
-            self.proc_inst.content.value.push_str(grapheme);
+            None => {
+                if grapheme == "?" {
+                    self.state = State::ProcInstEnding;
+                }
+            }
         }
     }
 
     fn proc_inst_ending(&mut self, grapheme: &str) {
-        if grapheme == ">" {
-            self.new_text();
-            let mut proc_inst = mem::replace(&mut self.proc_inst, ProcInst::new());
-            if self.events & Event::ProcessingInstruction as u32 != 0 {
-                proc_inst.end = (self.line, self.character);
-                (self.event_handler)(Event::ProcessingInstruction, &proc_inst);
+        if grapheme == ">" && self.current_proc_inst.is_some() {
+            self.state = State::MaybeText;
+            let mut proc_inst = mem::replace(&mut self.current_proc_inst, None).unwrap();
+            proc_inst.end = (self.line, self.character);
+            self.proc_insts.push(proc_inst);
+
+            (self.event_handler)(Event::ProcessingInstruction, 0);
+            return;
+        }
+
+        match self.current_proc_inst {
+            Some(ref mut p) => {
+                p.content.value.push_str("?");
+                p.content.value.push_str(grapheme);
+                self.state = State::ProcInstValue;
             }
-        } else {
-            self.proc_inst.content.value.push_str("?");
-            self.proc_inst.content.value.push_str(grapheme);
-            self.state = State::ProcInstValue;
+            None => {
+                if grapheme == ">" {
+                    self.state = State::MaybeText;
+                } else {
+                    self.state = State::ProcInstValue;
+                }
+            }
         }
     }
 
@@ -468,39 +529,46 @@ impl SAXParser {
     }
 
     fn attribute(&mut self, grapheme: &str) {
-        if SAXParser::is_whitespace(grapheme) {
-            return;
-        }
         if grapheme == ">" {
             self.process_open_tag(false);
         } else if grapheme == "/" {
             self.state = State::OpenTagSlash;
-        } else {
-            self.attribute.name.value = grapheme.to_string();
-            self.attribute.name.start = (self.line, self.character - 1);
-            self.state = State::AttribName;
+        } else if !SAXParser::is_whitespace(grapheme) {
+            match self.current_attr {
+                Some(ref mut a) => {
+                    a.name.value.push_str(grapheme);
+                    a.name.start = (self.line, self.character - 1);
+                    self.state = State::AttribName;
+                }
+                None => {}
+            }
         }
     }
 
     fn attribute_name(&mut self, grapheme: &str) {
-        if grapheme == "=" {
-            self.attribute.name.end = (self.line, self.character - 1);
-            self.state = State::AttribValue;
-        } else if grapheme == ">" {
+        if grapheme == ">" {
             self.process_attribute();
             self.process_open_tag(false);
-        } else if SAXParser::is_whitespace(grapheme) {
-            self.state = State::AttribNameSawWhite;
-            self.attribute.name.end = (self.line, self.character - 1);
-        } else {
-            self.attribute.name.value.push_str(grapheme);
+            return;
+        }
+
+        match self.current_attr {
+            Some(ref mut a) => {
+                if grapheme == "=" {
+                    self.state = State::AttribValue;
+                    a.name.end = (self.line, self.character - 1);
+                } else if SAXParser::is_whitespace(grapheme) {
+                    self.state = State::AttribNameSawWhite;
+                    a.name.end = (self.line, self.character - 1);
+                } else {
+                    a.name.value.push_str(grapheme);
+                }
+            }
+            None => {}
         }
     }
 
     fn attribute_name_saw_white(&mut self, grapheme: &str) {
-        if SAXParser::is_whitespace(grapheme) {
-            return;
-        }
         if grapheme == "=" {
             self.state = State::AttribValue;
         } else if grapheme == "/" {
@@ -509,19 +577,20 @@ impl SAXParser {
         } else if grapheme == ">" {
             self.process_attribute();
             self.process_open_tag(false);
-        } else {
-            self.process_attribute(); // new Attribute struct created
-            self.attribute.name.value = grapheme.to_string();
-            self.attribute.name.start = (self.line, self.character - 1);
-            self.state = State::AttribName;
+        } else if !SAXParser::is_whitespace(grapheme) {
+            self.process_attribute();
+            match self.current_attr {
+                Some(ref mut a) => {
+                    self.state = State::AttribName;
+                    a.name.value = grapheme.to_string();
+                    a.name.start = (self.line, self.character - 1);
+                }
+                None => {}
+            }
         }
     }
 
     fn attribute_value(&mut self, grapheme: &str) {
-        if SAXParser::is_whitespace(grapheme) {
-            return;
-        }
-        self.attribute.value.start = (self.line, self.character);
         if SAXParser::is_quote(grapheme) {
             self.quote = grapheme.as_bytes()[0];
             self.state = State::AttribValueQuoted;
@@ -529,19 +598,35 @@ impl SAXParser {
             self.state = State::JSXAttributeExpression;
             self.brace_ct += 1;
         } else {
-            self.state = State::AttribValueUnquoted;
-            self.attribute.value.value.push_str(grapheme);
+            match self.current_attr {
+                Some(ref mut a) => {
+                    a.value.start = (self.line, self.character);
+                    if !SAXParser::is_whitespace(grapheme) {
+                        self.state = State::AttribValueUnquoted;
+                        a.value.value.push_str(grapheme);
+                    }
+                }
+                None => {}
+            }
         }
     }
 
     fn attribute_value_quoted(&mut self, grapheme: &str) {
-        if grapheme.as_bytes()[0] != self.quote {
-            self.attribute.value.value.push_str(grapheme);
-        } else {
-            self.attribute.value.end = (self.line, self.character - 1);
+        match self.current_attr {
+            Some(ref mut a) => {
+                if grapheme.as_bytes()[0] != self.quote {
+                    a.value.value.push_str(grapheme);
+                } else {
+                    a.value.end = (self.line, self.character - 1);
+                    self.quote = 0;
+                    self.state = State::AttribValueClosed;
+                }
+            }
+            None => {}
+        };
+
+        if self.state == State::AttribValueClosed {
             self.process_attribute();
-            self.quote = 0;
-            self.state = State::AttribValueClosed;
         }
     }
 
@@ -553,23 +638,41 @@ impl SAXParser {
         } else if grapheme == "/" {
             self.state = State::OpenTagSlash;
         } else {
-            self.attribute.name.value = grapheme.to_string();
+            match self.current_attr {
+                Some(ref mut a) => {
+                    a.name.value.push_str(grapheme);
+                }
+                None => {}
+            }
             self.state = State::AttribName;
         }
     }
 
     fn attribute_value_unquoted(&mut self, grapheme: &str) {
-        if grapheme != ">" && !SAXParser::is_whitespace(grapheme) {
-            self.attribute.value.value.push_str(grapheme);
+        if SAXParser::is_whitespace(grapheme) {
             return;
-        } else {
-            self.attribute.value.end = (self.line, self.character - 1);
-            self.process_attribute();
-            if grapheme == ">" {
-                self.process_open_tag(false);
-            } else {
-                self.state = State::Attrib;
+        }
+        let has_closed = match self.current_attr {
+            Some(ref mut a) => {
+                let is_end_char = grapheme == ">";
+                if !is_end_char {
+                    a.value.value.push_str(grapheme);
+                } else {
+                    a.value.end = (self.line, self.character - 1);
+                }
+                is_end_char
             }
+            None => false,
+        };
+
+        if has_closed {
+            self.process_attribute();
+        }
+
+        if grapheme == ">" {
+            self.process_open_tag(false);
+        } else {
+            self.state = State::Attrib;
         }
     }
 
@@ -577,7 +680,8 @@ impl SAXParser {
         if grapheme == ">" {
             // Weird </> tag
             let len = self.tags.len();
-            if self.close_tag_name.is_empty() && (len == 0 || !self.tags[len - 1].name.is_empty()) {
+            let teg_name_empty = self.tags.last().unwrap().borrow().name.is_empty();
+            if self.close_tag_name.is_empty() && (len == 0 || !teg_name_empty) {
                 self.process_open_tag(true);
             }
             self.process_close_tag();
@@ -605,73 +709,84 @@ impl SAXParser {
     }
 
     fn process_attribute(&mut self) {
-        let attr = mem::replace(&mut self.attribute, Attribute::new());
-        if self.events & Event::Attribute as u32 != 0 {
-            (self.event_handler)(Event::Attribute, &attr);
-        }
-        // Store them only if we're interested in Open and Close tag events
-        if self.events & Event::Attribute as u32 != 0 || self.events & Event::CloseTag as u32 != 0 {
-            self.tag.attributes.push(attr);
+        let new_attr = if self.events & Event::Attribute as u32 != 0 {
+            Some(Attribute::new())
+        } else {
+            None
+        };
+        let attr = mem::replace(&mut self.current_attr, new_attr);
+        match attr {
+            Some(a) => {
+                RefCell::borrow_mut(&self.current_tag).attributes.push(a);
+                (self.event_handler)(Event::Attribute, 0);
+            }
+            None => {}
         }
     }
 
     fn process_open_tag(&mut self, self_closing: bool) {
-        self.tag.self_closing = self_closing;
-        self.tag.open_end = (self.line, self.character);
-        self.tags.push(self.tag.clone());
+        self.tags.push(Arc::clone(&self.current_tag));
+        {
+            let mut tag = RefCell::borrow_mut(&self.current_tag);
+            tag.self_closing = self_closing;
+            tag.open_end = (self.line, self.character);
+        }
         if self.events & Event::OpenTag as u32 != 0 {
-            (self.event_handler)(Event::OpenTag, &self.tag);
+            (self.event_handler)(Event::OpenTag, self.tags.len() - 1);
         }
         if !self_closing {
-            self.new_text();
+            self.state = State::MaybeText;
         }
     }
 
     fn process_close_tag(&mut self) {
-        self.new_text();
+        self.state = State::MaybeText;
         let mut tags_len = self.tags.len();
         {
+            let mut current_tag = RefCell::borrow_mut(&self.current_tag);
             let mut close_tag_name = mem::replace(&mut self.close_tag_name, String::new());
             let mut found = false;
-            if close_tag_name.is_empty() && self.tag.self_closing {
-                close_tag_name = self.tag.name.clone();
+            if close_tag_name.is_empty() && current_tag.self_closing {
+                close_tag_name = current_tag.name.clone();
             }
             while tags_len != 0 {
                 tags_len -= 1;
-                let tag = &mut self.tags[tags_len];
+                let mut tag = RefCell::borrow_mut(&self.tags[tags_len]);
                 if tag.name == close_tag_name {
-                    tag.close_start = self.tag.open_start;
+                    tag.close_start = current_tag.open_start;
                     tag.close_end = (self.line, self.character);
                     found = true;
                     break;
                 }
             }
             if !found {
-                self.write_text("</");
-                self.write_text(&close_tag_name);
-                self.write_text(">");
-                self.text.start = self.tag.open_start;
+                let mut text = Text::new(current_tag.open_start);
+                text.start = current_tag.open_start;
+                text.value.push_str("</");
+                text.value.push_str(&close_tag_name);
+                text.value.push_str(">");
+                current_tag.text_nodes.push(text);
                 return;
             }
         }
 
         let mut len = self.tags.len();
-        if self.events & Event::CloseTag as u32 == 0 {
-            let idx = len - tags_len;
-            if idx > 1 {
-                self.tags.truncate(idx);
-                return;
-            }
-
-            self.tag = self.tags.remove(tags_len);
-            return;
-        }
+        // if self.events & Event::CloseTag as u32 == 0 {
+        //     let idx = len - tags_len;
+        //     if idx > 1 {
+        //         self.tags.truncate(idx);
+        //         return;
+        //     }
+        //
+        //     self.tag = self.tags.remove(tags_len);
+        //     return;
+        // }
 
         while len > tags_len {
             len -= 1;
-            self.tag = self.tags.remove(len);
-            self.tag.close_end = (self.line, self.character);
-            (self.event_handler)(Event::CloseTag, &self.tag);
+            let mut tag = RefCell::borrow_mut(&self.tags[len]);
+            tag.close_end = (self.line, self.character);
+            (self.event_handler)(Event::CloseTag, 0);
         }
     }
 
@@ -681,32 +796,34 @@ impl SAXParser {
         } else if grapheme == "{" {
             self.brace_ct += 1;
         }
-        if self.brace_ct == 0 {
-            self.attribute.value.end = (self.line, self.character - 1);
-            self.process_attribute();
-            self.state = State::AttribValueClosed;
-        } else {
-            self.attribute.value.value.push_str(grapheme);
+        match self.current_attr {
+            Some(ref mut a) => {
+                if self.brace_ct == 0 {
+                    a.value.end = (self.line, self.character - 1);
+                    self.process_attribute();
+                    self.state = State::AttribValueClosed;
+                } else {
+                    a.value.value.push_str(grapheme);
+                }
+            }
+            None => {
+                if self.brace_ct == 0 {
+                    self.state = State::AttribValueClosed;
+                }
+            }
+        }
+    }
+
+    fn write_text(&mut self, grapheme: &str) {
+        match self.current_text {
+            Some(ref mut t) => t.value.push_str(grapheme),
+            None => {}
         }
     }
 
     fn new_tag(&mut self) {
-        self.tag = Tag::new((self.line, self.character - 1));
+        self.current_tag = Arc::new(RefCell::new(Tag::new((self.line, self.character - 1))));
         self.state = State::OpenWaka;
-    }
-
-    fn new_text(&mut self) {
-        if self.events & Event::Text as u32 != 0 || self.events & Event::CloseTag as u32 != 0 {
-            self.text = Text::new((self.line, self.character));
-        }
-        self.state = State::Text;
-    }
-
-    fn write_text(&mut self, grapheme: &str) {
-        if self.events & Event::Text as u32 == 0 && self.events & Event::CloseTag as u32 == 0 {
-            return;
-        }
-        self.text.value.push_str(grapheme);
     }
 }
 
@@ -737,67 +854,73 @@ pub enum Event {
 #[derive(PartialEq)]
 enum State {
     // leading byte order mark or whitespace
-    Begin = 0,
+    Begin,
     // leading whitespace
-    BeginWhitespace = 1,
+    BeginWhitespace,
+    // Might be a text node but we're not sure yet
+    MaybeText,
     // general stuff
-    Text = 2,
+    Text,
     // <
-    OpenWaka = 4,
+    OpenWaka,
     // <!blarg
-    SgmlDecl = 5,
+    SgmlDecl,
     // <!blarg foo "bar
-    SgmlDeclQuoted = 6,
+    SgmlDeclQuoted,
     // <!doctype
-    Doctype = 7,
+    Doctype,
     // <!doctype "//blah
-    DoctypeQuoted = 8,
+    DoctypeQuoted,
     // <!doctype "//blah" [ ...
-    DoctypeDtd = 9,
+    DoctypeDtd,
     // <!doctype "//blah" [ "foo
-    DoctypeDtdQuoted = 10,
-    // <!-
-    // CommentStarting =       11,
+    DoctypeDtdQuoted,
     // <!--
-    Comment = 12,
+    Comment,
     // <!-- blah -
-    CommentEnding = 13,
+    CommentEnding,
     // <!-- blah --
-    CommentEnded = 14,
+    CommentEnded,
     // <![cdata[ something
-    Cdata = 15,
+    Cdata,
     // ]
-    CdataEnding = 16,
+    CdataEnding,
     // ]]
-    CdataEnding2 = 17,
+    CdataEnding2,
     // <?hi
-    ProcInst = 18,
+    ProcInst,
     // <?hi there
-    ProcInstValue = 19,
+    ProcInstValue,
     // <?hi "there" ?
-    ProcInstEnding = 20,
+    ProcInstEnding,
     // <strong
-    OpenTag = 21,
+    OpenTag,
     // <strong /
-    OpenTagSlash = 22,
+    OpenTagSlash,
     // <a
-    Attrib = 23,
+    Attrib,
     // <a foo
-    AttribName = 24,
+    AttribName,
     // <a foo _
-    AttribNameSawWhite = 25,
+    AttribNameSawWhite,
     // <a foo=
-    AttribValue = 26,
+    AttribValue,
     // <a foo="bar
-    AttribValueQuoted = 27,
+    AttribValueQuoted,
     // <a foo="bar"
-    AttribValueClosed = 28,
+    AttribValueClosed,
     // <a foo=bar
-    AttribValueUnquoted = 29,
+    AttribValueUnquoted,
     // </a
-    CloseTag = 30,
+    CloseTag,
     // </a   >
-    CloseTagSawWhite = 31,
+    CloseTagSawWhite,
     // props={() => {}}
-    JSXAttributeExpression = 32,
+    JSXAttributeExpression,
+}
+
+#[test]
+fn test_trait() {
+    let t = Arc::new(RefCell::new(Text::new((0, 0))));
+    let a: Arc<RefCell<dyn Readable>> = Arc::clone(&t);
 }
