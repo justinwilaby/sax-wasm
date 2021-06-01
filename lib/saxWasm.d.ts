@@ -83,12 +83,12 @@ export declare class SAXParser {
     events: number;
     eventHandler: (type: SaxEventType, detail: Detail) => void;
     private readonly options;
-    private wasmSaxParser;
+    wasmSaxParser?: WebAssembly.Exports;
     private writeBuffer;
     constructor(events?: number, options?: SaxParserOptions);
     write(chunk: Uint8Array): void;
     end(): void;
     prepareWasm(saxWasm: Uint8Array): Promise<boolean>;
-    protected eventTrap: (event: number, ptr: number, len: number) => void;
+    eventTrap: (event: number, ptr: number, len: number) => void;
 }
 export {};
