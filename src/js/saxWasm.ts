@@ -46,12 +46,20 @@ export class Position {
   }
 }
 
-export class Attribute extends Reader<Text> {
+export enum AttributeType {
+  Normal = 0b00,
+  JSX = 0b01,
+}
+
+export class Attribute extends Reader<Text | AttributeType> {
+  public type: AttributeType;
   public name: Text;
   public value: Text;
 
   constructor(buffer: Uint8Array, ptr = 0) {
     super(buffer, ptr);
+    this.type = buffer[ptr];
+    ptr += 1;
     const len = readU32(buffer, ptr);
     ptr += 4;
     this.name = new Text(buffer, ptr);
@@ -59,9 +67,9 @@ export class Attribute extends Reader<Text> {
     this.value = new Text(buffer, ptr);
   }
 
-  public toJSON(): { [prop: string]: Text } {
-    const {name, value} = this;
-    return {name, value};
+  public toJSON(): { [prop: string]: Text | AttributeType } {
+    const {name, value, type} = this;
+    return {name, value, type};
   }
 
   public toString(): string {
@@ -201,7 +209,7 @@ export class Tag extends Reader<Attribute[] | Text[] | Position | string | numbe
   }
 
   public get value() {
-    return this.name
+    return this.name;
   }
 }
 

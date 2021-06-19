@@ -1,8 +1,8 @@
-import { SaxEventType, SAXParser } from '../saxWasm';
+import { AttributeType, SaxEventType, SAXParser } from '../saxWasm';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 import {deepStrictEqual} from 'assert';
-import { Detail, Tag } from '../saxWasm';
+import { Tag } from '../saxWasm';
 
 const saxWasm = readFileSync(resolve(__dirname, '../../../lib/sax-wasm.wasm'));
 describe('When parsing JSX, the SaxWasm', () => {
@@ -66,4 +66,14 @@ describe('When parsing JSX, the SaxWasm', () => {
     deepStrictEqual(_data[1].name,'p');
     deepStrictEqual(_data[2].name,'');
   });
+
+  it('should recognize JSXAttributeExpressions', () => {
+    parser.write(Buffer.from(`
+    <Component>
+      {this.authenticated ? <User props={this.userProps}/> : <SignIn props={this.signInProps}/>}
+    </Component>`));
+
+    deepStrictEqual(_data[0].attributes[0].type,AttributeType.JSX);
+    deepStrictEqual(_data[1].attributes[0].type,AttributeType.JSX);
+  })
 });

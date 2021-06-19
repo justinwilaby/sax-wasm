@@ -41,6 +41,7 @@ describe('SaxWasm', () => {
         },
         "value": "*ngIf"
       },
+      "type": 0,
       "value": {
         "end": {
           "character": 24,

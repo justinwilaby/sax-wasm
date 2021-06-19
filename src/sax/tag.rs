@@ -110,6 +110,7 @@ impl Encode<Vec<u8>> for Text {
 pub struct Attribute {
     pub name: Text,
     pub value: Text,
+    pub attr_type: AttrType,
 }
 
 impl Attribute {
@@ -117,6 +118,7 @@ impl Attribute {
         return Attribute {
             name: Text::new((0, 0)),
             value: Text::new((0, 0)),
+            attr_type: AttrType::Normal,
         };
     }
 }
@@ -124,12 +126,14 @@ impl Attribute {
 impl Encode<Vec<u8>> for Attribute {
     fn encode(&self) -> Vec<u8> {
         let mut v: Vec<u8> = Vec::new();
+        v.push(self.attr_type as u8);
 
         let name = self.name.encode();
         v.extend_from_slice(&u32::to_le_bytes(name.len() as u32));
         v.extend_from_slice(name.as_slice());
 
         v.extend(self.value.encode());
+
         v
     }
 }
@@ -175,4 +179,10 @@ where
     T: IntoIterator,
 {
     fn encode(&self) -> T;
+}
+
+#[derive(Clone, Copy)]
+pub enum AttrType {
+    Normal = 0x00,
+    JSX = 0x01,
 }

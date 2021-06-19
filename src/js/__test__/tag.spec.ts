@@ -63,7 +63,7 @@ describe('SaxWasm', () => {
     deepStrictEqual(JSON.parse(JSON.stringify(tag.openEnd)), { line: 0, character: 19 });
     deepStrictEqual(JSON.parse(JSON.stringify(tag.closeStart)), { line: 0, character: 33 });
     deepStrictEqual(JSON.parse(JSON.stringify(tag.closeEnd)), { line: 0, character: 39 });
-    deepStrictEqual(JSON.stringify(tag), '{"openStart":{"line":0,"character":0},"openEnd":{"line":0,"character":19},"closeStart":{"line":0,"character":33},"closeEnd":{"line":0,"character":39},"name":"div","attributes":[{"name":{"start":{"line":0,"character":5},"end":{"line":0,"character":10},"value":"class"},"value":{"start":{"line":0,"character":12},"end":{"line":0,"character":17},"value":"myDiv"}}],"textNodes":[{"start":{"line":0,"character":19},"end":{"line":0,"character":0},"value":"This is my div"}],"selfClosing":false}');
+    deepStrictEqual(JSON.stringify(tag), '{"openStart":{"line":0,"character":0},"openEnd":{"line":0,"character":19},"closeStart":{"line":0,"character":33},"closeEnd":{"line":0,"character":39},"name":"div","attributes":[{"name":{"start":{"line":0,"character":5},"end":{"line":0,"character":10},"value":"class"},"value":{"start":{"line":0,"character":12},"end":{"line":0,"character":17},"value":"myDiv"},"type":0}],"textNodes":[{"start":{"line":0,"character":19},"end":{"line":0,"character":0},"value":"This is my div"}],"selfClosing":false}');
   });
 
   it('should report selfClosing tags correctly', () => {

@@ -27,12 +27,17 @@ export declare class Position {
     character: number;
     constructor(line: number, character: number);
 }
-export declare class Attribute extends Reader<Text> {
+export declare enum AttributeType {
+    Normal = 0,
+    JSX = 1
+}
+export declare class Attribute extends Reader<Text | AttributeType> {
+    type: AttributeType;
     name: Text;
     value: Text;
     constructor(buffer: Uint8Array, ptr?: number);
     toJSON(): {
-        [prop: string]: Text;
+        [prop: string]: Text | AttributeType;
     };
     toString(): string;
 }

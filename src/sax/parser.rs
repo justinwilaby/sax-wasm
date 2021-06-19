@@ -531,6 +531,7 @@ impl SAXParser {
             self.state = State::AttribValueQuoted;
         } else if grapheme == "{" {
             self.state = State::JSXAttributeExpression;
+            self.attribute.attr_type = AttrType::JSX;
             self.brace_ct += 1;
         } else {
             self.state = State::AttribValueUnquoted;

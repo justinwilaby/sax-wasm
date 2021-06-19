@@ -113,6 +113,6 @@ describe('SaxWasm', () => {
 
   it('should serialize to json as deepStrictEqualed', () => {
     parser.write(Buffer.from('<div class="testing"></div>'));
-    deepStrictEqual(JSON.stringify(_data[0]), '{"name":{"start":{"line":0,"character":5},"end":{"line":0,"character":10},"value":"class"},"value":{"start":{"line":0,"character":12},"end":{"line":0,"character":19},"value":"testing"}}');
+    deepStrictEqual(JSON.stringify(_data[0]), '{"name":{"start":{"line":0,"character":5},"end":{"line":0,"character":10},"value":"class"},"value":{"start":{"line":0,"character":12},"end":{"line":0,"character":19},"value":"testing"},"type":0}');
   });
 });
