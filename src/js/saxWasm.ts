@@ -213,7 +213,7 @@ export class Tag extends Reader<Attribute[] | Text[] | Position | string | numbe
   }
 }
 
-interface WasmSaxParser {
+interface WasmSaxParser extends WebAssembly.Exports {
   memory: WebAssembly.Memory;
   parser: (events: number) => void;
   write: (pointer: number, length: number) => void;
@@ -230,10 +230,10 @@ export class SAXParser {
   public static textDecoder: TextDecoder; // Web only
 
   public events: number;
-  public eventHandler: (type: SaxEventType, detail: Detail) => void;
+  public wasmSaxParser?: WasmSaxParser;
 
+  public eventHandler: (type: SaxEventType, detail: Detail) => void;
   private readonly options: SaxParserOptions;
-  private wasmSaxParser: WasmSaxParser;
   private writeBuffer: Uint8Array;
 
   constructor(events = 0, options: SaxParserOptions = {highWaterMark: 32 * 1024}) {
@@ -295,7 +295,7 @@ export class SAXParser {
     throw new Error(`Failed to instantiate the parser.`);
   }
 
-  protected eventTrap = (event: number, ptr: number, len: number): void => {
+  public eventTrap = (event: number, ptr: number, len: number): void => {
     const uint8array = new Uint8Array(this.wasmSaxParser.memory.buffer, ptr, len);
 
     let detail: Detail;

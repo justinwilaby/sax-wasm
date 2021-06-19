@@ -75,6 +75,12 @@ export declare class Tag extends Reader<Attribute[] | Text[] | Position | string
     };
     get value(): string;
 }
+interface WasmSaxParser extends WebAssembly.Exports {
+    memory: WebAssembly.Memory;
+    parser: (events: number) => void;
+    write: (pointer: number, length: number) => void;
+    end: () => void;
+}
 export interface SaxParserOptions {
     highWaterMark: number;
 }
@@ -86,9 +92,9 @@ declare type TextDecoder = {
 export declare class SAXParser {
     static textDecoder: TextDecoder;
     events: number;
+    wasmSaxParser?: WasmSaxParser;
     eventHandler: (type: SaxEventType, detail: Detail) => void;
     private readonly options;
-    wasmSaxParser?: WebAssembly.Exports;
     private writeBuffer;
     constructor(events?: number, options?: SaxParserOptions);
     write(chunk: Uint8Array): void;
