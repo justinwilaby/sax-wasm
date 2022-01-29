@@ -417,6 +417,9 @@ impl SAXParser {
     }
 
     fn proc_inst(&mut self, grapheme: &str) {
+        if grapheme == ">" {
+            return self.proc_inst_ending(grapheme);
+        }
         if grapheme == "?" {
             self.state = State::ProcInstEnding;
             return;
