@@ -1,7 +1,7 @@
 import { Detail, SaxEventType, SAXParser, Tag } from '../saxWasm';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
-import { deepStrictEqual } from 'assert';
+import { deepStrictEqual, strictEqual } from 'assert';
 
 const saxWasm = readFileSync(resolve(__dirname, '../../../lib/sax-wasm.wasm'));
 
@@ -99,4 +99,17 @@ describe('SaxWasm', () => {
     deepStrictEqual(openTag.name, '');
     deepStrictEqual(closeTag.name, '');
   });
+
+  it('should continue to parse when encountering a question mark where a tag name should be', () => {
+    const doc = `<!--lit-part cI7PGs8mxHY=-->
+      <p><!--lit-part-->hello<!--/lit-part--></p>
+      <!--lit-part BRUAAAUVAAA=--><?><!--/lit-part-->
+      <!--lit-part--><!--/lit-part-->
+      <p>more</p>
+    <!--/lit-part-->`;
+    parser.write(Buffer.from(doc));
+    strictEqual(_data.length, 6);
+    strictEqual(_data[5].textNodes.length, 1);
+    strictEqual(_data[5].textNodes[0].value, 'more')
+  })
 });
