@@ -1,6 +1,6 @@
 {
   "name": "sax-wasm",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "repository": "https://github.com/justinwilaby/sax-wasm",
   "description": "An extremely fast JSX, HTML and XML parser written in Rust compiled to WebAssembly for Node and the Web",
   "main": "lib/index.js",
