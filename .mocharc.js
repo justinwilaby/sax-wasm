@@ -3,5 +3,6 @@ module.exports = {
   'full-trace': true,
   bail: true,
   extension: ['ts'],
-  spec: 'src/**/*.spec.ts'
+  spec: 'src/**/*.spec.ts',
+  timeout: -1
 };

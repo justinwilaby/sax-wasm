@@ -809,3 +809,29 @@ enum State {
     // props={() => {}}
     JSXAttributeExpression = 32,
 }
+
+#[cfg(test)]
+mod tests {
+    use sax::parser::{Event, SAXParser};
+    use sax::tag::Encode;
+    use std::fs::File;
+    use std::io::{BufReader, Read, Result, Seek};
+
+    #[test]
+    fn stream_very_large_xml() -> Result<()> {
+        let event_handler = |_event: Event, _data: &dyn Encode<Vec<u8>>| {};
+        let mut sax = SAXParser::new(event_handler);
+        let f = File::open("src/js/__test__/xml.xml")?;
+        let mut reader = BufReader::new(f);
+        const BUFFER_LEN: usize = 32 * 1024;
+        loop {
+            let mut buffer = [0; BUFFER_LEN];
+            if let Ok(()) = reader.read_exact(&mut buffer) {
+                sax.write(&buffer);
+            } else {
+                break;
+            }
+        }
+        Ok(())
+    }
+}

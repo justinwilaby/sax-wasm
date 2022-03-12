@@ -268,7 +268,7 @@ export class SAXParser {
     if (!this.writeBuffer || this.writeBuffer.buffer !== memory.buffer) {
       this.writeBuffer = new Uint8Array(memory.buffer);
     }
-    this.writeBuffer.set(chunk);
+    this.writeBuffer.set(chunk, 0);
     write(0, chunk.byteLength);
   }
 
@@ -296,7 +296,7 @@ export class SAXParser {
   }
 
   public eventTrap = (event: number, ptr: number, len: number): void => {
-    const uint8array = new Uint8Array(this.wasmSaxParser.memory.buffer, ptr, len);
+    const uint8array = new Uint8Array(this.wasmSaxParser.memory.buffer, ptr, len).slice();
 
     let detail: Detail;
     switch (event) {
