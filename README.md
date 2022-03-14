@@ -15,19 +15,19 @@ for speed and support for JSX syntax.
 Suitable for [LSP](https://langserver.org/) implementations, sax-wasm provides line numbers and character positions within the
 document for elements, attributes and text node which provides the raw building blocks for linting, transpilation and lexing.
 
-## Benchmarks (Node v14.13.0 / 2.7 GHz Quad-Core Intel Core i7)
-All parsers are tested using a large XML document (2.1 MB) containing a variety of elements and is streamed when supported 
-by the parser. This attempts to recreate the best real-world use case for parsing XML. Other libraries test benchmarks using a 
-very small XML fragment such as `<foo bar="baz">quux</foo>` which does not hit all code branches responsible for processing the 
+## Benchmarks (Node v16.14.0 / 2.7 GHz Quad-Core Intel Core i7)
+All parsers are tested using a large XML document (2.1 MB) containing a variety of elements and is streamed when supported
+by the parser. This attempts to recreate the best real-world use case for parsing XML. Other libraries test benchmarks using a
+very small XML fragment such as `<foo bar="baz">quux</foo>` which does not hit all code branches responsible for processing the
 document and heavily skews the results in their favor.
 
 | Parser with Advanced Features                                                              | time/ms (lower is better) | JS     | Runs in browser |
 |--------------------------------------------------------------------------------------------|--------------------------:|:------:|:---------------:|
-| [sax-wasm](https://github.com/justinwilaby/sax-wasm)                                       |  95.08                    | ☑      | ☑               |
-| [sax-js](https://github.com/isaacs/sax-js)                                                 |  167.33                   | ☑      | ☑*              |
-| [node-expat](https://github.com/node-xmpp/node-expat)                                      |  242.82                   | ☐      | ☐               |
-| [libxmljs](https://github.com/polotek/libxmljs)                                            |  287.00                   | ☐      | ☐               |
-| [node-xml](https://github.com/dylang/node-xml)                                             |  621.26                   | ☑      | ☐               |
+| [sax-wasm](https://github.com/justinwilaby/sax-wasm)                                       |                     64.16 | ☑      | ☑               |
+| [sax-js](https://github.com/isaacs/sax-js)                                                 |                    155.77 | ☑      | ☑*              |
+| [node-expat](https://github.com/node-xmpp/node-expat)                                      |                    234.78 | ☐      | ☐               |
+| [libxmljs](https://github.com/polotek/libxmljs)                                            |                    274.95 | ☐      | ☐               |
+| [node-xml](https://github.com/dylang/node-xml)                                             |                    685.00 | ☑      | ☐               |
 <sub>*built for node but *should* run in the browser</sub>
 
 ## Installation
