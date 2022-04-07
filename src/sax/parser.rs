@@ -90,6 +90,12 @@ impl SAXParser {
             let s = &chunk[idx..end_idx];
             unsafe {
                 let st = str::from_utf8_unchecked(s);
+                if st == "\n" {
+                    self.line += 1;
+                    self.character = 0;
+                } else {
+                    self.character += if bytes == 4 { 2 } else { 1 };
+                }
                 self.process_grapheme(st);
             }
             idx = end_idx;
@@ -108,13 +114,6 @@ impl SAXParser {
     }
 
     fn process_grapheme(&mut self, grapheme: &str) {
-        if grapheme == "\n" {
-            self.line += 1;
-            self.character = 0;
-        } else {
-            self.character += 1;
-        }
-
         match self.state {
             State::Begin => self.begin(grapheme),
             State::OpenWaka => self.open_waka(grapheme),
@@ -815,7 +814,7 @@ mod tests {
     use sax::parser::{Event, SAXParser};
     use sax::tag::Encode;
     use std::fs::File;
-    use std::io::{BufReader, Read, Result, Seek};
+    use std::io::{BufReader, Read, Result};
 
     #[test]
     fn stream_very_large_xml() -> Result<()> {
@@ -832,6 +831,15 @@ mod tests {
                 break;
             }
         }
+        Ok(())
+    }
+    #[test]
+    fn count_grapheme_length() -> Result<()> {
+        let event_handler = |_event: Event, _data: &dyn Encode<Vec<u8>>| {};
+        let mut sax = SAXParser::new(event_handler);
+        let str = "🏴󠁧󠁢󠁥󠁮󠁧󠁿📚📚<div href=\"./123/123\">hey there</div>";
+
+        sax.write(str.as_bytes());
         Ok(())
     }
 }

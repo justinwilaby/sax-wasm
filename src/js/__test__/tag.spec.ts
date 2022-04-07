@@ -111,5 +111,12 @@ describe('SaxWasm', () => {
     strictEqual(_data.length, 6);
     strictEqual(_data[5].textNodes.length, 1);
     strictEqual(_data[5].textNodes[0].value, 'more')
-  })
+  });
+
+  it('should recognize the emojis as expected', () => {
+      const doc = '📚<div href="./123/123">hey there</div>';
+      parser.write(Buffer.from(doc));
+      const {start, end} = _data[2].attributes[0].value;
+      strictEqual(doc.slice(start.character, end.character), './123/123');
+  });
 });

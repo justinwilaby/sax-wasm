@@ -86,7 +86,7 @@ describe('SaxWasm', () => {
 
   it('should report the correct start and end positions for attributes', () => {
     const html = `
-<div 
+<div
   data-value="👅"
   class="grapheme cluster">
 </div>`;
@@ -96,7 +96,7 @@ describe('SaxWasm', () => {
     deepStrictEqual(JSON.parse(JSON.stringify(_data[0].name.start)), { line: 2, character: 2 });
     deepStrictEqual(JSON.parse(JSON.stringify(_data[0].name.end)), { line: 2, character: 12 });
     deepStrictEqual(JSON.parse(JSON.stringify(_data[0].value.start)), { line: 2, character: 14 });
-    deepStrictEqual(JSON.parse(JSON.stringify(_data[0].value.end)), { line: 2, character: 15 });
+    deepStrictEqual(JSON.parse(JSON.stringify(_data[0].value.end)), { line: 2, character: 16 });
 
     deepStrictEqual(JSON.parse(JSON.stringify(_data[1].name.start)), { line: 3, character: 2 });
     deepStrictEqual(JSON.parse(JSON.stringify(_data[1].name.end)), { line: 3, character: 7 });
