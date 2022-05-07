@@ -17,7 +17,8 @@
     "build:wasm": "rustc ./src/lib.rs -Clto -O --crate-type cdylib --target wasm32-unknown-unknown -o ./lib/sax-wasm.wasm",
     "bindgen": "wasm-bindgen lib/sax-wasm.wasm --out-dir lib/ --remove-name-section --no-typescript --out-name sax-wasm.wasm",
     "build": "tsc && npm run build:wasm && npm run bindgen",
-    "benchmark": "node src/js/__test__/benchmark.js"
+    "benchmark": "node src/js/__test__/benchmark.js",
+    "lint": "eslint src/js/ --ext .ts"
   },
   "keywords": [
     "XML",
@@ -33,6 +34,9 @@
     "@types/expect.js": "^0.3.29",
     "@types/mocha": "^5.2.7",
     "@types/node": "14.11.1",
+    "@typescript-eslint/eslint-plugin": "^5.22.0",
+    "@typescript-eslint/parser": "^5.22.0",
+    "eslint": "^8.15.0",
     "coveralls": "^3.0.6",
     "expect.js": "^0.3.1",
     "libxmljs": "^0.19.7",
