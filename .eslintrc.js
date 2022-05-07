@@ -9,6 +9,7 @@ module.exports = {
         'plugin:@typescript-eslint/recommended'
     ],
     rules: {
+        'no-bitwise': 'off',
         '@typescript-eslint/no-this-alias': 'warn',
         '@typescript-eslint/no-explicit-any': 'off',
         '@typescript-eslint/no-inferrable-types': 'warn'

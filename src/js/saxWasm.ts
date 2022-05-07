@@ -241,10 +241,8 @@ export class SAXParser {
     const self = this;
     Object.defineProperties(this, {
       events: {
-        // eslint-disable-next-line no-bitwise
         get: () => ~~events,
         set: (value: number) => {
-          // eslint-disable-next-line no-bitwise
           events = ~~value;
           if (self.wasmSaxParser) {
             self.wasmSaxParser.parser(events);
@@ -353,7 +351,6 @@ const readString = (data: Uint8Array, offset: number, length: number): string =>
 };
 
 const readU32 = (uint8Array: Uint8Array, ptr: number): number =>
-  // eslint-disable-next-line no-bitwise
   (uint8Array[ptr + 3] << 24) | (uint8Array[ptr + 2] << 16) | (uint8Array[ptr + 1] << 8) | uint8Array[ptr];
 
 const readPosition = (uint8Array: Uint8Array, ptr: number = 0): Position => {
