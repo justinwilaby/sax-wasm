@@ -173,11 +173,11 @@ export class Tag extends Reader<Attribute[] | Text[] | Position | string | numbe
     }
     // starting location of the attribute block
     let ptr = readU32(this.data, this.ptr);
-    let numAttrs = readU32(this.data, ptr);
+    const numAttrs = readU32(this.data, ptr);
     ptr += 4;
     const attributes = [] as Attribute[];
     for (let i = 0; i < numAttrs; i++) {
-      let attrLen = readU32(this.data, ptr);
+      const attrLen = readU32(this.data, ptr);
       ptr += 4;
       attributes[i] = new Attribute(this.data, ptr);
       ptr += attrLen;
@@ -191,11 +191,11 @@ export class Tag extends Reader<Attribute[] | Text[] | Position | string | numbe
     }
     // starting location of the text nodes block
     let ptr = readU32(this.data, this.ptr + 4);
-    let numTextNodes = readU32(this.data, ptr);
+    const numTextNodes = readU32(this.data, ptr);
     const textNodes = [] as Text[];
     ptr += 4;
     for (let i = 0; i < numTextNodes; i++) {
-      let textLen = readU32(this.data, ptr);
+      const textLen = readU32(this.data, ptr);
       ptr += 4;
       textNodes[i] = new Text(this.data, ptr);
       ptr += textLen;
@@ -221,30 +221,28 @@ interface WasmSaxParser extends WebAssembly.Exports {
 }
 
 export interface SaxParserOptions {
-  highWaterMark: number
+  highWaterMark: number;
 }
 
-type TextDecoder = { decode: (input?: ArrayBufferView | ArrayBuffer, options?: { stream?: boolean }) => string; };
+type TextDecoder = { decode: (input?: ArrayBufferView | ArrayBuffer, options?: { stream?: boolean }) => string };
 
 export class SAXParser {
   public static textDecoder: TextDecoder; // Web only
 
-  public events: number;
+  public events?: number;
   public wasmSaxParser?: WasmSaxParser;
 
-  public eventHandler: (type: SaxEventType, detail: Detail) => void;
+  public eventHandler?: (type: SaxEventType, detail: Detail) => void;
   private readonly options: SaxParserOptions;
-  private writeBuffer: Uint8Array;
+  private writeBuffer?: Uint8Array;
 
   constructor(events = 0, options: SaxParserOptions = {highWaterMark: 32 * 1024}) {
     this.options = options;
     const self = this;
     Object.defineProperties(this, {
       events: {
-        get: function () {
-          return ~~events;
-        },
-        set: function (value: number) {
+        get: () => ~~events,
+        set: (value: number) => {
           events = ~~value;
           if (self.wasmSaxParser) {
             self.wasmSaxParser.parser(events);
@@ -255,6 +253,11 @@ export class SAXParser {
   }
 
   public write(chunk: Uint8Array): void {
+
+    if (!this.wasmSaxParser) {
+      return;
+    }
+
     const { write, memory } = this.wasmSaxParser;
 
     // Allocations within the WASM process
@@ -273,8 +276,8 @@ export class SAXParser {
   }
 
   public end(): void {
-    this.writeBuffer = null;
-    this.wasmSaxParser.end();
+    this.writeBuffer = undefined;
+    this.wasmSaxParser?.end();
   }
 
   public async prepareWasm(saxWasm: Uint8Array): Promise<boolean> {
@@ -287,7 +290,7 @@ export class SAXParser {
         event_listener: this.eventTrap
       }
     });
-    if (result) {
+    if (result && typeof this.events==='number') {
       const {parser} = this.wasmSaxParser = result.instance.exports as unknown as WasmSaxParser;
       parser(this.events);
       return true;
@@ -296,6 +299,10 @@ export class SAXParser {
   }
 
   public eventTrap = (event: number, ptr: number, len: number): void => {
+    if (!this.wasmSaxParser) {
+      return;
+    }
+
     const uint8array = new Uint8Array(this.wasmSaxParser.memory.buffer, ptr, len).slice();
 
     let detail: Detail;
@@ -326,11 +333,13 @@ export class SAXParser {
         throw new Error('No reader for this event type');
     }
 
-    this.eventHandler(event, detail);
-  }
+    if (this.eventHandler) {
+        this.eventHandler(event, detail);
+    }
+  };
 }
 
-function readString(data: Uint8Array, offset: number, length: number): string {
+const readString = (data: Uint8Array, offset: number, length: number): string => {
   const env = (global || window);
   // Node
   if ((env as any).Buffer !== undefined) {
@@ -339,14 +348,13 @@ function readString(data: Uint8Array, offset: number, length: number): string {
   // Web
   return (SAXParser.textDecoder || (SAXParser.textDecoder = new TextDecoder()))
     .decode(data.subarray(offset, offset + length));
-}
+};
 
-function readU32(uint8Array: Uint8Array, ptr: number): number {
-  return (uint8Array[ptr + 3] << 24) | (uint8Array[ptr + 2] << 16) | (uint8Array[ptr + 1] << 8) | uint8Array[ptr];
-}
+const readU32 = (uint8Array: Uint8Array, ptr: number): number =>
+  (uint8Array[ptr + 3] << 24) | (uint8Array[ptr + 2] << 16) | (uint8Array[ptr + 1] << 8) | uint8Array[ptr];
 
-function readPosition(uint8Array: Uint8Array, ptr: number = 0): Position {
+const readPosition = (uint8Array: Uint8Array, ptr: number = 0): Position => {
   const line = readU32(uint8Array, ptr);
   const character = readU32(uint8Array, ptr + 4);
   return new Position(line, character);
-}
+};
