@@ -10,7 +10,7 @@ describe('SaxWasm', () => {
     let _event: SaxEventType;
     let _data: Attribute[];
 
-    before(async () => {
+    beforeAll(async () => {
         parser = new SAXParser(SaxEventType.Comment | SaxEventType.Attribute | SaxEventType.OpenTag);
 
         parser.eventHandler = function (event: SaxEventType, data: Attribute) {

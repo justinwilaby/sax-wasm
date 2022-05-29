@@ -9,8 +9,8 @@ describe('When parsing JSX, the SaxWasm', () => {
   let parser: SAXParser;
   let _event: SaxEventType;
   let _data: Tag[];
-  
-  before(async () => {
+
+  beforeAll(async () => {
     parser = new SAXParser(SaxEventType.CloseTag);
     _data = [];
     _event = 0;

@@ -9,7 +9,7 @@ describe('When parsing XML, the SaxWasm', () => {
   let _event: SaxEventType;
   let _data: Text[];
 
-  before(async () => {
+  beforeAll(async () => {
     parser = new SAXParser(SaxEventType.Cdata);
     _data = [];
     _event = 0;

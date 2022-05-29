@@ -1,7 +1,7 @@
-import { SaxEventType, SAXParser } from '../../../lib/';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 import { deepStrictEqual } from  'assert';
+import { SaxEventType, SAXParser } from '../saxWasm';
 
 const saxWasm = readFileSync(resolve(__dirname, '../../../lib/sax-wasm.wasm'));
 describe('SaxWasm', () => {
