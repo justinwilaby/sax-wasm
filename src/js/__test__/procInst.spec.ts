@@ -10,7 +10,7 @@ describe('When parsing JSX, the SaxWasm', () => {
   let _event: SaxEventType;
   let _data: ProcInst;
 
-  before(async () => {
+  beforeAll(async () => {
     parser = new SAXParser(SaxEventType.ProcessingInstruction);
 
     parser.eventHandler = function (event, data) {

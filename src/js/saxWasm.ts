@@ -340,9 +340,8 @@ export class SAXParser {
 }
 
 const readString = (data: Uint8Array, offset: number, length: number): string => {
-  const env = (global || window);
   // Node
-  if ((env as any).Buffer !== undefined) {
+  if (globalThis.hasOwnProperty('Buffer')) {
     return Buffer.from(data.buffer, data.byteOffset + offset, length).toString();
   }
   // Web
