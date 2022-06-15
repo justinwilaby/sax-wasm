@@ -14,7 +14,7 @@
     "test:coveralls": "npm run test && nyc report --reporter=text-lcov | coveralls",
     "build:wasm": "rustc ./src/lib.rs -Clto -O --crate-type cdylib --target wasm32-unknown-unknown -o ./lib/sax-wasm.wasm",
     "bindgen": "wasm-bindgen lib/sax-wasm.wasm --out-dir lib/ --remove-name-section --no-typescript --out-name sax-wasm.wasm",
-    "build": "rollup -c && npm run build:wasm && npm run bindgen",
+    "build": "rollup -c && npm run build:wasm && npm run bindgen && tsc --emitDeclarationOnly",
     "benchmark": "node src/js/__test__/benchmark.js",
     "lint": "eslint src/js/ --ext .ts"
   },
