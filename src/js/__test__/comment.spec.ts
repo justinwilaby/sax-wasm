@@ -1,7 +1,7 @@
 import { Attribute, SaxEventType, SAXParser } from '../saxWasm'
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
-import { deepStrictEqual } from 'assert';
+import { deepStrictEqual, strictEqual } from 'assert';
 
 const saxWasm = readFileSync(resolve(__dirname, '../../../lib/sax-wasm.wasm'));
 
@@ -34,7 +34,7 @@ describe('SaxWasm', () => {
 
   <name name="test 2 attr">the plugin name</name>
 
-  <!-- name="test 3 attr" some comment -->
+  <!--name="test 3 attr" some comment-->
 
   <keywords name="test 4 attr">some,key,words</keywords>
 
@@ -50,5 +50,16 @@ describe('SaxWasm', () => {
         ];
         deepStrictEqual(_data.length, 7);
         _data.forEach((data, index) => deepStrictEqual('' + data.name, names[index]));
+    });
+
+    it('should contain the complete comment', () => {
+      parser.write(Buffer.from(`<!--name="test 3 attr" some comment--> <!-- name="test 3 attr" some comment -->`));
+      strictEqual(_data[0].value, 'name="test 3 attr" some comment');
+      strictEqual(_data[1].value, ' name="test 3 attr" some comment ');
+    });
+
+    it ('should allow for chars that look like comment endings but are not really an endings', () => {
+      parser.write(Buffer.from(`<!--name="test 3 attr" some comment -- > not an ending-->`));
+      strictEqual(_data[0].value, 'name="test 3 attr" some comment -- > not an ending');
     });
 });
