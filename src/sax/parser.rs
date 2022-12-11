@@ -255,6 +255,7 @@ impl SAXParser {
             "--" => {
                 self.state = State::Comment;
                 self.comment.start = (self.line, self.character - 4);
+                self.comment(grapheme);
                 false
             }
 
@@ -354,11 +355,6 @@ impl SAXParser {
     fn comment_ending(&mut self, grapheme: &str) {
         if grapheme == "-" {
             self.state = State::CommentEnded;
-            if self.events & Event::Comment as u32 != 0 {
-                let mut comment = mem::replace(&mut self.comment, Text::new((0, 0)));
-                comment.end = (self.line, self.character - 1);
-                (self.event_handler)(Event::Comment, &comment);
-            }
         } else {
             if self.events & Event::Comment as u32 != 0 {
                 self.comment.value.push('-');
@@ -371,12 +367,17 @@ impl SAXParser {
     fn comment_ended(&mut self, grapheme: &str) {
         if grapheme == ">" {
             if self.events & Event::Comment as u32 != 0 {
-                self.comment.value.push_str("--");
-                self.comment.value.push_str(grapheme);
+                let mut comment = mem::replace(&mut self.comment, Text::new((0, 0)));
+                comment.end = (self.line, self.character - 1);
+                (self.event_handler)(Event::Comment, &comment);
             }
             self.state = State::BeginWhitespace;
         } else {
-            self.new_text();
+            if self.events & Event::Comment as u32 != 0 {
+                self.comment.value.push_str("--");
+                self.comment.value.push_str(grapheme);
+            }
+            self.state = State::Comment;
         }
     }
 
@@ -831,6 +832,15 @@ mod tests {
                 break;
             }
         }
+        Ok(())
+    }
+    #[test]
+    fn test_comment() -> Result<()> {
+        let event_handler = |_event: Event, _data: &dyn Encode<Vec<u8>>| {};
+        let mut sax = SAXParser::new(event_handler);
+        let str = "<!--name='test 3 attr' some comment--> <-- name='test 3 attr' some comment -->";
+
+        sax.write(str.as_bytes());
         Ok(())
     }
     #[test]
