@@ -10,7 +10,7 @@ export declare class SaxEventType {
     static CloseTag: number;
     static Cdata: number;
 }
-export declare type Detail = Position | Attribute | Text | Tag | ProcInst;
+export type Detail = Position | Attribute | Text | Tag | ProcInst;
 export declare abstract class Reader<T = Detail> {
     protected data: Uint8Array;
     protected cache: {
@@ -84,7 +84,7 @@ interface WasmSaxParser extends WebAssembly.Exports {
 export interface SaxParserOptions {
     highWaterMark: number;
 }
-declare type TextDecoder = {
+type TextDecoder = {
     decode: (input?: ArrayBufferView | ArrayBuffer, options?: {
         stream?: boolean;
     }) => string;
@@ -99,6 +99,7 @@ export declare class SAXParser {
     constructor(events?: number, options?: SaxParserOptions);
     write(chunk: Uint8Array): void;
     end(): void;
+    prepareWasm(source: Response | Promise<Response>): Promise<boolean>;
     prepareWasm(saxWasm: Uint8Array): Promise<boolean>;
     eventTrap: (event: number, ptr: number, len: number) => void;
 }

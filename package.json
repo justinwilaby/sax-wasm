@@ -40,13 +40,12 @@
     "expect.js": "^0.3.1",
     "jest": "^28.1.0",
     "libxmljs": "^0.19.7",
-    "ltx": "^2.9.2",
-    "node-expat": "^2.4.0",
+    "ltx": "^3.0.0",
     "node-xml": "^1.0.2",
     "rollup": "^2.75.3",
     "sax": "^1.2.4",
     "ts-jest": "^28.0.2",
-    "ts-node": "9.0.0",
-    "typescript": "^4.6.4"
+    "ts-node": "^10.9.1",
+    "typescript": "^5.1.6"
   }
 }
