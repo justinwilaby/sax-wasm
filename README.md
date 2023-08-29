@@ -15,7 +15,7 @@ for speed and support for JSX syntax.
 Suitable for [LSP](https://langserver.org/) implementations, sax-wasm provides line numbers and character positions within the
 document for elements, attributes and text node which provides the raw building blocks for linting, transpilation and lexing.
 
-## Benchmarks (Node v16.14.0 / 2.7 GHz Quad-Core Intel Core i7)
+## Benchmarks (Node v18.16.1 / 2.7 GHz Quad-Core Intel Core i7)
 All parsers are tested using a large XML document (2.1 MB) containing a variety of elements and is streamed when supported
 by the parser. This attempts to recreate the best real-world use case for parsing XML. Other libraries test benchmarks using a
 very small XML fragment such as `<foo bar="baz">quux</foo>` which does not hit all code branches responsible for processing the
@@ -25,7 +25,6 @@ document and heavily skews the results in their favor.
 |--------------------------------------------------------------------------------------------|--------------------------:|:------:|:---------------:|
 | [sax-wasm](https://github.com/justinwilaby/sax-wasm)                                       |                     64.16 | ☑      | ☑               |
 | [sax-js](https://github.com/isaacs/sax-js)                                                 |                    155.77 | ☑      | ☑*              |
-| [node-expat](https://github.com/node-xmpp/node-expat)                                      |                    234.78 | ☐      | ☐               |
 | [libxmljs](https://github.com/polotek/libxmljs)                                            |                    274.95 | ☐      | ☐               |
 | [node-xml](https://github.com/dylang/node-xml)                                             |                    685.00 | ☑      | ☐               |
 <sub>*built for node but *should* run in the browser</sub>
@@ -68,17 +67,18 @@ parser.prepareWasm(saxWasmBuffer).then(ready => {
 });
 ```
 ## Usage for the web
-
+1. Instantiate and prepare the wasm for parsing
+2. Pipe the document stream to sax-wasm using [ReadableStream.getReader()](https://developer.mozilla.org/en-US/docs/Web/API/ReadableStream/getReader)
+**NOTE** This uses [WebAssembly.instantiateStreaming](https://developer.mozilla.org/en-US/docs/WebAssembly/JavaScript_interface/instantiateStreaming)
+under the hood to load the wasm.
 ```js
 import { SaxEventType, SAXParser } from 'sax-wasm';
 
 async function loadAndPrepareWasm() {
-  const saxWasmResponse = await fetch('./path/to/wasm/sax-wasm.wasm');
-  const saxWasmbuffer = await saxWasmResponse.arrayBuffer();
   const parser = new SAXParser(SaxEventType.Attribute | SaxEventType.OpenTag, {highWaterMark: 64 * 1024}); // 64k chunks
 
-  // Instantiate and prepare the wasm for parsing
-  const ready = await parser.prepareWasm(new Uint8Array(saxWasmbuffer));
+  const saxWasmResponse = fetch('./path/to/wasm/sax-wasm.wasm');
+  const ready = await parser.prepareWasm(saxWasmResponse);
   if (ready) {
     return parser;
   }
@@ -138,18 +138,18 @@ parser.events = SaxEventType.Text | SaxEventType.OpenTag | SaxEventType.Attribut
 ```
 Complete list of event/argument pairs:
 
-|Event                             |Mask          |Argument passed to handler                      |
-|----------------------------------|--------------|------------------------------------------------|
-|SaxEventType.Text                 |0b000000000001|text: [Text](src/js/saxWasm.ts#L106)            |
-|SaxEventType.ProcessingInstruction|0b000000000010|procInst: [Text](src/js/saxWasm.ts#L106)        |
-|SaxEventType.SGMLDeclaration      |0b000000000100|sgmlDecl: [Text](src/js/saxWasm.ts#L106)        |
-|SaxEventType.Doctype              |0b000000001000|doctype: [Text](src/js/saxWasm.ts#L106)         |
-|SaxEventType.Comment              |0b000000010000|comment: [Text](src/js/saxWasm.ts#L106)         |
-|SaxEventType.OpenTagStart         |0b000000100000|tag: [Tag](src/js/saxWasm.ts#L133)              |
-|SaxEventType.Attribute            |0b000001000000|attribute: [Attribute](src/js/saxWasm.ts#L49)   |
-|SaxEventType.OpenTag              |0b000010000000|tag: [Tag](src/js/saxWasm.ts#L133)              |
-|SaxEventType.CloseTag             |0b000100000000|tag: [Tag](src/js/saxWasm.ts#L133)              |
-|SaxEventType.CDATA                |0b001000000000|start: [Position](src/js/saxWasm.ts#L39)        |
+|Event                             |Mask          | Argument passed to handler                    |
+|----------------------------------|--------------|-----------------------------------------------|
+|SaxEventType.Text                 |0b000000000001| text: [Text](src/js/saxWasm.ts#L114)          |
+|SaxEventType.ProcessingInstruction|0b000000000010| procInst: [Text](src/js/saxWasm.ts#L114)      |
+|SaxEventType.SGMLDeclaration      |0b000000000100| sgmlDecl: [Text](src/js/saxWasm.ts#L114)      |
+|SaxEventType.Doctype              |0b000000001000| doctype: [Text](src/js/saxWasm.ts#L114)       |
+|SaxEventType.Comment              |0b000000010000| comment: [Text](src/js/saxWasm.ts#L114)       |
+|SaxEventType.OpenTagStart         |0b000000100000| tag: [Tag](src/js/saxWasm.ts#L141)            |
+|SaxEventType.Attribute            |0b000001000000| attribute: [Attribute](src/js/saxWasm.ts#L59) |
+|SaxEventType.OpenTag              |0b000010000000| tag: [Tag](src/js/saxWasm.ts#L141)            |
+|SaxEventType.CloseTag             |0b000100000000| tag: [Tag](src/js/saxWasm.ts#L141)            |
+|SaxEventType.CDATA                |0b001000000000| start: [Position](src/js/saxWasm.ts#L39)      |
 
 ## Speeding things up on large documents
 The speed of the sax-wasm parser is incredibly fast and can parse very large documents in a blink of an eye. Although
