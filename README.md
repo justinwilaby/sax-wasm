@@ -60,7 +60,7 @@ parser.prepareWasm(saxWasmBuffer).then(ready => {
     // stream from a file in the current directory
     const readable = fs.createReadStream(path.resolve(path.resolve('.', 'path/to/document.xml')), options);
     readable.on('data', (chunk) => {
-      parser.write(chunk);
+      parser.write(chunk.value);
     });
     readable.on('end', () => parser.end());
   }
@@ -106,7 +106,7 @@ function processDocument(parser) {
       if (chunk.done) {
         return parser.end();
       }
-      parser.write(chunk);
+      parser.write(chunk.value);
     }
   });
 }
