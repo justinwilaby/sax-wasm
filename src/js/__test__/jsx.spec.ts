@@ -75,5 +75,19 @@ describe('When parsing JSX, the SaxWasm', () => {
 
     deepStrictEqual(_data[0].attributes[0].type,AttributeType.JSX);
     deepStrictEqual(_data[1].attributes[0].type,AttributeType.JSX);
+  });
+
+  it('should correctly parse simple JSX expressions', () => {
+    parser.write(Buffer.from('<foo>{bar < baz ? <div></div> : <></>}</foo>'));
+    deepStrictEqual(_data[0].name,'div');
+    deepStrictEqual(_data[1].name,'');
+    deepStrictEqual(_data[2].name,'foo');
+
+    deepStrictEqual(_data[2].textNodes.length, 4);
+
+    deepStrictEqual(_data[2].textNodes[0].value, '{bar ');
+    deepStrictEqual(_data[2].textNodes[1].value, '< baz ? ');
+    deepStrictEqual(_data[2].textNodes[2].value, ' : ');
+    deepStrictEqual(_data[2].textNodes[3].value, '}');
   })
 });
