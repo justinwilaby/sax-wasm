@@ -160,9 +160,6 @@ impl SAXParser {
     }
 
     fn open_waka(&mut self, grapheme: &str) {
-        if SAXParser::is_whitespace(grapheme) {
-            return;
-        }
 
         if is_name_start_char(grapheme) {
             self.state = State::OpenTag;
@@ -848,6 +845,16 @@ mod tests {
         let event_handler = |_event: Event, _data: &dyn Encode<Vec<u8>>| {};
         let mut sax = SAXParser::new(event_handler);
         let str = "🏴󠁧󠁢󠁥󠁮󠁧󠁿📚📚<div href=\"./123/123\">hey there</div>";
+
+        sax.write(str.as_bytes());
+        Ok(())
+    }
+    #[test]
+    fn parse_jsx_expression() -> Result<()> {
+        let event_handler = |_event: Event, _data: &dyn Encode<Vec<u8>>| {};
+        let mut sax = SAXParser::new(event_handler);
+        sax.events = Event::Text as u32;
+        let str = "<foo>{bar < baz ? <div></div> : <></>}</foo>";
 
         sax.write(str.as_bytes());
         Ok(())
