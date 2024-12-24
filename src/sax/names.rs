@@ -1,4 +1,4 @@
-use sax::utils::to_char_code;
+use super::utils::to_char_code;
 
 pub fn is_name_start_char(grapheme: &str) -> bool {
     let c = to_char_code(grapheme);

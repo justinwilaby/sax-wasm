@@ -1,15 +1,15 @@
 use core::mem;
 use std::slice;
 
-use sax::parser::*;
-use sax::tag::Encode;
+use crate::sax::parser::*;
+use crate::sax::tag::*;
 
 static mut SAX: *mut SAXParser = 0 as *mut SAXParser;
 
 #[no_mangle]
 pub unsafe extern "C" fn parser(events: u32) {
     if SAX == 0 as *mut SAXParser {
-        let eh: EventListener = |event: Event, data: &dyn Encode<Vec<u8>>| {
+        let eh: EventListener = |event: Event, data: Entity| {
             let encoded_data = data.encode();
             event_listener(event as u32, encoded_data.as_ptr(), encoded_data.len());
         };
