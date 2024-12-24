@@ -1,12 +1,13 @@
 import { readFileSync, createReadStream } from 'fs';
 import { resolve as pathResolve } from 'path';
-import {notStrictEqual} from 'assert';
-import { SaxEventType, SAXParser } from '../saxWasm';
+import {deepEqual, equal, notStrictEqual} from 'assert';
+import { Detail, SaxEventType, SAXParser } from '../saxWasm';
+import { Readable } from 'stream';
 
 const saxWasm = readFileSync(pathResolve(__dirname, '../../../lib/sax-wasm.wasm'));
 const options = {highWaterMark: 32 * 1024};
 describe('When parsing XML, the SaxWasm', () => {
-  let parser;
+  let parser: SAXParser;
   let _event;
   let _data;
   beforeAll(async () => {
@@ -33,7 +34,7 @@ describe('When parsing XML, the SaxWasm', () => {
     await new Promise(resolve => {
       const readable = createReadStream(pathResolve(__dirname + '/xml.xml'), options);
       readable.on('data', (chunk) => {
-        parser.write(chunk);
+        parser.write(chunk as Uint8Array);
       });
       readable.on('end', resolve);
     });
@@ -44,7 +45,7 @@ describe('When parsing XML, the SaxWasm', () => {
       const readable = createReadStream(pathResolve(__dirname + '/xml.xml'), options);
       let t = process.hrtime();
       readable.on('data', (chunk) => {
-        parser.write(chunk);
+        parser.write(chunk as Uint8Array);
       });
       readable.on('end', () => {
         let [s, n] = process.hrtime(t);
@@ -53,5 +54,27 @@ describe('When parsing XML, the SaxWasm', () => {
       });
     });
     notStrictEqual(_data.length, 0);
+  });
+
+  it ('events should be equivalent between the generator and event_handler', async () => {
+    const readable = createReadStream(pathResolve(__dirname + '/xml.xml'), options);
+    const webReadable = Readable.toWeb(readable);
+    const eventsFromGenerator: [SaxEventType, Detail][] = [];
+    for await (const [event, detail] of parser.parse(webReadable.getReader())) {
+      eventsFromGenerator.push([event,detail]);
+    }
+
+    const eventsFromEventHandler: [SaxEventType, Detail][] = [];
+    parser.eventHandler = function (event, data) {
+      eventsFromEventHandler.push([event, data]);
+    };
+    await new Promise(resolve => {
+      const readable = createReadStream(pathResolve(__dirname + '/xml.xml'), options);
+      readable.on('data', (chunk) => {
+        parser.write(chunk as Uint8Array);
+      });
+      readable.on('end', resolve);
+    });
+    deepEqual(eventsFromGenerator, eventsFromEventHandler);
   });
 });
