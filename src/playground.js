@@ -1,12 +1,12 @@
 const fs = require('fs');
 const path = require('path');
-
+const SaxeventType = require('../lib/cjs/index.js').SaxEventType;
 async function runProgram() {
   let result;
 
   function event_listener(event, ptr, len) {
     const linearMemory = result.instance.exports.memory;
-    const memBuff = Buffer.from(linearMemory.buffer, ptr, len);
+    const memBuff = Buffer.from(linearMemory.buffer, ptr);
     const rawString = memBuff.toString();
     // Note that this is low level encoded data
     // See SAXParser.eventTrap for examples on how this is decoded
@@ -31,7 +31,7 @@ async function runProgram() {
   const wasm = fs.readFileSync(path.resolve(__dirname, '../lib/sax-wasm.wasm'));
   result = await WebAssembly.instantiate(wasm, imports);
   const linearMemory = result.instance.exports.memory;
-  result.instance.exports.parser(0b111111111111);
+  result.instance.exports.parser(0b1111111111);
 
   const document = `export class Sample {
   render() {

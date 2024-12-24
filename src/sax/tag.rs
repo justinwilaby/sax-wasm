@@ -174,6 +174,24 @@ impl Encode<Vec<u8>> for ProcInst {
     }
 }
 
+pub enum Entity<'a> {
+  Attribute(&'a mut Attribute),
+  ProcInst(&'a mut ProcInst),
+  Tag(&'a mut Tag),
+  Text(&'a mut Text),
+}
+
+impl<'a> Encode<Vec<u8>> for Entity<'a> {
+  fn encode(&self) -> Vec<u8> {
+      match self {
+        Entity::Attribute(a) => a.encode(),
+        Entity::ProcInst(p) =>p.encode(),
+        Entity::Tag(t) => t.encode(),
+        Entity::Text(t) => t.encode()
+      }
+  }
+}
+
 pub trait Encode<T>
 where
     T: IntoIterator,

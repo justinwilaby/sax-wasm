@@ -284,18 +284,16 @@ export class SAXParser {
   public async prepareWasm(saxWasm: Uint8Array): Promise<boolean>;
   public async prepareWasm(saxWasm: Uint8Array | Response | Promise<Response>): Promise<boolean> {
     let result: WebAssembly.WebAssemblyInstantiatedSource;
+    const env = {
+      memory: new WebAssembly.Memory({initial: 10, shared: true, maximum: 150} as WebAssembly.MemoryDescriptor),
+      table: new WebAssembly.Table({initial: 1, element: 'anyfunc'} as WebAssembly.TableDescriptor),
+      event_listener: this.eventTrap
+    };
+
     if (saxWasm instanceof Uint8Array) {
-      result = await WebAssembly.instantiate(saxWasm, {
-        env: {
-          memoryBase: 0,
-          tableBase: 0,
-          memory: new WebAssembly.Memory({initial: 10} as WebAssembly.MemoryDescriptor),
-          table: new WebAssembly.Table({initial: 1, element: 'anyfunc'} as WebAssembly.TableDescriptor),
-          event_listener: this.eventTrap
-        }
-      });
+      result = await WebAssembly.instantiate(saxWasm, {env});
     } else {
-      result = await WebAssembly.instantiateStreaming(saxWasm);
+      result = await WebAssembly.instantiateStreaming(saxWasm, {env});
     }
 
     if (result && typeof this.events === 'number') {
@@ -311,7 +309,8 @@ export class SAXParser {
       return;
     }
 
-    const uint8array = new Uint8Array(this.wasmSaxParser.memory.buffer, ptr, len).slice();
+    const array = new Uint8Array(this.wasmSaxParser.memory.buffer, ptr, len);
+    const uint8array = new Uint8Array(array);
 
     let detail: Detail;
     switch (event) {
