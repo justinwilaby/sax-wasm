@@ -16,7 +16,7 @@ import { Readable } from 'node:stream';
 async function benchmarkSaxWasmParser() {
     const saxWasm = readFileSync(resolve(new URL('../../../lib/sax-wasm.wasm', import.meta.url).pathname));
 
-    const parser = new SAXParser(SaxEventType.OpenTag, {highWaterMark: 64 * 1024});
+    const parser = new SAXParser(SaxEventType.OpenTag);
     parser.eventHandler = () => void 0;
     await parser.prepareWasm(saxWasm);
 

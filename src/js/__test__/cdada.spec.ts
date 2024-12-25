@@ -52,4 +52,20 @@ describe('When parsing XML, the SaxWasm', () => {
     deepStrictEqual(JSON.parse(JSON.stringify(end)), { line: 0, character: 82 });
     strictEqual(value, ' did you know "x < y" & "z > y"? so I guess that means that z > x ');
   });
+
+  it("should support empty cdata", () => {
+    parser.write(
+      Buffer.from(`<div>
+        <div>
+          <![CDATA[]]>
+        </div>
+        <div>
+          <![CDATA[something]]>
+        </div>
+      </div>`),
+    );
+    const [empty, something] = _data;
+    strictEqual(empty.value, "");
+    strictEqual(something.value, "something");
+  });
 });

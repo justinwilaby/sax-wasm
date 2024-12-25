@@ -47,8 +47,7 @@ const saxPath = path.resolve(__dirname, 'node_modules/sax-wasm/lib/sax-wasm.wasm
 const saxWasmBuffer = fs.readFileSync(saxPath);
 
 // Instantiate
-const options = { highWaterMark: 32 * 1024 }; // 32k chunks
-const parser = new SAXParser(SaxEventType.Attribute | SaxEventType.OpenTag, options);
+const parser = new SAXParser(SaxEventType.Attribute | SaxEventType.OpenTag);
 
 // Instantiate and prepare the wasm for parsing
 const ready = await parser.prepareWasm(saxWasmBuffer);
@@ -79,8 +78,7 @@ import { SaxEventType, SAXParser } from 'sax-wasm';
 const response = fetch('path/to/sax-wasm.wasm');
 
 // Instantiate
-const options = { highWaterMark: 32 * 1024 }; // 32k chunks
-const parser = new SAXParser(SaxEventType.Attribute | SaxEventType.OpenTag, options);
+const parser = new SAXParser(SaxEventType.Attribute | SaxEventType.OpenTag);
 
 // Instantiate and prepare the wasm for parsing
 const ready = await parser.prepareWasm(response);
@@ -164,8 +162,6 @@ Constructs new SaxParser instance with the specified events bitmask and options
 ### Parameters
 
 - `events` - A number representing a bitmask of events that should be reported by the parser.
-- `options` - When specified, the `highWaterMark` option is used to prepare the parser for the expected size of each chunk
-provided by the stream. The parser will throw if chunks written to it are larger.
 
 ### Methods
 

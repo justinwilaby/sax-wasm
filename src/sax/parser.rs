@@ -240,8 +240,8 @@ impl SAXParser {
                 }
                 // Store these only if we're interested in CloseTag events
                 if len != 0 && self.events & Event::CloseTag as u32 != 0 {
-                  self.tags[len - 1].text_nodes.push(text);
-              }
+                    self.tags[len - 1].text_nodes.push(text);
+                }
             }
             self.new_tag();
         }
@@ -250,8 +250,13 @@ impl SAXParser {
     fn sgml_decl(&mut self, grapheme: &str) {
         let is_sgml_char = match &self.sgml_decl.value as &str {
             sgml if ascii_icompare("[cdata[", sgml) == true => {
-                self.state = State::Cdata;
-                self.cdata.value.push_str(grapheme);
+                // Empty cdata
+                if grapheme == "]" {
+                    self.state = State::CdataEnding;
+                } else {
+                    self.state = State::Cdata;
+                    self.cdata.value.push_str(grapheme);
+                }
                 self.cdata.start = (self.line, self.character - 8);
                 false
             }
@@ -403,7 +408,7 @@ impl SAXParser {
     }
 
     fn cdata_ending_2(&mut self, grapheme: &str) {
-        if grapheme == ">" && self.cdata.value.len() != 0 {
+        if grapheme == ">" {
             self.new_text();
             if self.events & Event::Cdata as u32 != 0 {
                 let mut cdata = mem::replace(&mut self.cdata, Text::new((0, 0)));
@@ -871,6 +876,23 @@ mod tests {
         let mut sax = SAXParser::new(event_handler);
         sax.events = Event::Text as u32;
         let str = "<foo>{bar < baz ? <div></div> : <></>}</foo>";
+
+        sax.write(str.as_bytes());
+        Ok(())
+    }
+    #[test]
+    fn parse_empty_cdata() -> Result<()> {
+        let event_handler = |_event: Event, _data: Entity| {};
+        let mut sax = SAXParser::new(event_handler);
+        sax.events = Event::Cdata as u32;
+        let str = "<div>
+        <div>
+          <![CDATA[]]>
+        </div>
+        <div>
+          <![CDATA[something]]>
+        </div>
+      </div>";
 
         sax.write(str.as_bytes());
         Ok(())
