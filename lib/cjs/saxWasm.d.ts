@@ -97,6 +97,7 @@ export declare class SAXParser {
     private readonly options;
     private writeBuffer?;
     constructor(events?: number, options?: SaxParserOptions);
+    parse(reader: ReadableStreamDefaultReader<Uint8Array>): AsyncGenerator<[SaxEventType, Detail]>;
     write(chunk: Uint8Array): void;
     end(): void;
     prepareWasm(source: Response | Promise<Response>): Promise<boolean>;

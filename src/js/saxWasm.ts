@@ -68,13 +68,13 @@ export class Attribute extends Reader<Text | AttributeType> {
   }
 
   public toJSON(): { [prop: string]: Text | AttributeType } {
-    const {name, value, type} = this;
-    return {name, value, type};
+    const { name, value, type } = this;
+    return { name, value, type };
   }
 
   public toString(): string {
-    const {name, value} = this;
-    return `${ name }="${ value }"`;
+    const { name, value } = this;
+    return `${name}="${value}"`;
   }
 }
 
@@ -101,13 +101,13 @@ export class ProcInst extends Reader<Position | Text> {
   }
 
   public toJSON(): { [p: string]: Position | Text } {
-    const {start, end, target, content} = this;
-    return {start, end, target, content};
+    const { start, end, target, content } = this;
+    return { start, end, target, content };
   }
 
   public toString(): string {
-    const {target, content} = this;
-    return `<? ${ target } ${ content } ?>`;
+    const { target, content } = this;
+    return `<? ${target} ${content} ?>`;
   }
 }
 
@@ -129,8 +129,8 @@ export class Text extends Reader<string | Position> {
   }
 
   public toJSON(): { [prop: string]: string | Position } {
-    const {start, end, value} = this;
-    return {start, end, value};
+    const { start, end, value } = this;
+    return { start, end, value };
   }
 
   public toString(): string {
@@ -204,8 +204,8 @@ export class Tag extends Reader<Attribute[] | Text[] | Position | string | numbe
   }
 
   public toJSON(): { [p: string]: Attribute[] | Text[] | Position | string | number | boolean } {
-    const {openStart, openEnd, closeStart, closeEnd, name, attributes, textNodes, selfClosing} = this;
-    return {openStart, openEnd, closeStart, closeEnd, name, attributes, textNodes, selfClosing};
+    const { openStart, openEnd, closeStart, closeEnd, name, attributes, textNodes, selfClosing } = this;
+    return { openStart, openEnd, closeStart, closeEnd, name, attributes, textNodes, selfClosing };
   }
 
   public get value() {
@@ -236,7 +236,7 @@ export class SAXParser {
   private readonly options: SaxParserOptions;
   private writeBuffer?: Uint8Array;
 
-  constructor(events = 0, options: SaxParserOptions = {highWaterMark: 32 * 1024}) {
+  constructor(events = 0, options: SaxParserOptions = { highWaterMark: 32 * 1024 }) {
     this.options = options;
     const self = this;
     Object.defineProperties(this, {
@@ -250,6 +250,21 @@ export class SAXParser {
         }, configurable: false, enumerable: true
       }
     });
+  }
+
+  public async *parse(reader: ReadableStreamDefaultReader<Uint8Array>): AsyncGenerator<[SaxEventType, Detail]> {
+    let eventAggregator: [SaxEventType, Detail][] | null = [];
+    this.eventHandler = function (event, detail) { eventAggregator.push([event, detail]); };
+
+    while (true) {
+      const chunk = await reader.read();
+      if (chunk.done) return this.end();
+      this.write(chunk.value);
+      if (eventAggregator.length) {
+        yield* eventAggregator;
+        eventAggregator.length = 0;
+      }
+    }
   }
 
   public write(chunk: Uint8Array): void {
@@ -285,19 +300,19 @@ export class SAXParser {
   public async prepareWasm(saxWasm: Uint8Array | Response | Promise<Response>): Promise<boolean> {
     let result: WebAssembly.WebAssemblyInstantiatedSource;
     const env = {
-      memory: new WebAssembly.Memory({initial: 10, shared: true, maximum: 150} as WebAssembly.MemoryDescriptor),
-      table: new WebAssembly.Table({initial: 1, element: 'anyfunc'} as WebAssembly.TableDescriptor),
+      memory: new WebAssembly.Memory({ initial: 10, shared: true, maximum: 150 } as WebAssembly.MemoryDescriptor),
+      table: new WebAssembly.Table({ initial: 1, element: 'anyfunc' } as WebAssembly.TableDescriptor),
       event_listener: this.eventTrap
     };
 
     if (saxWasm instanceof Uint8Array) {
-      result = await WebAssembly.instantiate(saxWasm, {env});
+      result = await WebAssembly.instantiate(saxWasm, { env });
     } else {
-      result = await WebAssembly.instantiateStreaming(saxWasm, {env});
+      result = await WebAssembly.instantiateStreaming(saxWasm, { env });
     }
 
     if (result && typeof this.events === 'number') {
-      const {parser} = this.wasmSaxParser = result.instance.exports as unknown as WasmSaxParser;
+      const { parser } = this.wasmSaxParser = result.instance.exports as unknown as WasmSaxParser;
       parser(this.events);
       return true;
     }
@@ -341,7 +356,7 @@ export class SAXParser {
     }
 
     if (this.eventHandler) {
-        this.eventHandler(event, detail);
+      this.eventHandler(event, detail);
     }
   };
 }

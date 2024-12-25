@@ -11,6 +11,7 @@ import nodeXml from 'node-xml';
 // import expat from 'node-expat';
 import sax from 'sax';
 import LtxSaxParser from 'ltx/lib/parsers/ltx.js';
+import { Readable } from 'node:stream';
 
 async function benchmarkSaxWasmParser() {
     const saxWasm = readFileSync(resolve(new URL('../../../lib/sax-wasm.wasm', import.meta.url).pathname));
