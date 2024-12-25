@@ -220,9 +220,6 @@ interface WasmSaxParser extends WebAssembly.Exports {
   end: () => void;
 }
 
-export interface SaxParserOptions {
-  highWaterMark: number;
-}
 
 type TextDecoder = { decode: (input?: ArrayBufferView | ArrayBuffer, options?: { stream?: boolean }) => string };
 
@@ -233,11 +230,9 @@ export class SAXParser {
   public wasmSaxParser?: WasmSaxParser;
 
   public eventHandler?: (type: SaxEventType, detail: Detail) => void;
-  private readonly options: SaxParserOptions;
   private writeBuffer?: Uint8Array;
 
-  constructor(events = 0, options: SaxParserOptions = { highWaterMark: 32 * 1024 }) {
-    this.options = options;
+  constructor(events = 0) {
     const self = this;
     Object.defineProperties(this, {
       events: {

@@ -81,9 +81,6 @@ interface WasmSaxParser extends WebAssembly.Exports {
     write: (pointer: number, length: number) => void;
     end: () => void;
 }
-export interface SaxParserOptions {
-    highWaterMark: number;
-}
 type TextDecoder = {
     decode: (input?: ArrayBufferView | ArrayBuffer, options?: {
         stream?: boolean;
@@ -94,10 +91,9 @@ export declare class SAXParser {
     events?: number;
     wasmSaxParser?: WasmSaxParser;
     eventHandler?: (type: SaxEventType, detail: Detail) => void;
-    private readonly options;
     private writeBuffer?;
-    constructor(events?: number, options?: SaxParserOptions);
-    parse(reader: ReadableStreamDefaultReader<Uint8Array>): AsyncGenerator<[number, Detail]>;
+    constructor(events?: number);
+    parse(reader: ReadableStreamDefaultReader<Uint8Array>): AsyncGenerator<[SaxEventType, Detail]>;
     write(chunk: Uint8Array): void;
     end(): void;
     prepareWasm(source: Response | Promise<Response>): Promise<boolean>;
