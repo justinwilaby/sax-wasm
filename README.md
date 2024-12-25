@@ -15,18 +15,18 @@ for speed and support for JSX syntax.
 Suitable for [LSP](https://langserver.org/) implementations, sax-wasm provides line numbers and character positions within the
 document for elements, attributes and text node which provides the raw building blocks for linting, transpilation and lexing.
 
-## Benchmarks (Node v18.16.1 / 2.7 GHz Quad-Core Intel Core i7)
-All parsers are tested using a large XML document (2.1 MB) containing a variety of elements and is streamed when supported
+## Benchmarks (Node v22.12.0 / 2.7 GHz Quad-Core Intel Core i7)
+All parsers are tested using a large XML document (1 MB) containing a variety of elements and is streamed when supported
 by the parser. This attempts to recreate the best real-world use case for parsing XML. Other libraries test benchmarks using a
 very small XML fragment such as `<foo bar="baz">quux</foo>` which does not hit all code branches responsible for processing the
 document and heavily skews the results in their favor.
 
 | Parser with Advanced Features                                                              | time/ms (lower is better) | JS     | Runs in browser |
 |--------------------------------------------------------------------------------------------|--------------------------:|:------:|:---------------:|
-| [sax-wasm](https://github.com/justinwilaby/sax-wasm)                                       |                     64.16 | ☑      | ☑               |
-| [sax-js](https://github.com/isaacs/sax-js)                                                 |                    155.77 | ☑      | ☑*              |
-| [libxmljs](https://github.com/polotek/libxmljs)                                            |                    274.95 | ☐      | ☐               |
-| [node-xml](https://github.com/dylang/node-xml)                                             |                    685.00 | ☑      | ☐               |
+| [sax-wasm](https://github.com/justinwilaby/sax-wasm)                                       |                    19.20 | ☑      | ☑               |
+| [sax-js](https://github.com/isaacs/sax-js)                                                 |                    64.23 | ☑      | ☑*              |
+| [ltx](https://github.com/xmppjs/ltx)                                                       |                    21.54 | ☑      | ☑               |
+| [node-xml](https://github.com/dylang/node-xml)                                             |                    87.06 | ☑      | ☐               |
 <sub>*built for node but *should* run in the browser</sub>
 
 ## Installation
@@ -35,80 +35,67 @@ npm i -s sax-wasm
 ```
 ## Usage in Node
 ```js
-const fs = require('fs');
-const path = require('path');
-const { SaxEventType, SAXParser } = require('sax-wasm');
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { SaxEventType, SAXParser } from 'sax-wasm';
 
 // Get the path to the WebAssembly binary and load it
-const saxPath = require.resolve('sax-wasm/lib/sax-wasm.wasm');
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const saxPath = path.resolve(__dirname, 'node_modules/sax-wasm/lib/sax-wasm.wasm');
 const saxWasmBuffer = fs.readFileSync(saxPath);
 
 // Instantiate
-const options = {highWaterMark: 32 * 1024}; // 32k chunks
+const options = { highWaterMark: 32 * 1024 }; // 32k chunks
 const parser = new SAXParser(SaxEventType.Attribute | SaxEventType.OpenTag, options);
-parser.eventHandler = (event, data) => {
-  if (event === SaxEventType.Attribute) {
-    // process attribute
-  } else {
-    // process open tag
-  }
-};
 
 // Instantiate and prepare the wasm for parsing
-parser.prepareWasm(saxWasmBuffer).then(ready => {
-  if (ready) {
-    // stream from a file in the current directory
-    const readable = fs.createReadStream(path.resolve(path.resolve('.', 'path/to/document.xml')), options);
-    readable.on('data', (chunk) => {
-      parser.write(chunk);
-    });
-    readable.on('end', () => parser.end());
+const ready = await parser.prepareWasm(saxWasmBuffer);
+if (ready) {
+  // stream from a file in the current directory
+  const readable = fs.createReadStream(path.resolve(__dirname, 'path/to/document.xml'), options);
+  const webReadable = Readable.toWeb(readable);
+
+  for await (const [event, detail] of parser.parse(webReadable.getReader())) {
+    if (event === SaxEventType.Attribute) {
+      // process attribute
+    } else {
+      // process open tag
+    }
   }
-});
+}
 ```
 ## Usage for the web
 1. Instantiate and prepare the wasm for parsing
 2. Pipe the document stream to sax-wasm using [ReadableStream.getReader()](https://developer.mozilla.org/en-US/docs/Web/API/ReadableStream/getReader)
+
 **NOTE** This uses [WebAssembly.instantiateStreaming](https://developer.mozilla.org/en-US/docs/WebAssembly/JavaScript_interface/instantiateStreaming)
 under the hood to load the wasm.
 ```js
 import { SaxEventType, SAXParser } from 'sax-wasm';
 
-async function loadAndPrepareWasm() {
-  const parser = new SAXParser(SaxEventType.Attribute | SaxEventType.OpenTag, {highWaterMark: 64 * 1024}); // 64k chunks
+// Fetch the WebAssembly binary
+const response = fetch('path/to/sax-wasm.wasm');
 
-  const saxWasmResponse = fetch('./path/to/wasm/sax-wasm.wasm');
-  const ready = await parser.prepareWasm(saxWasmResponse);
-  if (ready) {
-    return parser;
-  }
-}
+// Instantiate
+const options = { highWaterMark: 32 * 1024 }; // 32k chunks
+const parser = new SAXParser(SaxEventType.Attribute | SaxEventType.OpenTag, options);
 
-loadAndPrepareWasm().then(processDocument);
+// Instantiate and prepare the wasm for parsing
+const ready = await parser.prepareWasm(response);
+if (ready) {
+  // Fetch the XML document
+  const xmlResponse = await fetch('path/to/document.xml');
+  const reader = xmlResponse.body.getReader();
 
-function processDocument(parser) {
-  parser.eventHandler = (event, data) => {
-    if (event === SaxEventType.Attribute ) {
-        // process attribute
-      } else {
-        // process open tag
-      }
-  }
-
-  fetch('path/to/document.xml').then(async response => {
-    if (!response.ok) {
-      // fail in some meaningful way
+  for await (const [event, detail] of parser.parse(reader)) {
+    if (event === SaxEventType.Attribute) {
+      // process attribute
+    } else {
+      // process open tag
     }
-    // Get the reader to stream the document to sax-wasm
-    const reader = response.body.getReader();
-    while(true) {
-      const chunk = await reader.read();
-      if (chunk.done) {
-        return parser.end();
-      }
-      parser.write(chunk);
-    }
-  });
+  }
 }
 ```
 
@@ -146,7 +133,7 @@ Complete list of event/argument pairs:
 |SaxEventType.Doctype              |0b000000001000| doctype: [Text](src/js/saxWasm.ts#L114)       |
 |SaxEventType.Comment              |0b000000010000| comment: [Text](src/js/saxWasm.ts#L114)       |
 |SaxEventType.OpenTagStart         |0b000000100000| tag: [Tag](src/js/saxWasm.ts#L141)            |
-|SaxEventType.Attribute            |0b000001000000| attribute: [Attribute](src/js/saxWasm.ts#L59) |
+|SaxEventType.Attribute            |0b000001000000| attribute: [Attribute](src/js/saxWasm.ts#L54) |
 |SaxEventType.OpenTag              |0b000010000000| tag: [Tag](src/js/saxWasm.ts#L141)            |
 |SaxEventType.CloseTag             |0b000100000000| tag: [Tag](src/js/saxWasm.ts#L141)            |
 |SaxEventType.CDATA                |0b001000000000| start: [Position](src/js/saxWasm.ts#L39)      |
