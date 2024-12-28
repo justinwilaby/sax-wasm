@@ -4,10 +4,10 @@ pub fn is_name_start_char(grapheme: &str) -> bool {
     let c = to_char_code(grapheme);
     // https://www.w3.org/TR/REC-xml/#NT-NameStartChar
     match c {
-        0x3A => true,          // :
-        0x41..=0x5A => true,   // A-Z
-        0x5F => true,          // _
-        0x61..=0x7A => true,   // a-z
+        0x61..=0x7A => true, // a-z
+        0x41..=0x5A => true, // A-Z
+        0x3A => true,        // :
+        0x5F => true,        // _
         0xC0..=0xD6 => true,   // À-Ö
         0xD8..=0xF6 => true,   // Ø-ö
         0xF8..=0x02FF => true, // ø-˿
