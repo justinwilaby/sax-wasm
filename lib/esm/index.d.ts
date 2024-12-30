@@ -1,1 +1,1 @@
-export * from './saxWasm';
+export * from './saxWasm.js';
