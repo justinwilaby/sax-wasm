@@ -8,9 +8,10 @@ import { SaxEventType, SAXParser } from '../../../lib/esm/index.js';
 import nodeXml from 'node-xml';
 import expat from 'node-expat';
 import sax from 'sax';
-import LtxSaxParser from 'ltx/lib/parsers/ltx.js';
+import LtxSaxParser from 'ltx/lib/Parser.js';
 import { SaxesParser } from 'saxes'
 
+// Remove variations in disk access latency
 const xml = new Uint8Array(readFileSync(resolve(new URL('./xml.xml', import.meta.url).pathname)));
 const chunkLen = 64 * 1024;
 
@@ -85,7 +86,7 @@ async function benchmarkSaxParser() {
 }
 
 async function benchmarkLtxParser() {
-  const parser = new LtxSaxParser();
+  const parser = new LtxSaxParser({Parser: SaxesParser});
   let t = process.hrtime();
 
   let offset = 0;

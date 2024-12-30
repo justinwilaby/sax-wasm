@@ -21,5 +21,4 @@ lto = "fat"            # Enable Link Time Optimization (LTO)
 codegen-units = 1      # Single codegen unit for better optimization
 panic = "abort"        # Reduce binary size by disabling unwinding
 strip = "symbols"      # Remove debug symbols for smaller binaries
-
 [target.wasm32-unknown-unknown]

@@ -10,12 +10,42 @@ use super::utils::ascii_icompare;
 use super::utils::is_quote;
 use super::utils::is_whitespace;
 
+/// Byte Order Mark (BOM) for UTF-8 encoded files.
 static BOM: &'static [u8; 3] = &[0xef, 0xbb, 0xbf];
+
+/// Characters that indicate the end of a tag name.
 static TAG_NAME_END: &'static [u8; 6] = &[b' ', b'\n', b'\t', b'\r', b'>', b'/'];
+
+/// Characters that indicate the end of an attribute name.
 static ATTRIBUTE_NAME_END: &'static [u8; 3] = &[b' ', b'=', b'>'];
 
+/// Type alias for the event listener function.
 pub type EventListener = fn(event: Event, data: Entity);
 
+/// Represents a SAX (Simple API for XML) parser.
+///
+/// This struct provides functionality to parse XML data using the SAX approach,
+/// where events are generated for different parts of the XML document.
+///
+/// # Fields
+///
+/// * `events` - A bitmask representing the events to be generated.
+/// * `tags` - A vector of tags encountered during parsing.
+/// * `state` - The current state of the parser.
+/// * `cdata` - The current CDATA section being parsed.
+/// * `comment` - The current comment being parsed.
+/// * `doctype` - The current DOCTYPE declaration being parsed.
+/// * `text` - The current text node being parsed.
+/// * `close_tag_name` - The name of the tag being closed.
+/// * `proc_inst` - The current processing instruction being parsed.
+/// * `quote` - The current quote character being used.
+/// * `sgml_decl` - The current SGML declaration being parsed.
+/// * `attribute` - The current attribute being parsed.
+/// * `tag` - The current tag being parsed.
+/// * `brace_ct` - The current brace count.
+/// * `event_handler` - The event handler function.
+/// * `leftover_bytes` - Bytes left over from the previous parse.
+/// * `end_pos` - The end position of the current parse.
 pub struct SAXParser {
     pub events: u32,
     pub tags: Vec<Tag>,
@@ -39,6 +69,27 @@ pub struct SAXParser {
 }
 
 impl SAXParser {
+    /// Creates a new `SAXParser` with the specified event handler.
+    ///
+    /// # Arguments
+    ///
+    /// * `event_handler` - The event handler function to be called for each event.
+    ///
+    /// # Returns
+    ///
+    /// * A new `SAXParser` instance.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use sax_wasm::sax::parser::Event;
+    /// use sax_wasm::sax::tag::Entity;
+    /// use sax_wasm::sax::parser::EventListener;
+    /// use sax_wasm::sax::parser::SAXParser;
+    ///
+    /// let event_handler = |event: Event, data: Entity| { /* handle event */ };
+    /// let parser = SAXParser::new(event_handler);
+    /// ```
     pub fn new(event_handler: EventListener) -> SAXParser {
         SAXParser {
             event_handler,
@@ -57,13 +108,37 @@ impl SAXParser {
             attribute: Attribute::new(),
             text: Text::new([0, 0]),
             brace_ct: 0,
-            leftover_bytes: Vec::new(),
+            leftover_bytes: Vec::with_capacity(3),
             end_pos: [0, 0],
         }
     }
 
+    /// Writes data to the parser.
+    ///
+    /// This function takes a byte slice as input and processes it using the SAX parser.
+    /// It handles leftover bytes from the previous parse and updates the parser's state
+    /// accordingly.
+    ///
+    /// # Arguments
+    ///
+    /// * `source` - A byte slice representing the data to be parsed.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use sax_wasm::sax::parser::Event;
+    /// use sax_wasm::sax::tag::Entity;
+    /// use sax_wasm::sax::parser::EventListener;
+    /// use sax_wasm::sax::parser::SAXParser;
+    ///
+    /// let event_handler: EventListener = |event: Event, data: Entity| {
+    ///
+    /// };
+    /// let mut parser = SAXParser::new(event_handler);
+    /// parser.write(b"<tag>content</tag>");
+    /// ```
     pub fn write(&mut self, source: &[u8]) {
-        let mut bytes = mem::replace(&mut self.leftover_bytes, Vec::new());
+        let mut bytes = mem::replace(&mut self.leftover_bytes, Vec::with_capacity(3));
         bytes.extend_from_slice(source);
 
         let mut gc = GraphemeClusters::new(bytes.as_slice());
@@ -81,6 +156,26 @@ impl SAXParser {
         self.leftover_bytes.extend_from_slice(gc.get_remaining_bytes());
     }
 
+    /// Resets the parser to its initial state.
+    ///
+    /// This function flushes any remaining text at the end of the file (EOF) and resets
+    /// the parser's state to its initial state.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use sax_wasm::sax::parser::Event;
+    /// use sax_wasm::sax::parser::SAXParser;
+    /// use sax_wasm::sax::tag::Entity;
+    /// use sax_wasm::sax::parser::EventListener;
+    ///
+    /// let event_handler: EventListener = |event: Event, data: Entity| {
+    ///
+    /// };
+    /// let mut parser = SAXParser::new(event_handler);
+    /// parser.write(b"<tag>content</tag>");
+    /// parser.identity();
+    /// ```
     pub fn identity(&mut self) {
         // flush text at the EOF
         self.flush_text(self.end_pos[0], self.end_pos[1] + 1);
@@ -90,6 +185,17 @@ impl SAXParser {
         self.end_pos = [0, 0];
     }
 
+
+    /// Processes a grapheme cluster.
+    ///
+    /// This function processes a grapheme cluster based on the current state of the parser.
+    /// It updates the parser's state and handles different types of XML constructs.
+    ///
+    /// # Arguments
+    ///
+    /// * `gc` - A mutable reference to the `GraphemeClusters` iterator.
+    /// * `current` - A reference to the current `GraphemeResult`.
+    ///
     fn process_grapheme(&mut self, gc: &mut GraphemeClusters, current: &GraphemeResult) {
         match self.state {
             State::OpenTag => self.open_tag(gc, current),

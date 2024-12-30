@@ -7,13 +7,12 @@ import { Tag } from '../saxWasm';
 const saxWasm = readFileSync(resolve(__dirname, '../../../lib/sax-wasm.wasm'));
 describe('When parsing JSX, the SaxWasm', () => {
   let parser: SAXParser;
-  let _event: SaxEventType;
+  let _event: SaxEventType | undefined;
   let _data: Tag[];
 
   beforeAll(async () => {
     parser = new SAXParser(SaxEventType.CloseTag);
     _data = [];
-    _event = 0;
 
     parser.eventHandler = function (event, data) {
       _event = event;

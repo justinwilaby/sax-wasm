@@ -4,18 +4,47 @@ use std::str;
 
 use super::utils::grapheme_len;
 
+/// Represents an iterator over grapheme clusters in a byte slice.
+///
+/// This struct provides functionality to iterate over grapheme clusters in a byte slice,
+/// keeping track of the current position, line, and character indices.
+///
+/// # Fields
+///
+/// * `bytes` - A reference to the byte slice being iterated over.
+/// * `byte_len` - The length of the byte slice.
+/// * `byte_indices` - A vector of byte indices where the vector index is the grapheme cluster index.
+/// * `line` - The current line number.
+/// * `character` - The current character index.
+/// * `cursor` - The current position in the byte slice.
 pub struct GraphemeClusters<'a> {
     bytes: &'a [u8],
     byte_len: usize,
-    cursor: usize,
-    // A vector of byte indices where the vec
-    // index is the grapheme cluster index
     byte_indices: RefCell<Vec<usize>>,
     pub line: u32,
     pub character: u32,
+    pub cursor: usize,
 }
 
 impl GraphemeClusters<'_> {
+    /// Creates a new `GraphemeClusters` iterator for the given byte slice.
+    ///
+    /// # Arguments
+    ///
+    /// * `bytes` - A reference to the byte slice to iterate over.
+    ///
+    /// # Returns
+    ///
+    /// * A new `GraphemeClusters` iterator.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use sax_wasm::sax::grapheme_iterator::GraphemeClusters;
+    ///
+    /// let bytes = "hello".as_bytes();
+    /// let gc = GraphemeClusters::new(bytes);
+    /// ```
     pub fn new(bytes: &[u8]) -> GraphemeClusters {
         GraphemeClusters {
             bytes,
@@ -27,6 +56,23 @@ impl GraphemeClusters<'_> {
         }
     }
 
+    /// Returns the number of grapheme clusters in the byte slice.
+    ///
+    /// This function iterates over the byte slice and counts the number of grapheme clusters.
+    ///
+    /// # Returns
+    ///
+    /// * The number of grapheme clusters in the byte slice.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use sax_wasm::sax::grapheme_iterator::GraphemeClusters;
+    ///
+    /// let bytes = "hello".as_bytes();
+    /// let gc = GraphemeClusters::new(bytes);
+    /// assert_eq!(gc.len(), 5);
+    /// ```
     pub fn len(&self) -> usize {
         let mut len = 0;
         let mut idx = 0;
@@ -39,6 +85,29 @@ impl GraphemeClusters<'_> {
         len
     }
 
+    /// Takes grapheme clusters until an ASCII character is encountered.
+    ///
+    /// This function iterates over the byte slice, taking grapheme clusters until one of the specified
+    /// ASCII characters is encountered. It updates the cursor, line, and character indices accordingly.
+    ///
+    /// # Arguments
+    ///
+    /// * `chars` - A slice of ASCII characters to stop at.
+    ///
+    /// # Returns
+    ///
+    /// * An `Option` containing a `GraphemeResult` with the taken grapheme clusters, or `None` if the end of the byte slice is reached.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use sax_wasm::sax::grapheme_iterator::GraphemeClusters;
+    ///
+    /// let bytes = "hello world".as_bytes();
+    /// let mut gc = GraphemeClusters::new(bytes);
+    /// let result = gc.take_until_ascii(&[b' ']);
+    /// assert!(result.is_some());
+    /// ```
     pub fn take_until_ascii(&mut self, chars: &[u8]) -> Option<GraphemeResult<'_>> {
         let mut cursor = self.cursor;
         let start = self.cursor;
@@ -71,6 +140,25 @@ impl GraphemeClusters<'_> {
         Some((s, line, character))
     }
 
+    /// Peeks at the next grapheme cluster without advancing the cursor.
+    ///
+    /// This function returns the next grapheme cluster in the byte slice without advancing the cursor.
+    /// It updates the line and character indices accordingly.
+    ///
+    /// # Returns
+    ///
+    /// * An `Option` containing a `GraphemeResult` with the next grapheme cluster, or `None` if the end of the byte slice is reached.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use sax_wasm::sax::grapheme_iterator::GraphemeClusters;
+    ///
+    /// let bytes = "hello".as_bytes();
+    /// let mut gc = GraphemeClusters::new(bytes);
+    /// let result = gc.peek();
+    /// assert!(result.is_some());
+    /// ```
     pub fn peek(&mut self) -> Option<GraphemeResult<'_>> {
         let next_byte = unsafe { *self.bytes.get_unchecked(self.cursor) };
         let len = grapheme_len(next_byte);
@@ -81,24 +169,37 @@ impl GraphemeClusters<'_> {
         }
         let mut line = self.line;
         let mut character = self.character;
-        if next_byte == 10 {
+        if next_byte == b'\n' {
             line += 1;
             character = 0;
         } else {
-            character += if len != 4 { 1 } else { 2 };
+            character += if len == 4 { 1 } else { 2 };
         }
         let s = unsafe { str::from_utf8_unchecked(&self.bytes.get_unchecked(self.cursor..end)) };
         Some((s, line, character))
     }
 
-    /// Converts a grapheme cluster range to a slice range
+    /// Converts a grapheme cluster range to a slice range.
     ///
-    /// example:
+    /// This function converts a range of grapheme clusters to a corresponding byte slice range.
+    ///
+    /// # Arguments
+    ///
+    /// * `range` - A range of grapheme cluster indices.
+    ///
+    /// # Returns
+    ///
+    /// * A `Range<usize>` representing the byte slice range.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use sax_wasm::sax::grapheme_iterator::GraphemeClusters;
+    ///
     /// let s = "🐶 my dog's name is Spot 🐶";
-    /// let gc = GraphemeClusters::new(s);
-    ///
-    /// assert_eq!(s[gc.get_slice_range(0..8)], "🐶 my dog")
-    ///
+    /// let gc = GraphemeClusters::new(s.as_bytes());
+    /// assert_eq!(&s[gc.get_slice_range(0..8)], "🐶 my dog");
+    /// ```
     pub fn get_slice_range(&self, range: Range<usize>) -> Range<usize> {
         let mut byte_indices = self.byte_indices.borrow_mut();
         let mut largest_idx = byte_indices.len() - 1;
@@ -129,6 +230,9 @@ impl GraphemeClusters<'_> {
         unsafe { self.bytes.get_unchecked(self.cursor..) }
     }
 }
+/// Represents the result of a grapheme cluster operation.
+///
+/// This type alias represents a tuple containing a string slice, a line number, and a character index.
 pub type GraphemeResult<'a> = (&'a str, u32, u32);
 /// An iterator for grapheme clusters in a utf-8 formatted string
 ///
