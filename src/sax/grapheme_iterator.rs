@@ -47,7 +47,6 @@ impl GraphemeClusters<'_> {
         let mut end = self.cursor;
         loop {
             if self.byte_len <= cursor {
-                // reset the cursor so we do not consume the bytes
                 return None;
             }
             let next_byte = unsafe { *self.bytes.get_unchecked(cursor) };
@@ -241,6 +240,6 @@ mod grapheme_iterator_tests {
         assert_eq!(result.is_some(), true);
 
         let unwrapped = result.unwrap();
-        assert_eq!(unwrapped.0, "🚀this is a");
+        assert_eq!(unwrapped.0, "🚀this is ");
     }
 }

@@ -28,7 +28,7 @@
     "build:cjs": "tsc --module commonjs --outDir lib/cjs --target esnext",
     "benchmark": "node src/js/__test__/benchmark.mjs",
     "lint": "eslint src/js/ --ext .ts",
-    "layout": "cargo +nightly rustc -- -Zprint-type-sizes"
+    "layout": "rm -r target && cargo +nightly rustc -- -Zprint-type-sizes"
   },
   "keywords": [
     "XML",

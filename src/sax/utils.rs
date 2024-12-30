@@ -23,7 +23,7 @@ pub fn uint_to_string(mut uint: u32) -> String {
     }
     s
 }
-
+#[inline(always)]
 pub fn ascii_icompare(expected: &str, test: &str) -> bool {
     if expected.len() != test.len() {
         return false;
@@ -36,7 +36,7 @@ pub fn ascii_icompare(expected: &str, test: &str) -> bool {
     }
     true
 }
-
+#[inline(always)]
 pub fn to_char_code(grapheme: &str) -> u32 {
     let bytes = grapheme.as_bytes();
     unsafe {
@@ -63,19 +63,33 @@ pub fn to_char_code(grapheme: &str) -> u32 {
 }
 #[inline(always)]
 pub fn is_whitespace(grapheme: &str) -> bool {
-    grapheme == " " || grapheme == "\n" || grapheme == "\t" || grapheme == "\r"
+    let byte = grapheme.as_bytes()[0];
+    byte == b' ' || byte == b'\n' || byte == b'\t' || byte == b'\r'
 }
 #[inline(always)]
 pub fn is_quote(grapheme: &str) -> bool {
-    grapheme == "\"" || grapheme == "'"
+    let byte = grapheme.as_bytes()[0];
+    byte == b'"' || byte == b'\''
 }
 #[inline(always)]
 pub fn grapheme_len(byte: u8) -> usize {
-  if byte < 128 { return 1 } // 1-byte sequence (ASCII)
-    match byte {
-        0xC0..=0xDF => 2, // 2-byte sequence
-        0xE0..=0xEF => 3, // 3-byte sequence
-        0xF0..=0xF7 => 4, // 4-byte sequence
-        _ => 1,           // Invalid byte, treat as single byte
+    if byte < 128 { // 1-byte sequence (ASCII)
+        return 1;
     }
+    if byte < 224 {
+      return 2;
+    }
+    if byte < 240 {
+      return 3;
+    }
+    if byte < 248 {
+      return 4;
+    }
+    1
+}
+#[inline(always)]
+pub fn u32_to_u8(arr: &[u32]) -> &[u8] {
+  unsafe {
+      std::slice::from_raw_parts(arr.as_ptr() as *const u8, arr.len() * 4)
+  }
 }

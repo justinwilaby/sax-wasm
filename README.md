@@ -1,7 +1,7 @@
 # SAX (Simple API for XML) for WebAssembly
 
-[![Build Status](https://travis-ci.org/justinwilaby/sax-wasm.svg?branch=master)](https://travis-ci.org/justinwilaby/sax-wasm)
-[![Coverage Status](https://coveralls.io/repos/github/justinwilaby/sax-wasm/badge.svg?branch=master)](https://coveralls.io/github/justinwilaby/sax-wasm?branch=master)
+![Rust Build Status](https://github.com/justinwilaby/sax-wasm/actions/workflows/rust.yml/badge.svg)
+![TS build status](https://github.com/justinwilaby/sax-wasm/actions/workflows/ci.yml/badge.svg)
 
 *When you absolutely, positively have to have the fastest parser in the room, accept no substitutes.*
 

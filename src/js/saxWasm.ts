@@ -317,12 +317,7 @@ export class SAXParser {
   }
 
   public eventTrap = (event: number, ptr: number, len: number): void => {
-    if (!this.wasmSaxParser) {
-      return;
-    }
-
-    const array = new Uint8Array(this.wasmSaxParser.memory.buffer, ptr, len);
-    const uint8array = new Uint8Array(array);
+    const uint8array = new Uint8Array(this.wasmSaxParser.memory.buffer, ptr, len).slice();
 
     let detail: Detail;
     switch (event) {

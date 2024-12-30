@@ -1,5 +1,6 @@
 <root xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
   xsi:noNamespaceSchemaLocation="xml.xsd">
+  <empty></empty>
   <army>1682443131</army>
   <continent>large</continent>
   <ability lift="away">
