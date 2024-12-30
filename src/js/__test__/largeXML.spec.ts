@@ -11,7 +11,7 @@ describe('When parsing XML, the SaxWasm', () => {
   let _event;
   let _data;
   beforeAll(async () => {
-    parser = new SAXParser(SaxEventType.OpenTag | SaxEventType.CloseTag, options);
+    parser = new SAXParser(SaxEventType.OpenTag | SaxEventType.CloseTag);
     _data = [];
     _event = 0;
 
