@@ -20,6 +20,7 @@ use super::utils::grapheme_len;
 pub struct GraphemeClusters<'a> {
     bytes: &'a [u8],
     byte_len: usize,
+    bytes_needed: usize,
     byte_indices: RefCell<Vec<usize>>,
     pub line: u32,
     pub character: u32,
@@ -49,6 +50,7 @@ impl GraphemeClusters<'_> {
         GraphemeClusters {
             bytes,
             byte_len: bytes.len(),
+            bytes_needed: 0,
             cursor: 0,
             byte_indices: RefCell::new(vec![0]),
             line: 0,
@@ -226,8 +228,20 @@ impl GraphemeClusters<'_> {
         start_idx..end_idx
     }
 
-    pub fn get_remaining_bytes(&self) -> &[u8] {
-        unsafe { self.bytes.get_unchecked(self.cursor..) }
+    pub fn get_remaining_bytes(&self) -> Option<([u8;3], usize, usize)> {
+        if self.cursor == self.byte_len {
+            return None;
+        }
+        let bytes = unsafe { self.bytes.get_unchecked(self.cursor..)};
+        let mut remaining_bytes: [u8; 3] = [0, 0, 0];
+        let len = bytes.len();
+        let mut i = len;
+        while i > 0 {
+          i -= 1;
+          remaining_bytes[i] = unsafe { *bytes.get_unchecked(i) };
+        }
+
+        Some((remaining_bytes, len, self.bytes_needed))
     }
 }
 /// Represents the result of a grapheme cluster operation.
@@ -256,6 +270,7 @@ impl<'a> Iterator for GraphemeClusters<'a> {
         let end = cursor + len;
 
         if end > byte_len {
+            self.bytes_needed = end - byte_len;
             return None;
         }
 

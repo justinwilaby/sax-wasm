@@ -64,7 +64,7 @@ pub struct SAXParser {
     brace_ct: u32,
 
     event_handler: EventListener,
-    leftover_bytes: Vec<u8>,
+    leftover_bytes_info: Option<([u8; 3], usize, usize)>,
     end_pos: [u32; 2],
 }
 
@@ -108,7 +108,7 @@ impl SAXParser {
             attribute: Attribute::new(),
             text: Text::new([0, 0]),
             brace_ct: 0,
-            leftover_bytes: Vec::with_capacity(3),
+            leftover_bytes_info: None,
             end_pos: [0, 0],
         }
     }
@@ -138,22 +138,42 @@ impl SAXParser {
     /// parser.write(b"<tag>content</tag>");
     /// ```
     pub fn write(&mut self, source: &[u8]) {
-        let mut bytes = mem::replace(&mut self.leftover_bytes, Vec::with_capacity(3));
-        bytes.extend_from_slice(source);
-
-        let mut gc = GraphemeClusters::new(bytes.as_slice());
+        let mut gc = GraphemeClusters::new(source);
         gc.line = self.end_pos[0];
         gc.character = self.end_pos[1];
 
+        if let Some(bytes_info) = self.leftover_bytes_info {
+          gc.character += if bytes_info.1 == 4 {2} else {1};
+          self.process_dangling_bytes(&mut gc, source, bytes_info);
+        }
+
         loop {
-            if let Some(current) =  gc.next() {
+            if let Some(current) = gc.next() {
                 self.process_grapheme(&mut gc, &current);
             } else {
-              break;
+                break;
             }
         }
         self.end_pos = [gc.line, gc.character];
-        self.leftover_bytes.extend_from_slice(gc.get_remaining_bytes());
+        self.leftover_bytes_info = gc.get_remaining_bytes();
+    }
+
+    #[cold]
+    fn process_dangling_bytes(&mut self, gc: &mut GraphemeClusters, source: &[u8], bytes_info: ([u8;3], usize, usize)) {
+      let (mut bytes, bytes_len, bytes_needed) = bytes_info;
+          let grapheme_len = bytes_len + bytes_needed;
+          let bytes_slice = unsafe { source.get_unchecked(0..bytes_needed)};
+
+          match bytes_needed {
+            2 => bytes[bytes_len + 1] = bytes_slice[0],
+            3 => {
+              bytes[bytes_len + 1] = bytes_slice[0];
+              bytes[bytes_len + 2] = bytes_slice[1];
+            },
+            _ => {}
+          }
+          let grapheme = unsafe { str::from_utf8_unchecked(bytes.get_unchecked(0..grapheme_len))};
+         self.process_grapheme(gc, &(grapheme, 0, 0));
     }
 
     /// Resets the parser to its initial state.
@@ -184,7 +204,6 @@ impl SAXParser {
         self.brace_ct = 0;
         self.end_pos = [0, 0];
     }
-
 
     /// Processes a grapheme cluster.
     ///
@@ -278,43 +297,44 @@ impl SAXParser {
     }
 
     fn open_tag(&mut self, gc: &mut GraphemeClusters, current: &GraphemeResult) {
-      if is_name_char(current.0) {
-          self.tag.name.extend_from_slice(current.0.as_bytes());
-          if let Some(unwrapped) = gc.take_until_ascii(TAG_NAME_END) {
-              self.tag.name.extend_from_slice(unwrapped.0.as_bytes());
-          }
-      } else {
-          if self.events & Event::OpenTagStart as u32 != 0 {
-              (self.event_handler)(Event::OpenTagStart, Entity::Tag(&mut self.tag));
-          }
-          match current.0 {
-              ">" => self.process_open_tag(false, current),
-              "/" => self.state = State::OpenTagSlash,
-              _ => self.state = State::Attrib,
-          }
-      }
-  }
+        if is_name_char(current.0) {
+            self.tag.name.extend_from_slice(current.0.as_bytes());
+            if let Some(unwrapped) = gc.take_until_ascii(TAG_NAME_END) {
+                self.tag.name.extend_from_slice(unwrapped.0.as_bytes());
+            }
+            return;
+        }
+
+        if self.events & Event::OpenTagStart as u32 != 0 {
+            (self.event_handler)(Event::OpenTagStart, Entity::Tag(&mut self.tag));
+        }
+        match current.0 {
+            ">" => self.process_open_tag(false, current),
+            "/" => self.state = State::OpenTagSlash,
+            _ => self.state = State::Attrib,
+        }
+    }
 
     fn begin_white_space(&mut self, current: &GraphemeResult) {
         if current.0 == "<" {
             self.new_tag(current);
-        } else {
-            self.new_text(current);
-            self.write_text(current.0.as_bytes());
+            return;
         }
+        self.new_text(current);
+        self.write_text(current.0.as_bytes());
     }
 
     fn text(&mut self, gc: &mut GraphemeClusters, current: &GraphemeResult) {
         if current.0 != "<" {
             self.write_text(current.0.as_bytes());
             let text_result = gc.take_until_ascii(&[b'<']);
-            if  let Some(text) = text_result {
+            if let Some(text) = text_result {
                 self.write_text(text.0.as_bytes());
             }
-        } else {
-            self.flush_text(current.1, current.2);
-            self.new_tag(current);
+            return;
         }
+        self.flush_text(current.1, current.2);
+        self.new_tag(current);
     }
 
     fn flush_text(&mut self, line: u32, character: u32) {
@@ -444,29 +464,29 @@ impl SAXParser {
     fn comment(&mut self, gc: &mut GraphemeClusters, current: &GraphemeResult) {
         if current.0 == "-" {
             self.state = State::CommentEnding;
-        } else {
-            let mut comment_str: &str = &"";
-            let comment_result = gc.take_until_ascii(&[b'-']);
-            if let Some(comment) = comment_result {
-                comment_str = comment.0;
-            }
-            if self.events & Event::Comment as u32 != 0 {
-                self.comment.value.extend_from_slice(current.0.as_bytes());
-                self.comment.value.extend_from_slice(comment_str.as_bytes());
-            }
+            return;
+        }
+        let mut comment_str: &str = &"";
+        let comment_result = gc.take_until_ascii(&[b'-']);
+        if let Some(comment) = comment_result {
+            comment_str = comment.0;
+        }
+        if self.events & Event::Comment as u32 != 0 {
+            self.comment.value.extend_from_slice(current.0.as_bytes());
+            self.comment.value.extend_from_slice(comment_str.as_bytes());
         }
     }
 
     fn comment_ending(&mut self, current: &GraphemeResult) {
         if current.0 == "-" {
             self.state = State::CommentEnded;
-        } else {
-            if self.events & Event::Comment as u32 != 0 {
-                self.comment.value.push(b'-');
-                self.comment.value.extend_from_slice(current.0.as_bytes());
-            }
-            self.state = State::Comment;
+            return;
         }
+        if self.events & Event::Comment as u32 != 0 {
+            self.comment.value.push(b'-');
+            self.comment.value.extend_from_slice(current.0.as_bytes());
+        }
+        self.state = State::Comment;
     }
 
     fn comment_ended(&mut self, current: &GraphemeResult) {
@@ -477,36 +497,36 @@ impl SAXParser {
                 (self.event_handler)(Event::Comment, Entity::Text(&mut comment));
             }
             self.state = State::BeginWhitespace;
-        } else {
-            if self.events & Event::Comment as u32 != 0 {
-                self.comment.value.extend_from_slice("--".as_bytes());
-                self.comment.value.extend_from_slice(current.0.as_bytes());
-            }
-            self.state = State::Comment;
+            return;
         }
+        if self.events & Event::Comment as u32 != 0 {
+            self.comment.value.extend_from_slice("--".as_bytes());
+            self.comment.value.extend_from_slice(current.0.as_bytes());
+        }
+        self.state = State::Comment;
     }
 
     fn cdata(&mut self, gc: &mut GraphemeClusters, current: &GraphemeResult) {
         if current.0 == "]" {
             self.state = State::CdataEnding;
-        } else {
-            self.cdata.value.extend_from_slice(current.0.as_bytes());
-            let cdata_result = gc.take_until_ascii(&[b']']);
-            if let Some(cdata) = cdata_result {
-              self.cdata.value.extend_from_slice(cdata.0.as_bytes());
-            }
-            gc.next(); // skip the ] char
-            self.state = State::CdataEnding;
+            return;
         }
+        self.cdata.value.extend_from_slice(current.0.as_bytes());
+        let cdata_result = gc.take_until_ascii(&[b']']);
+        if let Some(cdata) = cdata_result {
+            self.cdata.value.extend_from_slice(cdata.0.as_bytes());
+        }
+        gc.next(); // skip the ] char
+        self.state = State::CdataEnding;
     }
 
     fn cdata_ending(&mut self, current: &GraphemeResult) {
         if current.0 == "]" {
             self.state = State::CdataEnding2;
-        } else {
-            self.state = State::Cdata;
-            self.cdata.value.extend_from_slice(current.0.as_bytes());
+            return;
         }
+        self.state = State::Cdata;
+        self.cdata.value.extend_from_slice(current.0.as_bytes());
     }
 
     fn cdata_ending_2(&mut self, current: &GraphemeResult) {
@@ -542,7 +562,10 @@ impl SAXParser {
             self.state = State::ProcInstValue;
             return;
         }
-        self.proc_inst.target.value.extend_from_slice(current.0.as_bytes());
+        self.proc_inst
+            .target
+            .value
+            .extend_from_slice(current.0.as_bytes());
     }
 
     fn proc_inst_value(&mut self, current: &GraphemeResult) {
@@ -557,7 +580,10 @@ impl SAXParser {
             self.state = State::ProcInstEnding;
             self.proc_inst.content.end = [current.1, current.2 - 1];
         } else {
-            self.proc_inst.content.value.extend_from_slice(current.0.as_bytes());
+            self.proc_inst
+                .content
+                .value
+                .extend_from_slice(current.0.as_bytes());
         }
     }
 
@@ -572,20 +598,23 @@ impl SAXParser {
                     Entity::ProcInst(&mut proc_inst),
                 );
             }
-        } else {
-            self.proc_inst.content.value.push(b'?');
-            self.proc_inst.content.value.extend_from_slice(current.0.as_bytes());
-            self.state = State::ProcInstValue;
+            return;
         }
+        self.proc_inst.content.value.push(b'?');
+        self.proc_inst
+            .content
+            .value
+            .extend_from_slice(current.0.as_bytes());
+        self.state = State::ProcInstValue;
     }
 
     fn open_tag_slash(&mut self, current: &GraphemeResult) {
         if current.0 == ">" {
             self.process_open_tag(true, current);
             self.process_close_tag(current);
-        } else {
-            self.state = State::Attrib;
+            return;
         }
+        self.state = State::Attrib;
     }
 
     fn attribute(&mut self, current: &GraphemeResult) {
@@ -619,8 +648,14 @@ impl SAXParser {
             }
             _ => {
                 if let Some(attribute_name) = gc.take_until_ascii(ATTRIBUTE_NAME_END) {
-                  self.attribute.name.value.extend_from_slice(current.0.as_bytes());
-                  self.attribute.name.value.extend_from_slice(attribute_name.0.as_bytes());
+                    self.attribute
+                        .name
+                        .value
+                        .extend_from_slice(current.0.as_bytes());
+                    self.attribute
+                        .name
+                        .value
+                        .extend_from_slice(attribute_name.0.as_bytes());
                 };
             }
         }
@@ -631,21 +666,21 @@ impl SAXParser {
             return;
         }
         match current.0 {
-          "=" => self.state = State::AttribValue,
-          "/" => {
-            self.process_attribute();
-            self.state = State::OpenTagSlash;
-          }
-          ">" => {
-            self.process_attribute();
-            self.process_open_tag(false, current);
-          }
-          _ => {
-            self.process_attribute(); // new Attribute struct created
-            self.attribute.name.value = Vec::from(current.0);
-            self.attribute.name.start = [current.1, current.2 - 1];
-            self.state = State::AttribName;
-          }
+            "=" => self.state = State::AttribValue,
+            "/" => {
+                self.process_attribute();
+                self.state = State::OpenTagSlash;
+            }
+            ">" => {
+                self.process_attribute();
+                self.process_open_tag(false, current);
+            }
+            _ => {
+                self.process_attribute(); // new Attribute struct created
+                self.attribute.name.value = Vec::from(current.0);
+                self.attribute.name.start = [current.1, current.2 - 1];
+                self.state = State::AttribName;
+            }
         }
     }
 
@@ -663,16 +698,24 @@ impl SAXParser {
             self.brace_ct += 1;
         } else {
             self.state = State::AttribValueUnquoted;
-            self.attribute.value.value.extend_from_slice(current.0.as_bytes());
+            self.attribute
+                .value
+                .value
+                .extend_from_slice(current.0.as_bytes());
         }
     }
 
     fn attribute_value_quoted(&mut self, gc: &mut GraphemeClusters, current: &GraphemeResult) {
-
         if let Some(attribute_value) = gc.take_until_ascii(&[self.quote]) {
-          self.attribute.value.value.extend_from_slice(current.0.as_bytes());
-          self.attribute.value.value.extend_from_slice(attribute_value.0.as_bytes());
-          self.attribute.value.end = [attribute_value.1, attribute_value.2];
+            self.attribute
+                .value
+                .value
+                .extend_from_slice(current.0.as_bytes());
+            self.attribute
+                .value
+                .value
+                .extend_from_slice(attribute_value.0.as_bytes());
+            self.attribute.value.end = [attribute_value.1, attribute_value.2];
         }
 
         gc.next(); // skip the last quote
@@ -696,16 +739,18 @@ impl SAXParser {
 
     fn attribute_value_unquoted(&mut self, current: &GraphemeResult) {
         if current.0 != ">" && !is_whitespace(current.0) {
-            self.attribute.value.value.extend_from_slice(current.0.as_bytes());
+            self.attribute
+                .value
+                .value
+                .extend_from_slice(current.0.as_bytes());
             return;
+        }
+        self.attribute.value.end = [current.1, current.2 - 1];
+        self.process_attribute();
+        if current.0 == ">" {
+            self.process_open_tag(false, current);
         } else {
-            self.attribute.value.end = [current.1, current.2 - 1];
-            self.process_attribute();
-            if current.0 == ">" {
-                self.process_open_tag(false, current);
-            } else {
-                self.state = State::Attrib;
-            }
+            self.state = State::Attrib;
         }
     }
 
@@ -720,7 +765,8 @@ impl SAXParser {
         } else if is_name_char(current.0) {
             self.close_tag_name.extend_from_slice(current.0.as_bytes());
             if let Some(close_tag) = gc.take_until_ascii(&[b'>']) {
-              self.close_tag_name.extend_from_slice(close_tag.0.as_bytes());
+                self.close_tag_name
+                    .extend_from_slice(close_tag.0.as_bytes());
             }
         } else {
             self.state = State::CloseTagSawWhite;
@@ -737,11 +783,12 @@ impl SAXParser {
 
     fn process_attribute(&mut self) {
         let mut attr = mem::replace(&mut self.attribute, Attribute::new());
-        if self.events & Event::Attribute as u32 != 0 {
+        let attribute_event = self.events & Event::Attribute as u32 != 0;
+        if attribute_event {
             (self.event_handler)(Event::Attribute, Entity::Attribute(&mut attr));
         }
         // Store them only if we're interested in Open and Close tag events
-        if self.events & Event::Attribute as u32 != 0 || self.events & Event::CloseTag as u32 != 0 {
+        if attribute_event || self.events & Event::CloseTag as u32 != 0 {
             self.tag.attributes.push(attr);
         }
     }
@@ -817,16 +864,23 @@ impl SAXParser {
         } else if current.0 == "{" {
             self.brace_ct += 1;
         }
+
         if self.brace_ct == 0 {
             self.attribute.value.end = [current.1, current.2 - 1];
             self.process_attribute();
             self.state = State::AttribValueClosed;
-        } else {
-            self.attribute.value.value.extend_from_slice(current.0.as_bytes());
+            return;
+        }
+        self.attribute
+            .value
+            .value
+            .extend_from_slice(current.0.as_bytes());
 
-            if let Some(attribute) = gc.take_until_ascii(&[b'{', b'}']) {
-              self.attribute.value.value.extend_from_slice(attribute.0.as_bytes());
-            }
+        if let Some(attribute) = gc.take_until_ascii(&[b'{', b'}']) {
+            self.attribute
+                .value
+                .value
+                .extend_from_slice(attribute.0.as_bytes());
         }
     }
 
@@ -883,63 +937,63 @@ enum State {
     // general stuff
     Text = 2,
     // <
-    OpenWaka = 4,
+    OpenWaka = 3,
     // <!blarg
-    SgmlDecl = 5,
+    SgmlDecl = 4,
     // <!blarg foo "bar
-    SgmlDeclQuoted = 6,
+    SgmlDeclQuoted = 5,
     // <!doctype
-    Doctype = 7,
+    Doctype = 6,
     // <!doctype "//blah
-    DoctypeQuoted = 8,
+    DoctypeQuoted = 7,
     // <!doctype "//blah" [ ...
-    DoctypeDtd = 9,
+    DoctypeDtd = 8,
     // <!doctype "//blah" [ "foo
-    DoctypeDtdQuoted = 10,
+    DoctypeDtdQuoted = 9,
     // <!-
     // CommentStarting =       11,
     // <!--
-    Comment = 12,
+    Comment = 10,
     // <!-- blah -
-    CommentEnding = 13,
+    CommentEnding = 11,
     // <!-- blah --
-    CommentEnded = 14,
+    CommentEnded = 12,
     // <![cdata[ something
-    Cdata = 15,
+    Cdata = 13,
     // ]
-    CdataEnding = 16,
+    CdataEnding = 14,
     // ]]
-    CdataEnding2 = 17,
+    CdataEnding2 = 15,
     // <?hi
-    ProcInst = 18,
+    ProcInst = 16,
     // <?hi there
-    ProcInstValue = 19,
+    ProcInstValue = 17,
     // <?hi "there" ?
-    ProcInstEnding = 20,
+    ProcInstEnding = 18,
     // <strong
-    OpenTag = 21,
+    OpenTag = 19,
     // <strong /
-    OpenTagSlash = 22,
+    OpenTagSlash = 20,
     // <a
-    Attrib = 23,
+    Attrib = 21,
     // <a foo
-    AttribName = 24,
+    AttribName = 22,
     // <a foo _
-    AttribNameSawWhite = 25,
+    AttribNameSawWhite = 23,
     // <a foo=
-    AttribValue = 26,
+    AttribValue = 24,
     // <a foo="bar
-    AttribValueQuoted = 27,
+    AttribValueQuoted = 25,
     // <a foo="bar"
-    AttribValueClosed = 28,
+    AttribValueClosed = 26,
     // <a foo=bar
-    AttribValueUnquoted = 29,
+    AttribValueUnquoted = 27,
     // </a
-    CloseTag = 30,
+    CloseTag = 28,
     // </a   >
-    CloseTagSawWhite = 31,
+    CloseTagSawWhite = 29,
     // props={() => {}}
-    JSXAttributeExpression = 32,
+    JSXAttributeExpression = 30,
 }
 
 #[cfg(test)]
