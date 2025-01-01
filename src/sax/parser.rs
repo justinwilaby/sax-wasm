@@ -815,10 +815,7 @@ impl<'a> SAXParser<'a> {
 
     fn attribute_value_unquoted(&mut self, current: &GraphemeResult) {
         if current.0 != ">" && !is_whitespace(current.0) {
-            self.attribute
-                .value
-                .value
-                .extend_from_slice(current.0.as_bytes());
+            self.attribute.value.value.extend_from_slice(current.0.as_bytes());
             return;
         }
         self.attribute.value.end = [current.1, current.2 - 1];
@@ -841,8 +838,7 @@ impl<'a> SAXParser<'a> {
         } else if is_name_char(current.0) {
             self.close_tag_name.extend_from_slice(current.0.as_bytes());
             if let Some(close_tag) = gc.take_until_ascii(&[b'>']) {
-                self.close_tag_name
-                    .extend_from_slice(close_tag.0.as_bytes());
+                self.close_tag_name.extend_from_slice(close_tag.0.as_bytes());
             }
         } else {
             self.state = State::CloseTagSawWhite;
@@ -850,10 +846,8 @@ impl<'a> SAXParser<'a> {
     }
 
     fn close_tag_saw_white(&mut self, current: &GraphemeResult) {
-        if !is_whitespace(current.0) {
-            if current.0 == ">" {
-                self.process_close_tag(current);
-            }
+        if !is_whitespace(current.0) && current.0 == ">" {
+            self.process_close_tag(current);
         }
     }
 
@@ -884,54 +878,56 @@ impl<'a> SAXParser<'a> {
     }
 
     fn process_close_tag(&mut self, current: &GraphemeResult) {
-        self.new_text(current);
-        let mut tags_len = self.tags.len();
-        {
-            let mut close_tag_name = mem::replace(&mut self.close_tag_name, Vec::new());
-            let mut found = false;
-            if close_tag_name.is_empty() && self.tag.self_closing {
-                close_tag_name = self.tag.name.clone();
-            }
-            while tags_len != 0 {
-                tags_len -= 1;
-                let tag = &mut self.tags[tags_len];
-                if tag.name == close_tag_name {
-                    tag.close_start = self.tag.open_start;
-                    tag.close_end = [current.1, current.2];
-                    found = true;
-                    break;
-                }
-            }
-            if !found {
-                self.write_text("</".as_bytes());
-                self.write_text(&close_tag_name);
-                self.write_text(">".as_bytes());
-                self.text.start = self.tag.open_start;
-                return;
-            }
-        }
+      self.new_text(current);
+      let mut tags_len = self.tags.len();
 
-        let mut len = self.tags.len();
-        if self.events & Event::CloseTag as u32 == 0 {
-            let idx = len - tags_len;
-            if idx > 1 {
-                self.tags.truncate(idx);
-                return;
-            }
+      let close_tag_name = if self.close_tag_name.is_empty() && self.tag.self_closing {
+          &self.tag.name
+      } else {
+          &mem::take(&mut self.close_tag_name)
+      };
 
-            self.tag = self.tags.remove(tags_len);
-            return;
-        }
+      let mut found = false;
+      let mut tag_index = 0;
 
-        while len > tags_len {
-            len -= 1;
+      for (i, tag) in self.tags.iter_mut().enumerate().rev() {
+          if &tag.name == close_tag_name {
+              tag.close_start = self.tag.open_start;
+              tag.close_end = [current.1, current.2];
+              found = true;
+              tag_index = i;
+              break;
+          }
+      }
 
-            let mut tag = self.tags.remove(len);
-            tag.close_end = [current.1, current.2];
+      if !found {
+          let close_tag_clone = close_tag_name.clone();
+          self.write_text(b"</");
+          self.write_text(&close_tag_clone);
+          self.write_text(b">");
+          self.text.start = self.tag.open_start;
+          return;
+      }
 
-            self.event_handler.handle_event(Event::CloseTag, Entity::Tag(&mut tag));
-            self.tag = tag;
-        }
+      if self.events & Event::CloseTag as u32 == 0 {
+          if tag_index > 1 {
+              self.tags.truncate(tag_index);
+              return;
+          }
+
+          self.tag = self.tags.remove(tag_index);
+          return;
+      }
+
+      while tags_len > tag_index {
+          tags_len -= 1;
+
+          let mut tag = self.tags.remove(tags_len);
+          tag.close_end = [current.1, current.2];
+
+          self.event_handler.handle_event(Event::CloseTag, Entity::Tag(&mut tag));
+          self.tag = tag;
+      }
     }
 
     fn jsx_attribute_expression(&mut self, gc: &mut GraphemeClusters, current: &GraphemeResult) {

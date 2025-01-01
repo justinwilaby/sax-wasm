@@ -212,19 +212,17 @@ pub fn is_quote(grapheme: &str) -> bool {
 /// ```
 #[inline(always)]
 pub fn grapheme_len(byte: u8) -> usize {
-    if byte < 128 { // 1-byte sequence (ASCII)
-        return 1;
-    }
-    if byte < 224 {
-        return 2;
-    }
-    if byte < 240 {
-        return 3;
-    }
-    if byte < 248 {
-        return 4;
-    }
-    1
+  if byte & 0b1000_0000 == 0 {
+      1 // 1-byte sequence (ASCII)
+  } else if byte & 0b1110_0000 == 0b1100_0000 {
+      2 // 2-byte sequence
+  } else if byte & 0b1111_0000 == 0b1110_0000 {
+      3 // 3-byte sequence
+  } else if byte & 0b1111_1000 == 0b1111_0000 {
+      4 // 4-byte sequence
+  } else {
+      1 // Default case (invalid UTF-8 leading byte)
+  }
 }
 #[inline(always)]
 pub fn u32_to_u8(arr: &[u32]) -> &[u8] {

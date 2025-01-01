@@ -146,11 +146,11 @@ impl GraphemeClusters<'_> {
         let start = self.cursor;
         let mut line = self.line;
         let mut character = self.character;
-        let mut end = self.cursor;
+        let byte_len = self.byte_len;
 
         // Take until we encounter an ASCII
         // or run out of bytes
-        while cursor < self.byte_len && start < end {
+        while cursor < byte_len {
             let next_byte = unsafe { *self.bytes.get_unchecked(cursor) };
             if chars.contains(&next_byte) {
                 break;
@@ -163,18 +163,21 @@ impl GraphemeClusters<'_> {
             } else {
                 character += if len == 4 { 2 } else { 1 };
             }
-            end += len;
-            cursor = end;
+            cursor += len;
+        }
+
+        if cursor >= byte_len {
+          cursor = byte_len;
         }
         // Nothing to take
-        if start == end {
+        if start >= cursor {
             return None;
         }
 
         self.cursor = cursor;
         self.line = line;
         self.character = character;
-        let s = unsafe { str::from_utf8_unchecked(&self.bytes.get_unchecked(start..end)) };
+        let s = unsafe { str::from_utf8_unchecked(&self.bytes.get_unchecked(start..cursor)) };
         Some((s, line, character))
     }
 

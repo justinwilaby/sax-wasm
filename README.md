@@ -20,7 +20,7 @@ All parsers are tested using a large XML document (3 MB) containing a variety of
 
 | Parser with Advanced Features                                                              | time/ms (lower is better)| JS     | Runs in browser |
 |--------------------------------------------------------------------------------------------|-------------------------:|:------:|:---------------:|
-| [sax-wasm](https://github.com/justinwilaby/sax-wasm)                                       |                    27.91 | ☑      | ☑               |
+| [sax-wasm](https://github.com/justinwilaby/sax-wasm)                                       |                    26.67 | ☑      | ☑               |
 | [saxes](https://github.com/lddubeau/saxes)                                                 |                    40.99 | ☑      | ☑               |
 | [ltx(using Saxes as the parser)](https://github.com/xmppjs/ltx)                            |                    41.87 | ☑      | ☑               |
 | [sax-js](https://github.com/isaacs/sax-js)                                                 |                   105.18 | ☑      | ☑*              |
