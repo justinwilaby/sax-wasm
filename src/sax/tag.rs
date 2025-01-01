@@ -1,6 +1,7 @@
 use super::utils::u32_to_u8;
 
 #[repr(C)]
+#[derive(Clone)]
 pub struct Tag {
     pub name: Vec<u8>,
     pub attributes: Vec<Attribute>,
@@ -75,6 +76,7 @@ impl Encode<Vec<u8>> for Tag {
 }
 
 #[repr(C)]
+#[derive(Clone)]
 pub struct Text {
     pub value: Vec<u8>,
     pub start: [u32; 2],
@@ -107,6 +109,7 @@ impl Encode<Vec<u8>> for Text {
 }
 
 #[repr(C)]
+#[derive(Clone)]
 pub struct Attribute {
     pub name: Text,
     pub value: Text,
@@ -142,6 +145,7 @@ impl Encode<Vec<u8>> for Attribute {
     }
 }
 #[repr(C)]
+#[derive(Clone)]
 pub struct ProcInst {
     pub start: [u32; 2],
     pub end: [u32; 2],
@@ -177,11 +181,12 @@ impl Encode<Vec<u8>> for ProcInst {
     }
 }
 #[repr(C)]
+#[derive(Clone, Copy)]
 pub enum Entity<'a> {
-    Attribute(&'a mut Attribute),
-    ProcInst(&'a mut ProcInst),
-    Tag(&'a mut Tag),
-    Text(&'a mut Text),
+    Attribute(&'a Attribute),
+    ProcInst(&'a ProcInst),
+    Tag(&'a Tag),
+    Text(&'a Text),
 }
 
 impl<'a> Encode<Vec<u8>> for Entity<'a> {

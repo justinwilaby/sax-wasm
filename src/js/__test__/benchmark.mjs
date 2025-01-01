@@ -3,7 +3,7 @@ import { URL } from 'url';
 import { resolve } from 'path';
 import { Buffer } from 'buffer';
 
-import { SaxEventType, SAXParser } from '../../../lib/esm/index.js';
+import { SAXParser, SaxEventType } from '../../../lib/cjs/index.js';
 
 import nodeXml from 'node-xml';
 import expat from 'node-expat';
@@ -24,7 +24,7 @@ async function benchmarkSaxWasmParser() {
   let t = process.hrtime();
   let offset = 0;
   while (offset < xml.length) {
-    parser.write(Buffer.from(xml.slice(offset, chunkLen)));
+    parser.write(Buffer.from(xml.slice(offset, chunkLen + offset)));
     offset += chunkLen;
   }
   parser.end();
@@ -38,7 +38,7 @@ async function benchmarkNodeXmlParser() {
   let t = process.hrtime();
   let offset = 0;
   while (offset < xml.length) {
-    parser.parseString(Buffer.from(xml.slice(offset, chunkLen)));
+    parser.parseString(Buffer.from(xml.slice(offset, chunkLen + offset)));
     offset += chunkLen;
   }
   let [s, n] = process.hrtime(t);
@@ -50,7 +50,7 @@ async function benchmarkExpatParser() {
   let t = process.hrtime();
   let offset = 0;
   while (offset < xml.length) {
-    parser.parse(Buffer.from(xml.slice(offset, chunkLen)));
+    parser.parse(Buffer.from(xml.slice(offset, chunkLen + offset)));
     offset += chunkLen;
   }
 
@@ -64,7 +64,7 @@ async function benchmarkSaxesParser() {
 
   let offset = 0;
   while (offset < xml.length) {
-    parser.write(Buffer.from(xml.slice(offset, chunkLen)));
+    parser.write(Buffer.from(xml.slice(offset, chunkLen + offset)));
     offset += chunkLen;
   }
   let [s, n] = process.hrtime(t);
@@ -78,7 +78,7 @@ async function benchmarkSaxParser() {
 
   let offset = 0;
   while (offset < xml.length) {
-    parser.write(Buffer.from(xml.slice(offset, chunkLen)));
+    parser.write(Buffer.from(xml.slice(offset, chunkLen + offset)));
     offset += chunkLen;
   }
   let [s, n] = process.hrtime(t);
@@ -91,7 +91,7 @@ async function benchmarkLtxParser() {
 
   let offset = 0;
   while (offset < xml.length) {
-    parser.write(Buffer.from(xml.slice(offset, chunkLen)));
+    parser.write(Buffer.from(xml.slice(offset, chunkLen + offset)));
     offset += chunkLen;
   }
 
@@ -100,7 +100,7 @@ async function benchmarkLtxParser() {
 }
 
 async function benchmark() {
-  let t = 100;
+  let t = 10;
   let benchmarks = { saxWasm: [], nodeXml: [], saxes: [], sax: [], expat: [], ltx: [] };
   while (t--) {
     benchmarks.saxWasm.push(await benchmarkSaxWasmParser());

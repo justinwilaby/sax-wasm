@@ -8,7 +8,7 @@
 The first streamable, low memory XML, HTML, JSX and Angular Template parser for [WebAssembly](https://developer.mozilla.org/en-US/docs/WebAssembly).
 
 Sax Wasm is a sax style parser for XML, HTML, JSX and Angular Templates written in [Rust](https://www.rust-lang.org/en-US/), compiled for
-WebAssembly with the sole motivation to bring **faster than native speeds** to XML and JSX parsing for node and the web.
+WebAssembly with the sole motivation to bring the **fastest possible speeds** to XML and JSX parsing for node and the web.
 Inspired by [sax js](https://github.com/isaacs/sax-js) and rebuilt with Rust for WebAssembly, sax-wasm brings optimizations
 for speed and support for JSX syntax.
 
@@ -20,12 +20,12 @@ All parsers are tested using a large XML document (3 MB) containing a variety of
 
 | Parser with Advanced Features                                                              | time/ms (lower is better)| JS     | Runs in browser |
 |--------------------------------------------------------------------------------------------|-------------------------:|:------:|:---------------:|
-| [sax-wasm](https://github.com/justinwilaby/sax-wasm)                                       |                    0.466 | ☑      | ☑               |
-| [saxes](https://github.com/lddubeau/saxes)                                                 |                    0.868 | ☑      | ☑               |
-| [ltx(using Saxes as the parser)](https://github.com/xmppjs/ltx)                            |                    0.881 | ☑      | ☑               |
-| [node-xml](https://github.com/dylang/node-xml)                                             |                    1.549 | ☑      | ☐               |
-| [node-expat](https://github.com/xmppo/node-expat)                                          |                    1.551 | ☑      | ☐               |
-| [sax-js](https://github.com/isaacs/sax-js)                                                 |                    1.869 | ☑      | ☑*              |
+| [sax-wasm](https://github.com/justinwilaby/sax-wasm)                                       |                    27.91 | ☑      | ☑               |
+| [saxes](https://github.com/lddubeau/saxes)                                                 |                    40.99 | ☑      | ☑               |
+| [ltx(using Saxes as the parser)](https://github.com/xmppjs/ltx)                            |                    41.87 | ☑      | ☑               |
+| [sax-js](https://github.com/isaacs/sax-js)                                                 |                   105.18 | ☑      | ☑*              |
+| [node-xml](https://github.com/dylang/node-xml)                                             |                   115.17 | ☑      | ☐               |
+| [node-expat](https://github.com/xmppo/node-expat)                                          |                  148.885 | ☑      | ☐               |
 <sub>*built for node but *should* run in the browser</sub>
 
 ## Installation

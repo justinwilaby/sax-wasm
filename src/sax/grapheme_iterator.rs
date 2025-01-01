@@ -87,10 +87,14 @@ impl GraphemeClusters<'_> {
         len
     }
 
-    /// Takes grapheme clusters until an ASCII character is encountered.
+    /// Takes grapheme clusters until one of the specified ASCII characters
+    /// or until the end of the byte array is encountered. If the end of the
+    /// byte array is encountered and a broken surrogate exists there, it is
+    /// not included.
     ///
-    /// This function iterates over the byte slice, taking grapheme clusters until one of the specified
-    /// ASCII characters is encountered. It updates the cursor, line, and character indices accordingly.
+    /// This function iterates over the byte slice and collects grapheme clusters until
+    /// one of the specified ASCII characters is encountered. It updates the cursor,
+    /// line, and character positions accordingly.
     ///
     /// # Arguments
     ///
@@ -98,17 +102,44 @@ impl GraphemeClusters<'_> {
     ///
     /// # Returns
     ///
-    /// * An `Option` containing a `GraphemeResult` with the taken grapheme clusters, or `None` if the end of the byte slice is reached.
+    /// * An `Option` containing a `GraphemeResult` with the collected grapheme clusters,
+    ///   or `None` if the end of the byte slice is reached without encountering any of
+    ///   the specified characters.
     ///
     /// # Examples
     ///
     /// ```
-    /// use sax_wasm::sax::grapheme_iterator::GraphemeClusters;
+    /// use sax_wasm::sax::grapheme_iterator::{GraphemeClusters, GraphemeResult};
     ///
-    /// let bytes = "hello world".as_bytes();
+    /// let bytes = "hello, world!".as_bytes();
     /// let mut gc = GraphemeClusters::new(bytes);
-    /// let result = gc.take_until_ascii(&[b' ']);
-    /// assert!(result.is_some());
+    ///
+    /// // Take until a comma or space is encountered
+    /// if let Some(result) = gc.take_until_ascii(&[b',', b' ']) {
+    ///     assert_eq!(result.0, "hello");
+    ///     assert_eq!(result.1, 0);
+    ///     assert_eq!(result.2, 5);
+    /// }
+    ///
+    /// // Continue taking until an exclamation mark is encountered
+    /// if let Some(result) = gc.take_until_ascii(&[b'!']) {
+    ///     assert_eq!(result.0, ", world");
+    ///     assert_eq!(result.1, 0);
+    ///     assert_eq!(result.2, 12);
+    /// }
+    ///
+    /// // No more grapheme clusters to take
+    /// assert!(gc.take_until_ascii(&[b'!']).is_none());
+    ///
+    /// // Handle broken surrogate at the end
+    /// let bytes_with_surrogate = "🐉 hello, world!\xF0".as_bytes();
+    /// let mut gc_with_surrogate = GraphemeClusters::new(bytes_with_surrogate);
+    /// if let Some(result) = gc_with_surrogate.take_until_ascii(&[b'!']) {
+    ///     assert_eq!(result.0, "🐉 hello, world");
+    ///     assert_eq!(result.1, 0);
+    ///     assert_eq!(result.2, 12);
+    /// }
+    /// assert!(gc_with_surrogate.take_until_ascii(&[b'!']).is_none());
     /// ```
     pub fn take_until_ascii(&mut self, chars: &[u8]) -> Option<GraphemeResult<'_>> {
         let mut cursor = self.cursor;
@@ -116,10 +147,10 @@ impl GraphemeClusters<'_> {
         let mut line = self.line;
         let mut character = self.character;
         let mut end = self.cursor;
-        loop {
-            if self.byte_len <= cursor {
-                return None;
-            }
+
+        // Take until we encounter an ASCII
+        // or run out of bytes
+        while cursor < self.byte_len && start < end {
             let next_byte = unsafe { *self.bytes.get_unchecked(cursor) };
             if chars.contains(&next_byte) {
                 break;
@@ -135,6 +166,11 @@ impl GraphemeClusters<'_> {
             end += len;
             cursor = end;
         }
+        // Nothing to take
+        if start == end {
+            return None;
+        }
+
         self.cursor = cursor;
         self.line = line;
         self.character = character;
@@ -228,12 +264,12 @@ impl GraphemeClusters<'_> {
         start_idx..end_idx
     }
 
-    pub fn get_remaining_bytes(&self) -> Option<([u8;3], usize, usize)> {
+    pub fn get_remaining_bytes(&self) -> Option<([u8;4], usize, usize)> {
         if self.cursor == self.byte_len {
             return None;
         }
         let bytes = unsafe { self.bytes.get_unchecked(self.cursor..)};
-        let mut remaining_bytes: [u8; 3] = [0, 0, 0];
+        let mut remaining_bytes: [u8; 4] = [0, 0, 0, 0];
         let len = bytes.len();
         let mut i = len;
         while i > 0 {
@@ -353,12 +389,12 @@ mod grapheme_iterator_tests {
     }
     #[test]
     fn seek_until_ascii_test() {
-        let s = "🚀this is a test string🚀";
+        let s = "🚀this is 🐉 a test string🚀";
         let mut gc = GraphemeClusters::new(s.as_bytes());
         let result = gc.take_until_ascii(&"a".as_bytes());
         assert_eq!(result.is_some(), true);
 
         let unwrapped = result.unwrap();
-        assert_eq!(unwrapped.0, "🚀this is ");
+        assert_eq!(unwrapped.0, "🚀this is 🐉 ");
     }
 }

@@ -1,3 +1,5 @@
+use std::u8;
+
 /// Converts an unsigned integer to its string representation.
 ///
 /// This function converts a given `u32` value to its corresponding string representation.
@@ -182,8 +184,8 @@ pub fn is_whitespace(grapheme: &str) -> bool {
 /// ```
 #[inline(always)]
 pub fn is_quote(grapheme: &str) -> bool {
-    let byte = grapheme.as_bytes()[0];
-    byte == b'"' || byte == b'\''
+    let byte = unsafe { grapheme.as_bytes().get_unchecked(0) };
+    byte == &b'"' || byte == &b'\''
 }
 
 /// Determines the length of a grapheme cluster based on the first byte.

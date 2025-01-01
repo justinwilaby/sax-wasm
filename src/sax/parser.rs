@@ -19,8 +19,11 @@ static TAG_NAME_END: &'static [u8; 6] = &[b' ', b'\n', b'\t', b'\r', b'>', b'/']
 /// Characters that indicate the end of an attribute name.
 static ATTRIBUTE_NAME_END: &'static [u8; 3] = &[b' ', b'=', b'>'];
 
-/// Type alias for the event listener function.
-pub type EventListener = fn(event: Event, data: Entity);
+// Trait for implementing an event handler struct
+// to pass to the parser for receiving events
+pub trait EventHandler {
+    fn handle_event(&self, event: Event, data: Entity);
+}
 
 /// Represents a SAX (Simple API for XML) parser.
 ///
@@ -46,29 +49,34 @@ pub type EventListener = fn(event: Event, data: Entity);
 /// * `event_handler` - The event handler function.
 /// * `leftover_bytes` - Bytes left over from the previous parse.
 /// * `end_pos` - The end position of the current parse.
-pub struct SAXParser {
+pub struct SAXParser<'a> {
+    // Configuration and State
     pub events: u32,
-    pub tags: Vec<Tag>,
-
     state: State,
+    brace_ct: u32,
+    quote: u8,
+
+    // Event Handling
+    event_handler: &'a dyn EventHandler,
+
+    // Parsing Buffers
+    tags: Vec<Tag>,
     cdata: Text,
     comment: Text,
     doctype: Text,
     text: Text,
     close_tag_name: Vec<u8>,
     proc_inst: ProcInst,
-    quote: u8,
     sgml_decl: Text,
     attribute: Attribute,
     tag: Tag,
-    brace_ct: u32,
 
-    event_handler: EventListener,
-    leftover_bytes_info: Option<([u8; 3], usize, usize)>,
+    // Position Tracking
+    pub leftover_bytes_info: Option<([u8; 4], usize, usize)>,
     end_pos: [u32; 2],
 }
 
-impl SAXParser {
+impl<'a> SAXParser<'a> {
     /// Creates a new `SAXParser` with the specified event handler.
     ///
     /// # Arguments
@@ -82,32 +90,66 @@ impl SAXParser {
     /// # Examples
     ///
     /// ```
-    /// use sax_wasm::sax::parser::Event;
-    /// use sax_wasm::sax::tag::Entity;
-    /// use sax_wasm::sax::parser::EventListener;
-    /// use sax_wasm::sax::parser::SAXParser;
+    /// use sax_wasm::sax::parser::{Event, SAXParser, EventHandler};
+    /// use sax_wasm::sax::tag::*;
+    /// use std::rc::Rc;
+    /// use std::cell::RefCell;
     ///
-    /// let event_handler = |event: Event, data: Entity| { /* handle event */ };
-    /// let parser = SAXParser::new(event_handler);
+    /// struct SaxEventHandler {
+    ///     tags: Rc<RefCell<Vec<Tag>>>,
+    /// }
+    ///
+    /// impl SaxEventHandler {
+    ///     pub fn new(tags: Rc<RefCell<Vec<Tag>>>) -> Self {
+    ///         SaxEventHandler { tags }
+    ///     }
+    /// }
+    ///
+    /// impl EventHandler for SaxEventHandler {
+    ///     fn handle_event(&self, event: Event, data: Entity) {
+    ///       match data {
+    ///         Entity::Tag(tag) => self.tags.borrow_mut().push(tag.clone()),
+    ///         _ => {}
+    ///       }
+    ///     }
+    /// }
+    ///
+    /// let tags = Rc::new(RefCell::new(Vec::new()));
+    /// let event_handler = SaxEventHandler::new(Rc::clone(&tags));
+    /// let mut parser = SAXParser::new(&event_handler);
+    ///
+    /// parser.events = Event::OpenTag as u32;
+    /// parser.write(b"<tag>content</tag>");
+    ///
+    /// // Process events
+    /// for (tag) in tags.borrow().iter() {
+    ///    assert_eq!(String::from_utf8(tag.name.clone()).unwrap(), "tag");
+    /// }
     /// ```
-    pub fn new(event_handler: EventListener) -> SAXParser {
+    pub fn new(event_handler: &'a dyn EventHandler) -> SAXParser<'a> {
         SAXParser {
-            event_handler,
-            state: State::Begin,
+            // Configuration and State
             events: 0,
-            tags: Vec::new(),
+            state: State::Begin,
+            brace_ct: 0,
+            quote: 0,
 
+            // Event Handling
+            event_handler,
+
+            // Parsing Buffers
+            tags: Vec::new(),
             cdata: Text::new([0, 0]),
             comment: Text::new([0, 0]),
             doctype: Text::new([0, 0]),
+            text: Text::new([0, 0]),
             close_tag_name: Vec::new(),
             proc_inst: ProcInst::new(),
-            quote: 0,
             sgml_decl: Text::new([0, 0]),
-            tag: Tag::new([0, 0]),
             attribute: Attribute::new(),
-            text: Text::new([0, 0]),
-            brace_ct: 0,
+            tag: Tag::new([0, 0]),
+
+            // Position Tracking
             leftover_bytes_info: None,
             end_pos: [0, 0],
         }
@@ -126,16 +168,42 @@ impl SAXParser {
     /// # Examples
     ///
     /// ```
-    /// use sax_wasm::sax::parser::Event;
-    /// use sax_wasm::sax::tag::Entity;
-    /// use sax_wasm::sax::parser::EventListener;
-    /// use sax_wasm::sax::parser::SAXParser;
+    /// use sax_wasm::sax::parser::{Event, SAXParser, EventHandler};
+    /// use sax_wasm::sax::tag::*;
+    /// use std::rc::Rc;
+    /// use std::cell::RefCell;
     ///
-    /// let event_handler: EventListener = |event: Event, data: Entity| {
+    /// struct SaxEventHandler {
+    ///     tags: Rc<RefCell<Vec<Tag>>>,
+    /// }
     ///
-    /// };
-    /// let mut parser = SAXParser::new(event_handler);
-    /// parser.write(b"<tag>content</tag>");
+    /// impl SaxEventHandler {
+    ///     pub fn new(tags: Rc<RefCell<Vec<Tag>>>) -> Self {
+    ///         SaxEventHandler { tags }
+    ///     }
+    /// }
+    ///
+    /// impl EventHandler for SaxEventHandler {
+    ///     fn handle_event(&self, event: Event, data: Entity) {
+    ///       match data {
+    ///         Entity::Tag(tag) => self.tags.borrow_mut().push(tag.clone()),
+    ///         _ => {}
+    ///       }
+    ///     }
+    /// }
+    ///
+    /// let tags = Rc::new(RefCell::new(Vec::new()));
+    /// let event_handler = SaxEventHandler::new(Rc::clone(&tags));
+    /// let mut parser = SAXParser::new(&event_handler);
+    /// let str = "🚀this is 🐉 a test string🚀";
+    /// let bytes = str.as_bytes();
+    /// let broken_surrogate = &bytes[0..14];
+    /// parser.write(broken_surrogate);
+    /// assert!(parser.leftover_bytes_info.is_some());
+    ///
+    /// parser.write(&bytes[14..]);
+    /// assert!(parser.leftover_bytes_info.is_none());
+    ///
     /// ```
     pub fn write(&mut self, source: &[u8]) {
         let mut gc = GraphemeClusters::new(source);
@@ -143,8 +211,8 @@ impl SAXParser {
         gc.character = self.end_pos[1];
 
         if let Some(bytes_info) = self.leftover_bytes_info {
-          gc.character += if bytes_info.1 == 4 {2} else {1};
-          self.process_dangling_bytes(&mut gc, source, bytes_info);
+            gc.character += if bytes_info.1 == 4 { 2 } else { 1 };
+            self.process_broken_surrogate(&mut gc, source, bytes_info);
         }
 
         loop {
@@ -159,21 +227,27 @@ impl SAXParser {
     }
 
     #[cold]
-    fn process_dangling_bytes(&mut self, gc: &mut GraphemeClusters, source: &[u8], bytes_info: ([u8;3], usize, usize)) {
-      let (mut bytes, bytes_len, bytes_needed) = bytes_info;
-          let grapheme_len = bytes_len + bytes_needed;
-          let bytes_slice = unsafe { source.get_unchecked(0..bytes_needed)};
+    fn process_broken_surrogate(&mut self, gc: &mut GraphemeClusters, source: &[u8], bytes_info: ([u8; 4], usize, usize)) {
+        let (mut bytes, bytes_len, bytes_needed) = bytes_info;
+        let grapheme_len = bytes_len + bytes_needed;
+        let bytes_slice = unsafe { source.get_unchecked(0..bytes_needed) };
 
-          match bytes_needed {
-            2 => bytes[bytes_len + 1] = bytes_slice[0],
+        match bytes_needed {
+            1 => bytes[bytes_len] = bytes_slice[0],
+            2 => {
+                bytes[bytes_len] = bytes_slice[0];
+                bytes[bytes_len + 1] = bytes_slice[1];
+            }
             3 => {
-              bytes[bytes_len + 1] = bytes_slice[0];
-              bytes[bytes_len + 2] = bytes_slice[1];
-            },
+                bytes[bytes_len] = bytes_slice[0];
+                bytes[bytes_len + 1] = bytes_slice[1];
+                bytes[bytes_len + 2] = bytes_slice[2];
+            }
             _ => {}
-          }
-          let grapheme = unsafe { str::from_utf8_unchecked(bytes.get_unchecked(0..grapheme_len))};
-         self.process_grapheme(gc, &(grapheme, 0, 0));
+        }
+        let grapheme = unsafe { str::from_utf8_unchecked(bytes.get_unchecked(0..grapheme_len)) };
+        gc.cursor = bytes_needed;
+        self.process_grapheme(gc, &(grapheme, 0, 0));
     }
 
     /// Resets the parser to its initial state.
@@ -184,16 +258,36 @@ impl SAXParser {
     /// # Examples
     ///
     /// ```
-    /// use sax_wasm::sax::parser::Event;
-    /// use sax_wasm::sax::parser::SAXParser;
-    /// use sax_wasm::sax::tag::Entity;
-    /// use sax_wasm::sax::parser::EventListener;
+    /// use sax_wasm::sax::parser::{Event, SAXParser, EventHandler};
+    /// use sax_wasm::sax::tag::*;
+    /// use std::rc::Rc;
+    /// use std::cell::RefCell;
     ///
-    /// let event_handler: EventListener = |event: Event, data: Entity| {
+    /// struct SaxEventHandler {
+    ///     tags: Rc<RefCell<Vec<Tag>>>,
+    /// }
     ///
-    /// };
-    /// let mut parser = SAXParser::new(event_handler);
-    /// parser.write(b"<tag>content</tag>");
+    /// impl SaxEventHandler {
+    ///     pub fn new(tags: Rc<RefCell<Vec<Tag>>>) -> Self {
+    ///         SaxEventHandler { tags }
+    ///     }
+    /// }
+    ///
+    /// impl EventHandler for SaxEventHandler {
+    ///     fn handle_event(&self, event: Event, data: Entity) {
+    ///       match data {
+    ///         Entity::Tag(tag) => self.tags.borrow_mut().push(tag.clone()),
+    ///         _ => {}
+    ///       }
+    ///     }
+    /// }
+    ///
+    /// let tags = Rc::new(RefCell::new(Vec::new()));
+    /// let event_handler = SaxEventHandler::new(Rc::clone(&tags));
+    /// let mut parser = SAXParser::new(&event_handler);
+    ///
+    /// let s = "this is a test string".as_bytes();
+    /// parser.write(s);
     /// parser.identity();
     /// ```
     pub fn identity(&mut self) {
@@ -306,7 +400,7 @@ impl SAXParser {
         }
 
         if self.events & Event::OpenTagStart as u32 != 0 {
-            (self.event_handler)(Event::OpenTagStart, Entity::Tag(&mut self.tag));
+            self.event_handler.handle_event(Event::OpenTagStart, Entity::Tag(&mut self.tag));
         }
         match current.0 {
             ">" => self.process_open_tag(false, current),
@@ -346,7 +440,7 @@ impl SAXParser {
         let mut text = mem::replace(&mut self.text, Text::new([line, character]));
         text.end = [line, character - 1];
         if self.events & Event::Text as u32 != 0 {
-            (self.event_handler)(Event::Text, Entity::Text(&mut text));
+            self.event_handler.handle_event(Event::Text, Entity::Text(&mut text));
         }
         // Store these only if we're interested in CloseTag events
         if len != 0 && self.events & Event::CloseTag as u32 != 0 {
@@ -390,7 +484,7 @@ impl SAXParser {
             if self.events & Event::SGMLDeclaration as u32 != 0 {
                 sgml_decl.value.extend_from_slice(current.0.as_bytes());
                 sgml_decl.end = [current.1, current.2 - 1];
-                (self.event_handler)(Event::SGMLDeclaration, Entity::Text(&mut sgml_decl));
+                self.event_handler.handle_event(Event::SGMLDeclaration, Entity::Text(&mut sgml_decl));
             }
 
             self.new_text(current);
@@ -409,7 +503,8 @@ impl SAXParser {
     }
 
     fn sgml_quoted(&mut self, current: &GraphemeResult) {
-        if current.0.as_bytes()[0] == self.quote {
+        let maybe_quote = unsafe { current.0.as_bytes().get_unchecked(0) };
+        if maybe_quote == &self.quote {
             self.quote = 0;
             self.state = State::SgmlDecl;
         }
@@ -422,7 +517,7 @@ impl SAXParser {
             if self.events & Event::Doctype as u32 != 0 {
                 let mut doctype = mem::replace(&mut self.doctype, Text::new([0, 0]));
                 doctype.end = [current.1, current.2 - 1];
-                (self.event_handler)(Event::Doctype, Entity::Text(&mut doctype));
+                self.event_handler.handle_event(Event::Doctype, Entity::Text(&mut doctype));
             }
             return;
         }
@@ -431,13 +526,14 @@ impl SAXParser {
             self.state = State::DoctypeDtd;
         } else if is_quote(current.0) {
             self.state = State::DoctypeQuoted;
-            self.quote = current.0.as_bytes()[0];
+            self.quote = *unsafe { current.0.as_bytes().get_unchecked(0) };
         }
     }
 
     fn doctype_quoted(&mut self, current: &GraphemeResult) {
         self.doctype.value.extend_from_slice(current.0.as_bytes());
-        if current.0.as_bytes()[0] == self.quote {
+        let maybe_quote = unsafe { current.0.as_bytes().get_unchecked(0) };
+        if maybe_quote == &self.quote {
             self.quote = 0;
             self.state = State::Doctype;
         }
@@ -449,13 +545,14 @@ impl SAXParser {
             self.state = State::Doctype;
         } else if is_quote(current.0) {
             self.state = State::DoctypeDtdQuoted;
-            self.quote = current.0.as_bytes()[0];
+            self.quote = *unsafe { current.0.as_bytes().get_unchecked(0) };
         }
     }
 
     fn doctype_dtd_quoted(&mut self, current: &GraphemeResult) {
         self.doctype.value.extend_from_slice(current.0.as_bytes());
-        if self.quote == current.0.as_bytes()[0] {
+        let maybe_quote = unsafe { current.0.as_bytes().get_unchecked(0) };
+        if &self.quote == maybe_quote {
             self.state = State::DoctypeDtd;
             self.quote = 0;
         }
@@ -494,7 +591,7 @@ impl SAXParser {
             if self.events & Event::Comment as u32 != 0 {
                 let mut comment = mem::replace(&mut self.comment, Text::new([0, 0]));
                 comment.end = [current.1, current.2 - 1];
-                (self.event_handler)(Event::Comment, Entity::Text(&mut comment));
+                self.event_handler.handle_event(Event::Comment, Entity::Text(&mut comment));
             }
             self.state = State::BeginWhitespace;
             return;
@@ -516,8 +613,6 @@ impl SAXParser {
         if let Some(cdata) = cdata_result {
             self.cdata.value.extend_from_slice(cdata.0.as_bytes());
         }
-        gc.next(); // skip the ] char
-        self.state = State::CdataEnding;
     }
 
     fn cdata_ending(&mut self, current: &GraphemeResult) {
@@ -535,7 +630,7 @@ impl SAXParser {
             if self.events & Event::Cdata as u32 != 0 {
                 let mut cdata = mem::replace(&mut self.cdata, Text::new([0, 0]));
                 cdata.end = [current.1, current.2 - 1];
-                (self.event_handler)(Event::Cdata, Entity::Text(&mut cdata));
+                self.event_handler.handle_event(Event::Cdata, Entity::Text(&mut cdata));
             }
             return;
         } else if current.0 == "]" {
@@ -580,10 +675,7 @@ impl SAXParser {
             self.state = State::ProcInstEnding;
             self.proc_inst.content.end = [current.1, current.2 - 1];
         } else {
-            self.proc_inst
-                .content
-                .value
-                .extend_from_slice(current.0.as_bytes());
+            self.proc_inst.content.value.extend_from_slice(current.0.as_bytes());
         }
     }
 
@@ -593,10 +685,7 @@ impl SAXParser {
             let mut proc_inst = mem::replace(&mut self.proc_inst, ProcInst::new());
             if self.events & Event::ProcessingInstruction as u32 != 0 {
                 proc_inst.end = [current.1, current.2];
-                (self.event_handler)(
-                    Event::ProcessingInstruction,
-                    Entity::ProcInst(&mut proc_inst),
-                );
+                self.event_handler.handle_event(Event::ProcessingInstruction,Entity::ProcInst(&mut proc_inst));
             }
             return;
         }
@@ -647,15 +736,9 @@ impl SAXParser {
                 self.attribute.name.end = [current.1, current.2 - 1];
             }
             _ => {
+                self.attribute.name.value.extend_from_slice(current.0.as_bytes());
                 if let Some(attribute_name) = gc.take_until_ascii(ATTRIBUTE_NAME_END) {
-                    self.attribute
-                        .name
-                        .value
-                        .extend_from_slice(current.0.as_bytes());
-                    self.attribute
-                        .name
-                        .value
-                        .extend_from_slice(attribute_name.0.as_bytes());
+                    self.attribute.name.value.extend_from_slice(attribute_name.0.as_bytes());
                 };
             }
         }
@@ -690,7 +773,7 @@ impl SAXParser {
         }
         self.attribute.value.start = [current.1, current.2];
         if is_quote(current.0) {
-            self.quote = current.0.as_bytes()[0];
+            self.quote = *unsafe { current.0.as_bytes().get_unchecked(0) };
             self.state = State::AttribValueQuoted;
         } else if current.0 == "{" {
             self.state = State::JSXAttributeExpression;
@@ -698,30 +781,23 @@ impl SAXParser {
             self.brace_ct += 1;
         } else {
             self.state = State::AttribValueUnquoted;
-            self.attribute
-                .value
-                .value
-                .extend_from_slice(current.0.as_bytes());
+            self.attribute.value.value.extend_from_slice(current.0.as_bytes());
         }
     }
 
     fn attribute_value_quoted(&mut self, gc: &mut GraphemeClusters, current: &GraphemeResult) {
-        if let Some(attribute_value) = gc.take_until_ascii(&[self.quote]) {
-            self.attribute
-                .value
-                .value
-                .extend_from_slice(current.0.as_bytes());
-            self.attribute
-                .value
-                .value
-                .extend_from_slice(attribute_value.0.as_bytes());
-            self.attribute.value.end = [attribute_value.1, attribute_value.2];
+        let maybe_quote = unsafe { current.0.as_bytes().get_unchecked(0) };
+        if maybe_quote == &self.quote {
+            self.attribute.value.end = [current.1, current.2 - 1];
+            self.process_attribute();
+            self.quote = 0;
+            self.state = State::AttribValueClosed;
+            return;
         }
-
-        gc.next(); // skip the last quote
-        self.process_attribute();
-        self.quote = 0;
-        self.state = State::AttribValueClosed;
+        self.attribute.value.value.extend_from_slice(current.0.as_bytes());
+        if let Some(attribute_value) = gc.take_until_ascii(&[self.quote]) {
+            self.attribute.value.value.extend_from_slice(attribute_value.0.as_bytes());
+        }
     }
 
     fn attribute_value_closed(&mut self, current: &GraphemeResult) {
@@ -785,7 +861,7 @@ impl SAXParser {
         let mut attr = mem::replace(&mut self.attribute, Attribute::new());
         let attribute_event = self.events & Event::Attribute as u32 != 0;
         if attribute_event {
-            (self.event_handler)(Event::Attribute, Entity::Attribute(&mut attr));
+            self.event_handler.handle_event(Event::Attribute, Entity::Attribute(&mut attr));
         }
         // Store them only if we're interested in Open and Close tag events
         if attribute_event || self.events & Event::CloseTag as u32 != 0 {
@@ -799,7 +875,7 @@ impl SAXParser {
         tag.open_end = [current.1, current.2];
 
         if self.events & Event::OpenTag as u32 != 0 {
-            (self.event_handler)(Event::OpenTag, Entity::Tag(&mut tag));
+            self.event_handler.handle_event(Event::OpenTag, Entity::Tag(&mut tag));
         }
         if !self_closing {
             self.new_text(current);
@@ -853,7 +929,7 @@ impl SAXParser {
             let mut tag = self.tags.remove(len);
             tag.close_end = [current.1, current.2];
 
-            (self.event_handler)(Event::CloseTag, Entity::Tag(&mut tag));
+            self.event_handler.handle_event(Event::CloseTag, Entity::Tag(&mut tag));
             self.tag = tag;
         }
     }
@@ -871,16 +947,10 @@ impl SAXParser {
             self.state = State::AttribValueClosed;
             return;
         }
-        self.attribute
-            .value
-            .value
-            .extend_from_slice(current.0.as_bytes());
+        self.attribute.value.value.extend_from_slice(current.0.as_bytes());
 
         if let Some(attribute) = gc.take_until_ascii(&[b'{', b'}']) {
-            self.attribute
-                .value
-                .value
-                .extend_from_slice(attribute.0.as_bytes());
+            self.attribute.value.value.extend_from_slice(attribute.0.as_bytes());
         }
     }
 
@@ -907,23 +977,23 @@ impl SAXParser {
 #[derive(PartialEq, Clone, Copy)]
 pub enum Event {
     // 1
-    Text = 0b1,
+    Text = 0b0000000001,
     // 2
-    ProcessingInstruction = 0b10,
+    ProcessingInstruction = 0b0000000010,
     // 4
-    SGMLDeclaration = 0b100,
+    SGMLDeclaration = 0b0000000100,
     // 8
-    Doctype = 0b1000,
+    Doctype = 0b0000001000,
     // 16
-    Comment = 0b10000,
+    Comment = 0b0000010000,
     // 32
-    OpenTagStart = 0b100000,
+    OpenTagStart = 0b0000100000,
     // 64
-    Attribute = 0b1000000,
+    Attribute = 0b0001000000,
     // 128
-    OpenTag = 0b10000000,
+    OpenTag = 0b0010000000,
     // 256
-    CloseTag = 0b100000000,
+    CloseTag = 0b0100000000,
     // 512
     Cdata = 0b1000000000,
 }
@@ -950,8 +1020,6 @@ enum State {
     DoctypeDtd = 8,
     // <!doctype "//blah" [ "foo
     DoctypeDtdQuoted = 9,
-    // <!-
-    // CommentStarting =       11,
     // <!--
     Comment = 10,
     // <!-- blah -
@@ -998,16 +1066,49 @@ enum State {
 
 #[cfg(test)]
 mod tests {
+    use std::cell::RefCell;
     use std::fs::File;
     use std::io::{BufReader, Read, Result};
 
-    use crate::sax::parser::{Event, SAXParser};
-    use crate::sax::tag::{Encode, Entity};
+    use crate::sax::parser::{Event, EventHandler, SAXParser};
+    use crate::sax::tag::Entity;
 
+    use super::{Attribute, ProcInst, Tag, Text};
+    pub struct TextEventHandler {
+        pub attributes: RefCell<Vec<Attribute>>,
+        pub texts: RefCell<Vec<Text>>,
+        pub tags: RefCell<Vec<Tag>>,
+        pub procinsts: RefCell<Vec<ProcInst>>,
+    }
+
+    impl TextEventHandler {
+        pub fn new() -> Self {
+            TextEventHandler {
+                attributes: RefCell::new(Vec::new()),
+                texts: RefCell::new(Vec::new()),
+                tags: RefCell::new(Vec::new()),
+                procinsts: RefCell::new(Vec::new()),
+            }
+        }
+    }
+
+    impl<'a> EventHandler for TextEventHandler {
+        fn handle_event(&self, _event: Event, data: Entity) {
+            match data {
+                Entity::Attribute(attribute) => {
+                    self.attributes.borrow_mut().push(attribute.clone())
+                }
+                Entity::ProcInst(proc_inst) => self.procinsts.borrow_mut().push(proc_inst.clone()),
+                Entity::Tag(tag) => self.tags.borrow_mut().push(tag.clone()),
+                Entity::Text(text) => self.texts.borrow_mut().push(text.clone()),
+            }
+        }
+    }
     #[test]
     fn stream_very_large_xml() -> Result<()> {
-        let event_handler = |_event: Event, _data: Entity| {};
-        let mut sax = SAXParser::new(event_handler);
+        let event_handler = TextEventHandler::new();
+        let mut sax = SAXParser::new(&event_handler);
+        sax.events = Event::Text as u32;
         let f = File::open("src/js/__test__/xml.xml")?;
         let mut reader = BufReader::new(f);
         const BUFFER_LEN: usize = 32 * 1024;
@@ -1019,56 +1120,92 @@ mod tests {
                 break;
             }
         }
+        assert!(!event_handler.texts.borrow().is_empty());
         Ok(())
     }
+
     #[test]
     fn test_comment() -> Result<()> {
-        let event_handler = |_event: Event, _data: Entity| {};
-        let mut sax = SAXParser::new(event_handler);
+        let event_handler = TextEventHandler::new();
+        let mut sax = SAXParser::new(&event_handler);
+        sax.events = Event::Comment as u32;
         let str = "<!--name='test 3 attr' some comment--> <-- name='test 3 attr' some comment -->";
 
         sax.write(str.as_bytes());
         sax.identity();
+
+        let comments = event_handler.texts.borrow();
+        assert_eq!(comments.len(), 1);
+        let text_value = String::from_utf8(comments[0].value.clone()).unwrap();
+        assert_eq!(text_value, "name='test 3 attr' some comment");
+
         Ok(())
     }
+
     #[test]
     fn test_4_bytes() -> Result<()> {
-        let event_handler = |_event: Event, _data: Entity| {};
-        let mut sax = SAXParser::new(event_handler);
+        let event_handler = TextEventHandler::new();
+        let mut sax = SAXParser::new(&event_handler);
         sax.events = Event::Text as u32;
-        let str = "🏴󠁧󠁢󠁥󠁮󠁧󠁿📚📚🏴󠁧󠁢󠁥󠁮󠁧󠁿📚📚🏴󠁧󠁢󠁥󠁮󠁧󠁿📚📚🏴󠁧󠁢󠁥󠁮󠁧󠁿📚📚🏴󠁧󠁢󠁥󠁮󠁧󠁿📚📚🏴󠁧󠁢󠁥󠁮󠁧󠁿📚📚🏴󠁧󠁢󠁥󠁮󠁧󠁿📚📚🏴󠁧󠁢󠁥󠁮󠁧󠁿📚📚🏴󠁧󠁢󠁥󠁮󠁧󠁿📚📚🏴󠁧󠁢󠁥󠁮󠁧󠁿📚📚";
+        let str = "🏴📚📚🏴📚📚🏴📚📚🏴📚📚🏴📚📚🏴📚📚🏴📚📚🏴📚📚🏴📚📚🏴📚📚";
         let bytes = str.as_bytes();
-        sax.write(&bytes[0..3]);
-        sax.write(&bytes[3..]);
+        sax.write(&bytes[0..14]);
+        sax.write(&bytes[14..]);
         sax.identity();
+
+        let texts = event_handler.texts.borrow();
+        assert_eq!(texts.len(), 1);
+        let text_value = String::from_utf8(texts[0].value.clone()).unwrap();
+        assert_eq!(text_value, String::from_utf8(Vec::from(bytes)).unwrap());
+
         Ok(())
     }
+
     #[test]
     fn count_grapheme_length() -> Result<()> {
-        let event_handler = |_event: Event, _data: Entity| {};
-        let mut sax = SAXParser::new(event_handler);
-        let str = "🏴󠁧󠁢󠁥󠁮󠁧󠁿📚📚<div href=\"./123/123\">hey there</div>";
+        let event_handler = TextEventHandler::new();
+        let mut sax = SAXParser::new(&event_handler);
+        sax.events = Event::Text as u32;
+        let str = "🏴📚📚<div href=\"./123/123\">hey there</div>";
 
         sax.write(str.as_bytes());
+        sax.identity();
+
+        let texts = event_handler.texts.borrow();
+        assert_eq!(texts.len(), 2);
+        let text_value = String::from_utf8(texts[0].value.clone()).unwrap();
+        assert!(text_value.contains("🏴📚📚"));
+
         Ok(())
     }
+
     #[test]
     fn parse_jsx_expression() -> Result<()> {
-        let event_handler = |_event: Event, _data: Entity| {
-            _data.encode();
-            return;
-        };
-        let mut sax = SAXParser::new(event_handler);
+        let event_handler = TextEventHandler::new();
+        let mut sax = SAXParser::new(&event_handler);
         sax.events = Event::Text as u32;
         let str = "<foo>{bar < baz ? <div></div> : <></>}</foo>";
 
         sax.write(str.as_bytes());
+        sax.identity();
+
+        let texts = event_handler.texts.borrow();
+        assert_eq!(texts.len(), 4);
+
+        assert_eq!(String::from_utf8(texts[0].value.clone()).unwrap(), "{bar ");
+        assert_eq!(
+            String::from_utf8(texts[1].value.clone()).unwrap(),
+            "< baz ? "
+        );
+        assert_eq!(String::from_utf8(texts[2].value.clone()).unwrap(), " : ");
+        assert_eq!(String::from_utf8(texts[3].value.clone()).unwrap(), "}");
         Ok(())
     }
+
     #[test]
     fn parse_empty_cdata() -> Result<()> {
-        let event_handler = |_event: Event, _data: Entity| {};
-        let mut sax = SAXParser::new(event_handler);
+        let event_handler = TextEventHandler::new();
+        let mut sax = SAXParser::new(&event_handler);
         sax.events = Event::Cdata as u32;
         let str = "<div>
         <div>
@@ -1080,6 +1217,14 @@ mod tests {
       </div>";
 
         sax.write(str.as_bytes());
+        sax.identity();
+
+        let cdatas = event_handler.texts.borrow();
+        assert_eq!(cdatas.len(), 2);
+        assert!(cdatas[0].value.is_empty());
+        let text_value = String::from_utf8(cdatas[1].value.clone()).unwrap();
+        assert_eq!(text_value, "something");
+
         Ok(())
     }
 }
