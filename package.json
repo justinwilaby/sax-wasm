@@ -5,20 +5,25 @@
     "type": "git",
     "url": "https://github.com/justinwilaby/sax-wasm.git"
   },
+  "engines": {
+    "node": ">=18.20.5"
+  },
   "description": "An extremely fast JSX, HTML and XML parser written in Rust compiled to WebAssembly for Node and the Web",
   "main": "lib/index.js",
   "module": "lib/esm/index.js",
-  "browser": "lib/esm/index.js",
+  "browser": {
+    "./lib/cjs/index.js": "./lib/esm/index.js"
+  },
+  "type": "module",
   "files": [
     "lib/**"
   ],
   "scripts": {
     "test": "jest",
     "test:coverage": "npm run test && nyc report --reporter=text-lcov",
-    "build:wasm": "cargo build --target wasm32-unknown-unknown --release && npm run bindgen && npm run wasm-opt",
-    "bindgen": "wasm-bindgen target/wasm32-unknown-unknown/release/sax_wasm.wasm --out-dir lib/ --remove-name-section --no-typescript --out-name sax-wasm.wasm",
-    "wasm-opt": "wasm-opt -O4 lib/sax-wasm.wasm -o lib/sax-wasm.wasm",
-    "build": "(npm run build:esm && npm run build:cjs) && npm run build:wasm && npm run bindgen && tsc --emitDeclarationOnly",
+    "build:wasm": "cargo build --target wasm32-unknown-unknown --release && npm run wasm-opt",
+    "wasm-opt": "wasm-opt -O4 target/wasm32-unknown-unknown/release/sax_wasm.wasm -o lib/sax-wasm.wasm",
+    "build": "(npm run build:esm && npm run build:cjs) && npm run build:wasm && tsc --emitDeclarationOnly",
     "build:esm": "tsc --module esnext --outDir lib/esm --target esnext",
     "build:cjs": "tsc --module commonjs --outDir lib/cjs --target esnext",
     "benchmark": "node src/js/__test__/benchmark.mjs",
@@ -39,7 +44,8 @@
   "exports": {
     ".": {
       "import": "./lib/esm/index.js",
-      "require": "./lib/cjs/index.js"
+      "require": "./lib/cjs/index.js",
+      "browser": "./lib/esm/index.js"
     },
     "./lib/sax-wasm.wasm": "./lib/sax-wasm.wasm"
   },

@@ -4,7 +4,7 @@ import { resolve } from 'path';
 import process from 'node:process';
 import { Buffer } from 'buffer';
 
-import { SaxEventType, SAXParser } from '../../../lib/cjs/index.js';
+import { SaxEventType, SAXParser } from '../../../lib/esm/index.js';
 
 import nodeXml from 'node-xml';
 // import libxml from 'libxmljs';
