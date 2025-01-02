@@ -256,7 +256,9 @@ export class SAXParser {
       if (chunk.done) return this.end();
       this.write(chunk.value);
       if (eventAggregator.length) {
-        yield* eventAggregator;
+        for (const event of eventAggregator) {
+          yield event;
+        }
         eventAggregator.length = 0;
       }
     }
