@@ -132,10 +132,10 @@ impl GraphemeClusters<'_> {
     /// assert!(gc.take_until_ascii(&[b'!']).is_none());
     ///
     /// // Handle broken surrogate at the end
-    /// let bytes_with_surrogate = "🐉 hello, world!\xF0".as_bytes();
-    /// let mut gc_with_surrogate = GraphemeClusters::new(bytes_with_surrogate);
+    /// let bytes = "hello, world!🐉🐉🐉".as_bytes();
+    /// let mut gc_with_surrogate = GraphemeClusters::new(&bytes[..14]);
     /// if let Some(result) = gc_with_surrogate.take_until_ascii(&[b'!']) {
-    ///     assert_eq!(result.0, "🐉 hello, world");
+    ///     assert_eq!(result.0, "hello, world");
     ///     assert_eq!(result.1, 0);
     ///     assert_eq!(result.2, 12);
     /// }
@@ -166,8 +166,8 @@ impl GraphemeClusters<'_> {
             cursor += len;
         }
 
-        if cursor >= byte_len {
-          cursor = byte_len;
+        if cursor > byte_len {
+          cursor =  byte_len - (cursor - byte_len);
         }
         // Nothing to take
         if start >= cursor {

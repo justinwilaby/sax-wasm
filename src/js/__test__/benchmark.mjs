@@ -3,7 +3,7 @@ import { URL } from 'url';
 import { resolve } from 'path';
 import { Buffer } from 'buffer';
 
-import { SAXParser, SaxEventType } from '../../../lib/cjs/index.js';
+import { SAXParser, SaxEventType } from '../../../lib/esm/index.js';
 
 import nodeXml from 'node-xml';
 import expat from 'node-expat';

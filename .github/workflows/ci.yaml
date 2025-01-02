@@ -45,6 +45,9 @@ jobs:
       - name: Build and test
         run: npm run lint && npm run build && npm run coverage
 
+      - name: Benchmark
+        run: npm run benchmark
+
       - name: Cache Node.js modules
         uses: actions/cache@v2
         with:

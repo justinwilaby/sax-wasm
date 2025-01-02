@@ -17,8 +17,16 @@ impl EventHandler for SaxEventHandler {
   #[inline(always)]
     fn handle_event(&self, event: Event, data: Entity) {
         let encoded_data = data.encode();
-        unsafe { event_listener(event as u32, encoded_data.as_ptr(), encoded_data.len()) };
+        unsafe { event_listener(1 << event as u32, encoded_data.as_ptr(), encoded_data.len()) };
     }
+}
+
+fn generate_event_lookup(events: u32) -> [bool; 10] {
+    let mut event_lookup = [false; 10];
+    for i in 0..10 {
+        event_lookup[i] = events & (1 << i) != 0;
+    }
+    event_lookup
 }
 
 #[no_mangle]
@@ -28,7 +36,7 @@ pub unsafe extern "C" fn parser(events: u32) {
         let sax_parse = SAXParser::new(event_handler);
         SAX = mem::transmute(Box::new(sax_parse));
     }
-    (*SAX).events = events;
+    (*SAX).events = generate_event_lookup(events);
 }
 
 #[no_mangle]

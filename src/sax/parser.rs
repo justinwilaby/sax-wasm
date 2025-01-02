@@ -1,4 +1,6 @@
 use std::mem;
+use std::ops::Index;
+use std::ops::IndexMut;
 use std::str;
 
 use super::grapheme_iterator::GraphemeClusters;
@@ -51,7 +53,7 @@ pub trait EventHandler {
 /// * `end_pos` - The end position of the current parse.
 pub struct SAXParser<'a> {
     // Configuration and State
-    pub events: u32,
+    pub events: [bool; 10],
     state: State,
     brace_ct: u32,
     quote: u8,
@@ -117,8 +119,9 @@ impl<'a> SAXParser<'a> {
     /// let tags = Rc::new(RefCell::new(Vec::new()));
     /// let event_handler = SaxEventHandler::new(Rc::clone(&tags));
     /// let mut parser = SAXParser::new(&event_handler);
-    ///
-    /// parser.events = Event::OpenTag as u32;
+    /// let mut events = [false;10];
+    /// events[Event::OpenTag as usize] = true;
+    /// parser.events = events;
     /// parser.write(b"<tag>content</tag>");
     ///
     /// // Process events
@@ -129,7 +132,7 @@ impl<'a> SAXParser<'a> {
     pub fn new(event_handler: &'a dyn EventHandler) -> SAXParser<'a> {
         SAXParser {
             // Configuration and State
-            events: 0,
+            events: [false; 10],
             state: State::Begin,
             brace_ct: 0,
             quote: 0,
@@ -215,12 +218,8 @@ impl<'a> SAXParser<'a> {
             self.process_broken_surrogate(&mut gc, source, bytes_info);
         }
 
-        loop {
-            if let Some(current) = gc.next() {
-                self.process_grapheme(&mut gc, &current);
-            } else {
-                break;
-            }
+        while let Some(current) = gc.next() {
+          self.process_grapheme(&mut gc, &current);
         }
         self.end_pos = [gc.line, gc.character];
         self.leftover_bytes_info = gc.get_remaining_bytes();
@@ -399,8 +398,8 @@ impl<'a> SAXParser<'a> {
             return;
         }
 
-        if self.events & Event::OpenTagStart as u32 != 0 {
-            self.event_handler.handle_event(Event::OpenTagStart, Entity::Tag(&mut self.tag));
+        if self.events[Event::OpenTagStart] {
+            self.event_handler.handle_event(Event::OpenTagStart, Entity::Tag(&self.tag));
         }
         match current.0 {
             ">" => self.process_open_tag(false, current),
@@ -439,11 +438,11 @@ impl<'a> SAXParser<'a> {
 
         let mut text = mem::replace(&mut self.text, Text::new([line, character]));
         text.end = [line, character - 1];
-        if self.events & Event::Text as u32 != 0 {
-            self.event_handler.handle_event(Event::Text, Entity::Text(&mut text));
+        if self.events[Event::Text] {
+            self.event_handler.handle_event(Event::Text, Entity::Text(&text));
         }
         // Store these only if we're interested in CloseTag events
-        if len != 0 && self.events & Event::CloseTag as u32 != 0 {
+        if len != 0 && self.events[Event::CloseTag] {
             self.tags[len - 1].text_nodes.push(text);
         }
     }
@@ -481,10 +480,10 @@ impl<'a> SAXParser<'a> {
 
         if current.0 == ">" {
             let mut sgml_decl = mem::replace(&mut self.sgml_decl, Text::new([0, 0]));
-            if self.events & Event::SGMLDeclaration as u32 != 0 {
+            if self.events[Event::SGMLDeclaration] {
                 sgml_decl.value.extend_from_slice(current.0.as_bytes());
                 sgml_decl.end = [current.1, current.2 - 1];
-                self.event_handler.handle_event(Event::SGMLDeclaration, Entity::Text(&mut sgml_decl));
+                self.event_handler.handle_event(Event::SGMLDeclaration, Entity::Text(&sgml_decl));
             }
 
             self.new_text(current);
@@ -514,10 +513,10 @@ impl<'a> SAXParser<'a> {
     fn doctype(&mut self, current: &GraphemeResult) {
         if current.0 == ">" {
             self.new_text(current);
-            if self.events & Event::Doctype as u32 != 0 {
+            if self.events[Event::Doctype] {
                 let mut doctype = mem::replace(&mut self.doctype, Text::new([0, 0]));
                 doctype.end = [current.1, current.2 - 1];
-                self.event_handler.handle_event(Event::Doctype, Entity::Text(&mut doctype));
+                self.event_handler.handle_event(Event::Doctype, Entity::Text(&doctype));
             }
             return;
         }
@@ -568,7 +567,7 @@ impl<'a> SAXParser<'a> {
         if let Some(comment) = comment_result {
             comment_str = comment.0;
         }
-        if self.events & Event::Comment as u32 != 0 {
+        if self.events[Event::Comment] {
             self.comment.value.extend_from_slice(current.0.as_bytes());
             self.comment.value.extend_from_slice(comment_str.as_bytes());
         }
@@ -579,7 +578,7 @@ impl<'a> SAXParser<'a> {
             self.state = State::CommentEnded;
             return;
         }
-        if self.events & Event::Comment as u32 != 0 {
+        if self.events[Event::Comment] {
             self.comment.value.push(b'-');
             self.comment.value.extend_from_slice(current.0.as_bytes());
         }
@@ -588,15 +587,15 @@ impl<'a> SAXParser<'a> {
 
     fn comment_ended(&mut self, current: &GraphemeResult) {
         if current.0 == ">" {
-            if self.events & Event::Comment as u32 != 0 {
+            if self.events[Event::Comment] {
                 let mut comment = mem::replace(&mut self.comment, Text::new([0, 0]));
                 comment.end = [current.1, current.2 - 1];
-                self.event_handler.handle_event(Event::Comment, Entity::Text(&mut comment));
+                self.event_handler.handle_event(Event::Comment, Entity::Text(&comment));
             }
             self.state = State::BeginWhitespace;
             return;
         }
-        if self.events & Event::Comment as u32 != 0 {
+        if self.events[Event::Comment] {
             self.comment.value.extend_from_slice("--".as_bytes());
             self.comment.value.extend_from_slice(current.0.as_bytes());
         }
@@ -627,10 +626,10 @@ impl<'a> SAXParser<'a> {
     fn cdata_ending_2(&mut self, current: &GraphemeResult) {
         if current.0 == ">" {
             self.new_text(current);
-            if self.events & Event::Cdata as u32 != 0 {
+            if self.events[Event::Cdata] {
                 let mut cdata = mem::replace(&mut self.cdata, Text::new([0, 0]));
                 cdata.end = [current.1, current.2 - 1];
-                self.event_handler.handle_event(Event::Cdata, Entity::Text(&mut cdata));
+                self.event_handler.handle_event(Event::Cdata, Entity::Text(&cdata));
             }
             return;
         } else if current.0 == "]" {
@@ -683,9 +682,9 @@ impl<'a> SAXParser<'a> {
         if current.0 == ">" {
             self.new_text(current);
             let mut proc_inst = mem::replace(&mut self.proc_inst, ProcInst::new());
-            if self.events & Event::ProcessingInstruction as u32 != 0 {
+            if self.events[Event::ProcessingInstruction] {
                 proc_inst.end = [current.1, current.2];
-                self.event_handler.handle_event(Event::ProcessingInstruction,Entity::ProcInst(&mut proc_inst));
+                self.event_handler.handle_event(Event::ProcessingInstruction,Entity::ProcInst(&proc_inst));
             }
             return;
         }
@@ -852,13 +851,13 @@ impl<'a> SAXParser<'a> {
     }
 
     fn process_attribute(&mut self) {
-        let mut attr = mem::replace(&mut self.attribute, Attribute::new());
-        let attribute_event = self.events & Event::Attribute as u32 != 0;
+        let attr = mem::replace(&mut self.attribute, Attribute::new());
+        let attribute_event = self.events[Event::Attribute];
         if attribute_event {
-            self.event_handler.handle_event(Event::Attribute, Entity::Attribute(&mut attr));
+            self.event_handler.handle_event(Event::Attribute, Entity::Attribute(&attr));
         }
         // Store them only if we're interested in Open and Close tag events
-        if attribute_event || self.events & Event::CloseTag as u32 != 0 {
+        if attribute_event || self.events[Event::CloseTag] {
             self.tag.attributes.push(attr);
         }
     }
@@ -868,8 +867,8 @@ impl<'a> SAXParser<'a> {
         tag.self_closing = self_closing;
         tag.open_end = [current.1, current.2];
 
-        if self.events & Event::OpenTag as u32 != 0 {
-            self.event_handler.handle_event(Event::OpenTag, Entity::Tag(&mut tag));
+        if self.events[Event::OpenTag] {
+            self.event_handler.handle_event(Event::OpenTag, Entity::Tag(&tag));
         }
         if !self_closing {
             self.new_text(current);
@@ -881,7 +880,7 @@ impl<'a> SAXParser<'a> {
       self.new_text(current);
       let mut tags_len = self.tags.len();
 
-      let close_tag_name = if self.close_tag_name.is_empty() && self.tag.self_closing {
+      let close_tag_name = if self.tag.self_closing && self.close_tag_name.is_empty() {
           &self.tag.name
       } else {
           &mem::take(&mut self.close_tag_name)
@@ -909,7 +908,7 @@ impl<'a> SAXParser<'a> {
           return;
       }
 
-      if self.events & Event::CloseTag as u32 == 0 {
+      if !self.events[Event::CloseTag] {
           if tag_index > 1 {
               self.tags.truncate(tag_index);
               return;
@@ -925,7 +924,7 @@ impl<'a> SAXParser<'a> {
           let mut tag = self.tags.remove(tags_len);
           tag.close_end = [current.1, current.2];
 
-          self.event_handler.handle_event(Event::CloseTag, Entity::Tag(&mut tag));
+          self.event_handler.handle_event(Event::CloseTag, Entity::Tag(&tag));
           self.tag = tag;
       }
     }
@@ -956,14 +955,14 @@ impl<'a> SAXParser<'a> {
     }
 
     fn new_text(&mut self, current: &GraphemeResult) {
-        if self.events & Event::Text as u32 != 0 || self.events & Event::CloseTag as u32 != 0 {
+        if self.events[Event::Text] || self.events[Event::CloseTag] {
             self.text = Text::new([current.1, current.2]);
         }
         self.state = State::Text;
     }
 
     fn write_text(&mut self, grapheme: &[u8]) {
-        if self.events & Event::Text as u32 == 0 && self.events & Event::CloseTag as u32 == 0 {
+        if !self.events[Event::Text] && !self.events[Event::CloseTag] {
             return;
         }
         self.text.value.extend_from_slice(grapheme);
@@ -973,25 +972,40 @@ impl<'a> SAXParser<'a> {
 #[derive(PartialEq, Clone, Copy)]
 pub enum Event {
     // 1
-    Text = 0b0000000001,
+    Text = 0,
     // 2
-    ProcessingInstruction = 0b0000000010,
+    ProcessingInstruction = 1,
     // 4
-    SGMLDeclaration = 0b0000000100,
+    SGMLDeclaration = 2,
     // 8
-    Doctype = 0b0000001000,
+    Doctype = 3,
     // 16
-    Comment = 0b0000010000,
+    Comment = 4,
     // 32
-    OpenTagStart = 0b0000100000,
+    OpenTagStart = 5,
     // 64
-    Attribute = 0b0001000000,
+    Attribute = 6,
     // 128
-    OpenTag = 0b0010000000,
+    OpenTag = 7,
     // 256
-    CloseTag = 0b0100000000,
+    CloseTag = 8,
     // 512
-    Cdata = 0b1000000000,
+    Cdata = 9,
+}
+
+impl Index<Event> for [bool; 10] {
+  type Output = bool;
+  #[inline(always)]
+  fn index(&self, event: Event) -> &Self::Output {
+      unsafe { &self.get_unchecked(event as usize) }
+  }
+}
+
+impl IndexMut<Event> for [bool; 10] {
+  #[inline(always)]
+  fn index_mut(&mut self, event: Event) -> &mut Self::Output {
+      unsafe { self.get_unchecked_mut(event as usize) }
+  }
 }
 
 #[derive(PartialEq)]
@@ -1104,7 +1118,9 @@ mod tests {
     fn stream_very_large_xml() -> Result<()> {
         let event_handler = TextEventHandler::new();
         let mut sax = SAXParser::new(&event_handler);
-        sax.events = Event::Text as u32;
+        let mut events = [false;10];
+        events[Event::Text] = true;
+        sax.events = events;
         let f = File::open("src/js/__test__/xml.xml")?;
         let mut reader = BufReader::new(f);
         const BUFFER_LEN: usize = 32 * 1024;
@@ -1124,7 +1140,9 @@ mod tests {
     fn test_comment() -> Result<()> {
         let event_handler = TextEventHandler::new();
         let mut sax = SAXParser::new(&event_handler);
-        sax.events = Event::Comment as u32;
+        let mut events = [false;10];
+        events[Event::Comment] = true;
+        sax.events = events;
         let str = "<!--name='test 3 attr' some comment--> <-- name='test 3 attr' some comment -->";
 
         sax.write(str.as_bytes());
@@ -1142,11 +1160,16 @@ mod tests {
     fn test_4_bytes() -> Result<()> {
         let event_handler = TextEventHandler::new();
         let mut sax = SAXParser::new(&event_handler);
-        sax.events = Event::Text as u32;
+        let mut events = [false;10];
+        events[Event::Text] = true;
+        sax.events = events;
         let str = "🏴📚📚🏴📚📚🏴📚📚🏴📚📚🏴📚📚🏴📚📚🏴📚📚🏴📚📚🏴📚📚🏴📚📚";
         let bytes = str.as_bytes();
-        sax.write(&bytes[0..14]);
+        sax.write(&bytes[..14]);
+        assert!(sax.leftover_bytes_info.is_some());
+
         sax.write(&bytes[14..]);
+        assert!(sax.leftover_bytes_info.is_none());
         sax.identity();
 
         let texts = event_handler.texts.borrow();
@@ -1161,7 +1184,9 @@ mod tests {
     fn count_grapheme_length() -> Result<()> {
         let event_handler = TextEventHandler::new();
         let mut sax = SAXParser::new(&event_handler);
-        sax.events = Event::Text as u32;
+        let mut events = [false;10];
+        events[Event::Text] = true;
+        sax.events = events;
         let str = "🏴📚📚<div href=\"./123/123\">hey there</div>";
 
         sax.write(str.as_bytes());
@@ -1179,7 +1204,9 @@ mod tests {
     fn parse_jsx_expression() -> Result<()> {
         let event_handler = TextEventHandler::new();
         let mut sax = SAXParser::new(&event_handler);
-        sax.events = Event::Text as u32;
+        let mut events = [false;10];
+        events[Event::Text] = true;
+        sax.events = events;
         let str = "<foo>{bar < baz ? <div></div> : <></>}</foo>";
 
         sax.write(str.as_bytes());
@@ -1202,7 +1229,9 @@ mod tests {
     fn parse_empty_cdata() -> Result<()> {
         let event_handler = TextEventHandler::new();
         let mut sax = SAXParser::new(&event_handler);
-        sax.events = Event::Cdata as u32;
+        let mut events = [false;10];
+        events[Event::Cdata] = true;
+        sax.events = events;
         let str = "<div>
         <div>
           <![CDATA[]]>

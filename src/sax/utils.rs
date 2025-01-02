@@ -1,53 +1,5 @@
 use std::u8;
 
-/// Converts an unsigned integer to its string representation.
-///
-/// This function converts a given `u32` value to its corresponding string representation.
-/// It uses a loop to determine the number of digits and then constructs the string by
-/// extracting each digit from the number.
-///
-/// # Arguments
-///
-/// * `uint` - The unsigned integer to convert.
-///
-/// # Returns
-///
-/// * A `String` representing the unsigned integer.
-///
-/// # Examples
-///
-/// ```
-/// use sax_wasm::sax::utils::uint_to_string;
-///
-/// assert_eq!(uint_to_string(123), "123");
-/// assert_eq!(uint_to_string(0), "0");
-/// ```
-pub fn uint_to_string(mut uint: u32) -> String {
-    let mut ct: u32 = 0;
-    let mut s = String::new();
-    loop {
-        let d = (uint / 10u32.pow(ct)) as f32;
-        if d < 10.0 {
-            break;
-        }
-        ct += 1;
-    }
-    let nums = "0123456789";
-    loop {
-        let pow = 10u32.pow(ct);
-        let set = uint - (uint % pow);
-        let i = (set / pow) as usize;
-        let num = unsafe { nums.get_unchecked(i..i + 1) };
-        s.push_str(num);
-        if ct == 0 {
-            break;
-        }
-        uint -= set;
-        ct -= 1;
-    }
-    s
-}
-
 /// Compares two ASCII strings case-insensitively.
 ///
 /// This function compares two ASCII strings for equality, ignoring case differences.

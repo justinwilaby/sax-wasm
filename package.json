@@ -24,6 +24,7 @@
     "build:wasm": "cargo build --target wasm32-unknown-unknown --release && npm run wasm-opt",
     "wasm-opt": "wasm-opt -O4 target/wasm32-unknown-unknown/release/sax_wasm.wasm -o lib/sax-wasm.wasm",
     "build": "(npm run build:esm && npm run build:cjs) && npm run build:wasm && tsc --emitDeclarationOnly",
+    "build:dev": "(npm run build:esm -- --sourceMap && npm run build:cjs -- --sourceMap ) && npm run build:wasm && tsc --emitDeclarationOnly",
     "build:esm": "tsc --module esnext --outDir lib/esm --target esnext",
     "build:cjs": "tsc --module commonjs --outDir lib/cjs --target esnext",
     "benchmark": "node src/js/__test__/benchmark.mjs",
