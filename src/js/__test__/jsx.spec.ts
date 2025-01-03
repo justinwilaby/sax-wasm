@@ -16,7 +16,7 @@ describe('When parsing JSX, the SaxWasm', () => {
 
     parser.eventHandler = function (event, data) {
       _event = event;
-      _data.push(data as Tag);
+      _data.push(JSON.parse(JSON.stringify(data)) as Tag);
     };
     return parser.prepareWasm(saxWasm);
   });

@@ -15,7 +15,7 @@ describe('SaxWasm', () => {
 
         parser.eventHandler = function (event: SaxEventType, data: Detail) {
             _event = event;
-            _data.push(data as Attribute);
+            _data.push(JSON.parse(JSON.stringify(data)) as Attribute);
         };
         return parser.prepareWasm(saxWasm);
     });
@@ -49,7 +49,7 @@ describe('SaxWasm', () => {
             'keywords'
         ];
         deepStrictEqual(_data.length, 7);
-        _data.forEach((data, index) => deepStrictEqual('' + data.name, names[index]));
+        _data.forEach((data, index) => deepStrictEqual('' + (data.name?.value || data.name), names[index]));
     });
 
     it('should contain the complete comment', () => {
@@ -58,7 +58,7 @@ describe('SaxWasm', () => {
       strictEqual(_data[1].value, ' name="test 3 attr" some comment ');
     });
 
-    it ('should allow for chars that look like comment endings but are not really an endings', () => {
+    it ('should allow for chars that look like comment endings but are not really endings', () => {
       parser.write(Buffer.from(`<!--name="test 3 attr" some comment -- > not an ending-->`));
       strictEqual(_data[0].value, 'name="test 3 attr" some comment -- > not an ending');
     });

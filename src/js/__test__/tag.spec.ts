@@ -21,7 +21,7 @@ describe('SaxWasm', () => {
 
     parser.eventHandler = function (event, data) {
       _event |= event as number;
-      _data.push(data as Tag);
+      _data.push(JSON.parse(JSON.stringify(data)) as Tag);
     };
     return parser.prepareWasm(saxWasm);
   });
@@ -55,10 +55,10 @@ describe('SaxWasm', () => {
     const [, , tag] = _data;
     deepStrictEqual(tag.name, 'div');
     deepStrictEqual(tag.attributes.length, 1);
-    deepStrictEqual('' + tag.attributes[0].name, 'class');
-    deepStrictEqual('' + tag.attributes[0].value, 'myDiv');
+    deepStrictEqual(tag.attributes[0].name.value, 'class');
+    deepStrictEqual(tag.attributes[0].value.value, 'myDiv');
     deepStrictEqual(tag.textNodes.length, 1);
-    deepStrictEqual('' + tag.textNodes[0].value, 'This is my div');
+    deepStrictEqual(tag.textNodes[0].value, 'This is my div');
     deepStrictEqual(JSON.parse(JSON.stringify(tag.openStart)), { line: 0, character: 0 });
     deepStrictEqual(JSON.parse(JSON.stringify(tag.openEnd)), { line: 0, character: 19 });
     deepStrictEqual(JSON.parse(JSON.stringify(tag.closeStart)), { line: 0, character: 33 });

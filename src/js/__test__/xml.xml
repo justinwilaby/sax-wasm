@@ -1,14 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
 <root xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
   xsi:noNamespaceSchemaLocation="xml.xsd">
-  <empty></empty>
-  <army>1682443131</army>
+  <?process-root instruction?>
+  <div disabled="">
+    <?process-div instruction?>
+    <self-closing/>
+  </div>
+  <self-closing/>
+  <army id="test_id" class="container emphasize">1682443131</army>
+  <?process-army instruction?>
   <continent>large</continent>
   <ability lift="away">
+    <?process-ability instruction?>
     <own>
       <![CDATA[quick scientific busy exist]]>
       <labor>ancient</labor>
       <when did="stood">717600495</when>
       <engineer>
+        <?process-engineer instruction?>
         <clock>-138305378 <!--west-->
         </clock>
         <practical>-1572283852</practical>
@@ -24,6 +33,7 @@
                 signal support zero laugh begun needle wife-->
                 <queen sudden="facing">tried</queen>
                 <arrive>
+                  <?process-arrive instruction?>
                   <shore>114570498.74122381
                   <![CDATA[avoid education company either greater]]>
                   </shore>
@@ -45,8 +55,7 @@
                           <bone ice="spread">
                             <cap>
                               <during>
-                                <!--kids
-                                hole among son shoe thrown five-->type </during>
+                                <!--kids among son shoe thrown five-->type </during>
                               <proper>1894349161
                               <![CDATA[national negative warn flower back]]>
                               </proper>

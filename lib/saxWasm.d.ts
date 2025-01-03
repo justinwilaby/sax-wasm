@@ -36,18 +36,15 @@ export type Detail = Position | Attribute | Text | Tag | ProcInst;
  * @template T - The type of detail to be read.
  */
 export declare abstract class Reader<T = Detail> {
+    #private;
     protected data: Uint8Array;
+    protected ptr: number;
+    protected memory: WebAssembly.Memory;
     protected cache: {
         [prop: string]: T;
     };
-    protected ptr: number;
-    /**
-     * Creates a new Reader instance.
-     *
-     * @param data - The data to be read.
-     * @param ptr - The initial pointer position.
-     */
-    constructor(data: Uint8Array, ptr?: number);
+    get dataView(): Uint8Array<ArrayBufferLike>;
+    constructor(data: Uint8Array, ptr: number, memory: WebAssembly.Memory);
     /**
      * Converts the reader data to a JSON object.
      *
@@ -95,13 +92,7 @@ export declare class Attribute extends Reader<Text | AttributeType> {
     type: AttributeType;
     name: Text;
     value: Text;
-    /**
-     * Creates a new Attribute instance.
-     *
-     * @param buffer - The buffer containing the attribute data.
-     * @param ptr - The initial pointer position.
-     */
-    constructor(buffer: Uint8Array, ptr?: number);
+    constructor(buffer: Uint8Array, ptr: number, memory: WebAssembly.Memory);
     /**
      * @inheritDoc
      */
@@ -144,13 +135,7 @@ export declare class Attribute extends Reader<Text | AttributeType> {
 export declare class ProcInst extends Reader<Position | Text> {
     target: Text;
     content: Text;
-    /**
-     * Creates a new ProcInst instance.
-     *
-     * @param buffer - The buffer containing the processing instruction data.
-     * @param ptr - The initial pointer position.
-     */
-    constructor(buffer: Uint8Array, ptr?: number);
+    constructor(buffer: Uint8Array, ptr: number, memory: WebAssembly.Memory);
     /**
      * Gets the start position of the processing instruction.
      *
@@ -497,17 +482,7 @@ export declare class SAXParser {
      */
     prepareWasm(saxWasm: Response | Promise<Response>): Promise<boolean>;
     prepareWasm(saxWasm: Uint8Array): Promise<boolean>;
-    /**
-     * Internal event trap used to deliver the correct
-     * reader for the bytes in the wasm memory based on
-     * the envent type.
-     *
-     * @param event The SaxEventType emitted by the WASM
-     * @param ptr The pointer to the memory location containing
-     * the entity to read
-     * @param len The length in bytes to read
-     */
-    eventTrap: (event: SaxEventType, ptr: number, len: number) => void;
+    eventTrap: (event: number, ptr: number) => void;
 }
 export declare const readString: (data: Uint8Array, offset: number, length: number) => string;
 export declare const readU32: (uint8Array: Uint8Array, ptr: number) => number;

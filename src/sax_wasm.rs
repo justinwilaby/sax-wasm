@@ -1,4 +1,5 @@
 use core::mem;
+use std::ptr;
 use std::slice;
 
 use crate::sax::parser::*;
@@ -9,15 +10,19 @@ pub struct SaxEventHandler;
 
 impl SaxEventHandler {
     pub fn new() -> Self {
-      SaxEventHandler
+        SaxEventHandler
     }
 }
 
 impl EventHandler for SaxEventHandler {
-  #[inline(always)]
     fn handle_event(&self, event: Event, data: Entity) {
-        let encoded_data = data.encode();
-        unsafe { event_listener(1 << event as u32, encoded_data.as_ptr(), encoded_data.len()) };
+        let ptr = match data {
+            Entity::Attribute(attribute) => ptr::from_ref(attribute) as *const u8,
+            Entity::ProcInst(proc_inst) => ptr::from_ref(proc_inst) as *const u8,
+            Entity::Tag(tag) => ptr::from_ref(tag) as *const u8,
+            Entity::Text(text) => ptr::from_ref(text) as *const u8,
+        };
+        unsafe { event_listener(1 << event as u32, ptr) };
     }
 }
 
@@ -51,5 +56,5 @@ pub unsafe extern "C" fn end() {
 }
 
 extern "C" {
-    fn event_listener(event: u32, ptr: *const u8, len: usize);
+    fn event_listener(event: u32, ptr: *const u8);
 }

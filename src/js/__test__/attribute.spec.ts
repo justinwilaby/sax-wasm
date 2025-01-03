@@ -15,7 +15,7 @@ describe('SaxWasm', () => {
 
     parser.eventHandler = function (event: SaxEventType, data: Detail) {
       _event = event;
-      _data.push(data as Attribute);
+      _data.push(JSON.parse(JSON.stringify(data)) as Attribute);
     };
     return parser.prepareWasm(saxWasm);
   });
@@ -32,7 +32,8 @@ describe('SaxWasm', () => {
     parser.write(Buffer.from('<button disabled class="primary-btn"></button>'));
     deepStrictEqual(_event, SaxEventType.Attribute);
     deepStrictEqual(_data.length, 2);
-    deepStrictEqual('' + _data[0], 'disabled=""');
+    deepStrictEqual(_data[0].name.value, 'disabled');
+    deepStrictEqual(_data[0].value.value, '');
   })
 
   it('should not include whitespace in the attribute\'s nameEnd value', () => {
@@ -42,7 +43,7 @@ describe('SaxWasm', () => {
 </plugin>`));
     deepStrictEqual(_event, SaxEventType.Attribute);
     deepStrictEqual(_data.length, 1);
-    deepStrictEqual('' + _data[0].name, 'version');
+    deepStrictEqual(_data[0].name.value, 'version');
     deepStrictEqual(_data[0].name.end.character, 11);
   })
 
@@ -50,38 +51,38 @@ describe('SaxWasm', () => {
     parser.write(Buffer.from('<body class="main"></body>'));
     deepStrictEqual(_event, SaxEventType.Attribute);
     deepStrictEqual(_data.length, 1);
-    deepStrictEqual('' + _data[0].name, 'class');
-    deepStrictEqual(''+ _data[0].value, 'main');
+    deepStrictEqual(_data[0].name.value, 'class');
+    deepStrictEqual(_data[0].value.value, 'main');
   });
 
   it('should recognize attribute names when no spaces separate them', () => {
     parser.write(Buffer.from('<component data-id="user_1234"key="23" disabled />'));
     deepStrictEqual(_event, SaxEventType.Attribute);
-    deepStrictEqual('' + _data[0].name, 'data-id');
-    deepStrictEqual('' + _data[0].value, 'user_1234');
-    deepStrictEqual('' + _data[1].name, 'key');
-    deepStrictEqual('' + _data[1].value, '23');
+    deepStrictEqual(_data[0].name.value, 'data-id');
+    deepStrictEqual(_data[0].value.value, 'user_1234');
+    deepStrictEqual(_data[1].name.value, 'key');
+    deepStrictEqual(_data[1].value.value, '23');
   });
 
   it('should preserve grapheme clusters as attribute values', () => {
     parser.write(Buffer.from('<div id="👅"></div>'));
     deepStrictEqual(_event, SaxEventType.Attribute);
-    deepStrictEqual('' + _data[0].name, 'id');
-    deepStrictEqual('' + _data[0].value, '👅');
+    deepStrictEqual(_data[0].name.value, 'id');
+    deepStrictEqual(_data[0].value.value, '👅');
   });
 
   it('should provide the attribute value when the value is not quoted', () => {
     parser.write(Buffer.from('<body app="buggyAngularApp=19"></body>'));
     deepStrictEqual(_event, SaxEventType.Attribute);
-    deepStrictEqual('' + _data[0].name, 'app');
-    deepStrictEqual('' + _data[0].value, 'buggyAngularApp=19');
+    deepStrictEqual(_data[0].name.value, 'app');
+    deepStrictEqual(_data[0].value.value, 'buggyAngularApp=19');
   });
 
   it('should provide the attribute value when the value is a JSX expression', () => {
     parser.write(Buffer.from('<Component props={() => { return this.props } }></Component>'));
     deepStrictEqual(_event, SaxEventType.Attribute);
-    deepStrictEqual('' + _data[0].name, 'props');
-    deepStrictEqual('' + _data[0].value, '() => { return this.props } ');
+    deepStrictEqual(_data[0].name.value, 'props');
+    deepStrictEqual(_data[0].value.value, '() => { return this.props } ');
   });
 
   it('should report the correct start and end positions for attributes', () => {
@@ -107,12 +108,21 @@ describe('SaxWasm', () => {
   it('should report namespaces as attributes', () => {
     parser.write(Buffer.from(`<x xmlns:edi='http://ecommerce.example.org/schema'></x>`));
     deepStrictEqual(_event, SaxEventType.Attribute);
-    deepStrictEqual('' + _data[0].name, 'xmlns:edi');
-    deepStrictEqual('' + _data[0].value, 'http://ecommerce.example.org/schema');
+    deepStrictEqual(_data[0].name.value, 'xmlns:edi');
+    deepStrictEqual(_data[0].value.value, 'http://ecommerce.example.org/schema');
   });
 
   it('should serialize to json as deepStrictEqualed', () => {
     parser.write(Buffer.from('<div class="testing"></div>'));
     deepStrictEqual(JSON.stringify(_data[0]), '{"name":{"start":{"line":0,"character":5},"end":{"line":0,"character":10},"value":"class"},"value":{"start":{"line":0,"character":12},"end":{"line":0,"character":19},"value":"testing"},"type":0}');
+  });
+
+  it('should correctly parse attribute values enclosed in single quotes', () => {
+    parser.write(Buffer.from(`<element attribute1='value1' attribute2='value2'></element>`));
+    deepStrictEqual(_event, SaxEventType.Attribute);
+    deepStrictEqual(_data[0].name.value, 'attribute1');
+    deepStrictEqual(_data[0].value.value, 'value1');
+    deepStrictEqual(_data[1].name.value, 'attribute2');
+    deepStrictEqual(_data[1].value.value, 'value2');
   });
 });

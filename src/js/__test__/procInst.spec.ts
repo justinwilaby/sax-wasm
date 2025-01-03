@@ -8,20 +8,20 @@ const saxWasm = readFileSync(resolve(__dirname, '../../../lib/sax-wasm.wasm'));
 describe('When parsing JSX, the SaxWasm', () => {
   let parser: SAXParser;
   let _event: SaxEventType;
-  let _data: ProcInst;
+  let _data: ProcInst | undefined;
 
   beforeAll(async () => {
     parser = new SAXParser(SaxEventType.ProcessingInstruction);
 
     parser.eventHandler = function (event, data) {
       _event = event;
-      _data = data as ProcInst;
+      _data = JSON.parse(JSON.stringify(data)) as ProcInst;
     };
     return parser.prepareWasm(saxWasm);
   });
 
   beforeEach(() => {
-    _data = null;
+    _data = undefined;
   });
 
   afterEach(() => {
@@ -31,10 +31,9 @@ describe('When parsing JSX, the SaxWasm', () => {
   it('should recognize Processing Instructions', () => {
     parser.write(Buffer.from('<?xml version="1.0" encoding="utf-8"?>'));
     strictEqual(_event, SaxEventType.ProcessingInstruction);
-    strictEqual('' + _data, '<? xml version="1.0" encoding="utf-8" ?>')
-    strictEqual('' + _data.content, 'version="1.0" encoding="utf-8"');
-    const result: Record<keyof ProcInst, Text> = JSON.parse(JSON.stringify(_data));
-    deepStrictEqual(result.content, {
+    strictEqual(_data?.target.value, 'xml')
+    strictEqual(_data.content.value, 'version="1.0" encoding="utf-8"');
+    deepStrictEqual(_data.content, {
       end: {
         character: 36,
         line: 0
@@ -46,13 +45,13 @@ describe('When parsing JSX, the SaxWasm', () => {
       value: 'version="1.0" encoding="utf-8"'
     });
 
-    deepStrictEqual(result.target, {
+    deepStrictEqual(_data.target, {
       end: {
         character: 5,
         line: 0
       },
       start: {
-        character: 3,
+        character: 2,
         line: 0
       },
       value: 'xml'
@@ -68,8 +67,8 @@ describe('When parsing JSX, the SaxWasm', () => {
     <!--/lit-part-->`;
     parser.write(Buffer.from(doc));
     strictEqual(_event, SaxEventType.ProcessingInstruction);
-    const result: Record<keyof ProcInst, Text> = JSON.parse(JSON.stringify(_data));
-    deepStrictEqual(result.start, {line: 2, character: 35});
-    deepStrictEqual(result.end, {line: 2, character: 37});
+
+    deepStrictEqual(_data?.start, {line: 2, character: 35});
+    deepStrictEqual(_data.end, {line: 2, character: 37});
   })
 });

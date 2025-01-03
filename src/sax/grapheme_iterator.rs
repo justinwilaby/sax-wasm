@@ -116,16 +116,16 @@ impl GraphemeClusters<'_> {
     ///
     /// // Take until a comma or space is encountered
     /// if let Some(result) = gc.take_until_ascii(&[b',', b' ']) {
-    ///     assert_eq!(result.0, "hello");
-    ///     assert_eq!(result.1, 0);
-    ///     assert_eq!(result.2, 5);
+    ///     assert_eq!(result, "hello");
+    ///     assert_eq!(gc.line, 0);
+    ///     assert_eq!(gc.character, 5);
     /// }
     ///
     /// // Continue taking until an exclamation mark is encountered
     /// if let Some(result) = gc.take_until_ascii(&[b'!']) {
-    ///     assert_eq!(result.0, ", world");
-    ///     assert_eq!(result.1, 0);
-    ///     assert_eq!(result.2, 12);
+    ///     assert_eq!(result, ", world");
+    ///     assert_eq!(gc.line, 0);
+    ///     assert_eq!(gc.character, 12);
     /// }
     ///
     /// // No more grapheme clusters to take
@@ -135,9 +135,9 @@ impl GraphemeClusters<'_> {
     /// let bytes = "hello, world!🐉🐉🐉".as_bytes();
     /// let mut gc_with_surrogate = GraphemeClusters::new(&bytes[..14]);
     /// if let Some(result) = gc_with_surrogate.take_until_ascii(&[b'!']) {
-    ///     assert_eq!(result.0, "hello, world");
-    ///     assert_eq!(result.1, 0);
-    ///     assert_eq!(result.2, 12);
+    ///     assert_eq!(result, "hello, world");
+    ///     assert_eq!(gc.line, 0);
+    ///     assert_eq!(gc.character, 12);
     /// }
     /// assert!(gc_with_surrogate.take_until_ascii(&[b'!']).is_none());
     /// ```
@@ -167,7 +167,7 @@ impl GraphemeClusters<'_> {
         }
 
         if cursor > byte_len {
-          cursor =  byte_len - (cursor - byte_len);
+            cursor = byte_len - (cursor - byte_len);
         }
         // Nothing to take
         if start >= cursor {
@@ -178,46 +178,7 @@ impl GraphemeClusters<'_> {
         self.line = line;
         self.character = character;
         let s = unsafe { str::from_utf8_unchecked(&self.bytes.get_unchecked(start..cursor)) };
-        Some((s, line, character))
-    }
-
-    /// Peeks at the next grapheme cluster without advancing the cursor.
-    ///
-    /// This function returns the next grapheme cluster in the byte slice without advancing the cursor.
-    /// It updates the line and character indices accordingly.
-    ///
-    /// # Returns
-    ///
-    /// * An `Option` containing a `GraphemeResult` with the next grapheme cluster, or `None` if the end of the byte slice is reached.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use sax_wasm::sax::grapheme_iterator::GraphemeClusters;
-    ///
-    /// let bytes = "hello".as_bytes();
-    /// let mut gc = GraphemeClusters::new(bytes);
-    /// let result = gc.peek();
-    /// assert!(result.is_some());
-    /// ```
-    pub fn peek(&mut self) -> Option<GraphemeResult<'_>> {
-        let next_byte = unsafe { *self.bytes.get_unchecked(self.cursor) };
-        let len = grapheme_len(next_byte);
-        let byte_len = self.bytes.len();
-        let end = self.cursor + len;
-        if byte_len <= end {
-            return None;
-        }
-        let mut line = self.line;
-        let mut character = self.character;
-        if next_byte == b'\n' {
-            line += 1;
-            character = 0;
-        } else {
-            character += if len == 4 { 1 } else { 2 };
-        }
-        let s = unsafe { str::from_utf8_unchecked(&self.bytes.get_unchecked(self.cursor..end)) };
-        Some((s, line, character))
+        Some(s)
     }
 
     /// Converts a grapheme cluster range to a slice range.
@@ -244,16 +205,8 @@ impl GraphemeClusters<'_> {
     pub fn get_slice_range(&self, range: Range<usize>) -> Range<usize> {
         let mut byte_indices = self.byte_indices.borrow_mut();
         let mut largest_idx = byte_indices.len() - 1;
-        let mut start_idx = if largest_idx >= range.start {
-            byte_indices[range.start]
-        } else {
-            byte_indices[largest_idx]
-        };
-        let mut end_idx = if largest_idx >= range.end {
-            byte_indices[range.end]
-        } else {
-            byte_indices[largest_idx]
-        };
+        let mut start_idx = if largest_idx >= range.start { byte_indices[range.start] } else { byte_indices[largest_idx] };
+        let mut end_idx = if largest_idx >= range.end { byte_indices[range.end] } else { byte_indices[largest_idx] };
 
         while largest_idx < range.end {
             let byte = unsafe { *self.bytes.get_unchecked(end_idx) };
@@ -267,17 +220,58 @@ impl GraphemeClusters<'_> {
         start_idx..end_idx
     }
 
-    pub fn get_remaining_bytes(&self) -> Option<([u8;4], usize, usize)> {
+    /// Returns the remaining bytes in the iterator.
+    ///
+    /// This function returns the remaining bytes in the iterator as a tuple containing:
+    /// - A fixed-size array of up to 4 bytes representing the remaining bytes.
+    /// - The length of the remaining bytes.
+    /// - The number of bytes needed to complete the current grapheme cluster.
+    ///
+    /// # Returns
+    ///
+    /// An `Option` containing a tuple with the following elements:
+    /// - A `[u8; 4]` array with the remaining bytes. If there are fewer than 4 bytes remaining,
+    ///   the unused elements of the array will be set to 0.
+    /// - A `usize` representing the length of the remaining bytes.
+    /// - A `usize` representing the number of bytes needed to complete the current grapheme cluster.
+    ///
+    /// If there are no remaining bytes, the function returns `None`.
+    ///
+    /// # Safety
+    ///
+    /// This function uses `unsafe` code to access the underlying byte slice without bounds checking.
+    /// It is the caller's responsibility to ensure that the `cursor` is within the valid range of the byte slice.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use sax_wasm::sax::grapheme_iterator::GraphemeClusters;
+    ///
+    /// let bytes = "hello, world!🐶".as_bytes();
+    /// let mut gc = GraphemeClusters::new(&bytes[..14]);
+    ///
+    /// // Consume some grapheme clusters
+    /// gc.take_until_ascii(&[b'1']); // 1 is not in the byte slice
+    /// gc.next(); // try to consume the next grapheme cluster which will have a broken surrogate
+    ///
+    /// // Get the remaining bytes
+    /// if let Some((remaining_bytes, len, bytes_needed)) = gc.get_remaining_bytes() {
+    ///     assert_eq!(remaining_bytes, [33, 240, 0, 0]); // &bytes[12..14] sized to 4
+    ///     assert_eq!(len, 2);
+    ///     assert_eq!(bytes_needed, 0);
+    /// }
+    /// ```
+    pub fn get_remaining_bytes(&self) -> Option<([u8; 4], usize, usize)> {
         if self.cursor == self.byte_len {
             return None;
         }
-        let bytes = unsafe { self.bytes.get_unchecked(self.cursor..)};
+        let bytes = unsafe { self.bytes.get_unchecked(self.cursor..) };
         let mut remaining_bytes: [u8; 4] = [0, 0, 0, 0];
         let len = bytes.len();
         let mut i = len;
         while i > 0 {
-          i -= 1;
-          remaining_bytes[i] = unsafe { *bytes.get_unchecked(i) };
+            i -= 1;
+            remaining_bytes[i] = unsafe { *bytes.get_unchecked(i) };
         }
 
         Some((remaining_bytes, len, self.bytes_needed))
@@ -286,7 +280,7 @@ impl GraphemeClusters<'_> {
 /// Represents the result of a grapheme cluster operation.
 ///
 /// This type alias represents a tuple containing a string slice, a line number, and a character index.
-pub type GraphemeResult<'a> = (&'a str, u32, u32);
+pub type GraphemeResult<'a> = &'a str;
 /// An iterator for grapheme clusters in a utf-8 formatted string
 ///
 /// This iterator provides a tuple: (grapheme: &str, from_index:usize, to_index:usize)
@@ -326,7 +320,7 @@ impl<'a> Iterator for GraphemeClusters<'a> {
         self.line = line;
         self.character = character;
 
-        Some((s, line, character))
+        Some(s)
     }
 }
 
@@ -360,7 +354,7 @@ mod grapheme_iterator_tests {
     fn iterator_test2() {
         let s = "🚀rocket ";
         let it: Vec<_> = GraphemeClusters::new(s.as_bytes()).collect();
-        for (grapheme, _, _) in it {
+        for grapheme in it {
             assert_eq!(grapheme.len() > 0, true)
         }
     }
@@ -391,13 +385,13 @@ mod grapheme_iterator_tests {
         assert_eq!(&gc[22], "🚀")
     }
     #[test]
-    fn seek_until_ascii_test() {
+    fn take_until_ascii_test() {
         let s = "🚀this is 🐉 a test string🚀";
         let mut gc = GraphemeClusters::new(s.as_bytes());
         let result = gc.take_until_ascii(&"a".as_bytes());
         assert_eq!(result.is_some(), true);
 
         let unwrapped = result.unwrap();
-        assert_eq!(unwrapped.0, "🚀this is 🐉 ");
+        assert_eq!(unwrapped, "🚀this is 🐉 ");
     }
 }

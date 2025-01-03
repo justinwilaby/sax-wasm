@@ -22,7 +22,6 @@ use std::u8;
 /// assert!(ascii_icompare("Hello", "hello"));
 /// assert!(!ascii_icompare("Hello", "world"));
 /// ```
-#[inline(always)]
 pub fn ascii_icompare(expected: &str, test: &str) -> bool {
     if expected.len() != test.len() {
         return false;
@@ -52,16 +51,12 @@ pub fn ascii_icompare(expected: &str, test: &str) -> bool {
 /// assert_eq!(to_char_code("A"), 65);
 /// assert_eq!(to_char_code("é"), 233);
 /// ```
-#[inline(always)]
 pub fn to_char_code(grapheme: &str) -> u32 {
     let bytes = grapheme.as_bytes();
     unsafe {
         match bytes.len() {
             1 => *bytes.get_unchecked(0) as u32,
-            2 => {
-                ((*bytes.get_unchecked(0) as u32 & 0x1f) << 6)
-                    | (*bytes.get_unchecked(1) as u32 & 0x3f)
-            }
+            2 => ((*bytes.get_unchecked(0) as u32 & 0x1f) << 6) | (*bytes.get_unchecked(1) as u32 & 0x3f),
             3 => {
                 ((*bytes.get_unchecked(0) as u32 & 0x0f) << 12)
                     | ((*bytes.get_unchecked(1) as u32 & 0x3f) << 6)
@@ -134,7 +129,6 @@ pub fn is_whitespace(grapheme: &str) -> bool {
 /// assert!(is_quote("'"));
 /// assert!(!is_quote("A"));
 /// ```
-#[inline(always)]
 pub fn is_quote(grapheme: &str) -> bool {
     let byte = unsafe { grapheme.as_bytes().get_unchecked(0) };
     byte == &b'"' || byte == &b'\''
@@ -162,23 +156,16 @@ pub fn is_quote(grapheme: &str) -> bool {
 /// assert_eq!(grapheme_len(b'A'), 1);
 /// assert_eq!(grapheme_len(b'\xC3'), 2); // 'é' in UTF-8
 /// ```
-#[inline(always)]
 pub fn grapheme_len(byte: u8) -> usize {
-  if byte & 0b1000_0000 == 0 {
-      1 // 1-byte sequence (ASCII)
-  } else if byte & 0b1110_0000 == 0b1100_0000 {
-      2 // 2-byte sequence
-  } else if byte & 0b1111_0000 == 0b1110_0000 {
-      3 // 3-byte sequence
-  } else if byte & 0b1111_1000 == 0b1111_0000 {
-      4 // 4-byte sequence
-  } else {
-      1 // Default case (invalid UTF-8 leading byte)
-  }
-}
-#[inline(always)]
-pub fn u32_to_u8(arr: &[u32]) -> &[u8] {
-  unsafe {
-      std::slice::from_raw_parts(arr.as_ptr() as *const u8, arr.len() * 4)
-  }
+    if byte & 0b1000_0000 == 0 {
+        1 // 1-byte sequence (ASCII)
+    } else if byte & 0b1110_0000 == 0b1100_0000 {
+        2 // 2-byte sequence
+    } else if byte & 0b1111_0000 == 0b1110_0000 {
+        3 // 3-byte sequence
+    } else if byte & 0b1111_1000 == 0b1111_0000 {
+        4 // 4-byte sequence
+    } else {
+        1 // Default case (invalid UTF-8 leading byte)
+    }
 }

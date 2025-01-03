@@ -47,19 +47,18 @@ export type Detail = Position | Attribute | Text | Tag | ProcInst;
  * @template T - The type of detail to be read.
  */
 export abstract class Reader<T = Detail> {
-  protected data: Uint8Array;
   protected cache = {} as { [prop: string]: T };
-  protected ptr: number;
 
-  /**
-   * Creates a new Reader instance.
-   *
-   * @param data - The data to be read.
-   * @param ptr - The initial pointer position.
-   */
-  constructor(data: Uint8Array, ptr = 0) {
-    this.data = data;
-    this.ptr = ptr;
+  #dataView: Uint8Array;
+  public get dataView() {
+    if (this.#dataView?.buffer === this.memory.buffer) {
+      return this.#dataView;
+    }
+    this.#dataView = new Uint8Array(this.memory.buffer);
+    return this.#dataView;
+  }
+
+  constructor(protected data: Uint8Array, protected ptr = 0, protected memory: WebAssembly.Memory) {
   }
 
   /**
@@ -115,21 +114,11 @@ export class Attribute extends Reader<Text | AttributeType> {
   public name: Text;
   public value: Text;
 
-  /**
-   * Creates a new Attribute instance.
-   *
-   * @param buffer - The buffer containing the attribute data.
-   * @param ptr - The initial pointer position.
-   */
-  constructor(buffer: Uint8Array, ptr = 0) {
-    super(buffer, ptr);
-    this.type = buffer[ptr];
-    ptr += 1;
-    const len = readU32(buffer, ptr);
-    ptr += 4;
-    this.name = new Text(buffer, ptr);
-    ptr += len;
-    this.value = new Text(buffer, ptr);
+  constructor(buffer: Uint8Array, ptr = 0, memory: WebAssembly.Memory) {
+    super(buffer, ptr, memory);
+    this.name = new Text(buffer, 0, memory);
+    this.value = new Text(buffer, 28, memory);
+    this.type = buffer[ptr + 56];
   }
 
   /**
@@ -183,20 +172,11 @@ export class ProcInst extends Reader<Position | Text> {
   public target: Text;
   public content: Text;
 
-  /**
-   * Creates a new ProcInst instance.
-   *
-   * @param buffer - The buffer containing the processing instruction data.
-   * @param ptr - The initial pointer position.
-   */
-  constructor(buffer: Uint8Array, ptr = 0) {
-    super(buffer, ptr);
-    ptr += 16;
-    const len = readU32(buffer, ptr);
-    ptr += 4;
-    this.target = new Text(buffer, ptr);
-    ptr += len;
-    this.content = new Text(buffer, ptr);
+  constructor(buffer: Uint8Array, ptr = 0, memory: WebAssembly.Memory) {
+    super(buffer, ptr, memory);
+
+    this.target = new Text(buffer, ptr + 16, memory);
+    this.content = new Text(buffer, ptr + 44, memory);
   }
 
   /**
@@ -270,10 +250,7 @@ export class Text extends Reader<string | Position> {
    * @returns The start position of the text node.
    */
   public get start(): Position {
-    return (
-      (this.cache.start as Position) ||
-      (this.cache.start = readPosition(this.data, this.ptr))
-    );
+    return this.cache.start as Position || (this.cache.start = readPosition(this.data, this.ptr + 12));
   }
 
   /**
@@ -282,10 +259,7 @@ export class Text extends Reader<string | Position> {
    * @returns The end position of the text node.
    */
   public get end(): Position {
-    return (
-      (this.cache.end as Position) ||
-      (this.cache.end = readPosition(this.data, this.ptr + 8))
-    );
+    return this.cache.end as Position || (this.cache.end = readPosition(this.data, this.ptr + 20));
   }
 
   /**
@@ -297,8 +271,9 @@ export class Text extends Reader<string | Position> {
     if (this.cache.value) {
       return this.cache.value as string;
     }
-    const valueLen = readU32(this.data, this.ptr + 16);
-    return (this.cache.value = readString(this.data, this.ptr + 20, valueLen));
+    const vecPtr = readU32(this.data, this.ptr + 4);
+    const valueLen = readU32(this.data, this.ptr + 8);
+    return (this.cache.value = readString(this.dataView, vecPtr, valueLen));
   }
 
   /**
@@ -370,7 +345,7 @@ export class Tag extends Reader<
   public get openStart(): Position {
     return (
       (this.cache.openStart as Position) ||
-      (this.cache.openStart = readPosition(this.data, this.ptr + 8))
+      (this.cache.openStart = readPosition(this.data, this.ptr + 40))
     );
   }
   /**
@@ -381,7 +356,7 @@ export class Tag extends Reader<
   public get openEnd(): Position {
     return (
       (this.cache.openEnd as Position) ||
-      (this.cache.openEnd = readPosition(this.data, this.ptr + 16))
+      (this.cache.openEnd = readPosition(this.data, this.ptr + 48))
     );
   }
   /**
@@ -392,7 +367,7 @@ export class Tag extends Reader<
   public get closeStart(): Position {
     return (
       (this.cache.closeStart as Position) ||
-      (this.cache.closeStart = readPosition(this.data, this.ptr + 24))
+      (this.cache.closeStart = readPosition(this.data, this.ptr + 56))
     );
   }
 
@@ -404,7 +379,7 @@ export class Tag extends Reader<
   public get closeEnd(): Position {
     return (
       (this.cache.closeEnd as Position) ||
-      (this.cache.closeEnd = readPosition(this.data, this.ptr + 32))
+      (this.cache.closeEnd = readPosition(this.data, this.ptr + 64))
     );
   }
 
@@ -414,7 +389,7 @@ export class Tag extends Reader<
    * @returns The self-closing flag of the tag.
    */
   public get selfClosing(): boolean {
-    return !!this.data[this.ptr + 40];
+    return !!this.data[this.ptr + 36];
   }
 
   /**
@@ -426,8 +401,9 @@ export class Tag extends Reader<
     if (this.cache.name) {
       return this.cache.name as string;
     }
-    const nameLen = readU32(this.data, this.ptr + 41);
-    return (this.cache.name = readString(this.data, this.ptr + 45, nameLen));
+    const vecPtr = readU32(this.data, this.ptr + 4);
+    const valueLen = readU32(this.data, this.ptr + 8);
+    return (this.cache.name = readString(this.dataView, vecPtr, valueLen));
   }
 
   /**
@@ -441,15 +417,14 @@ export class Tag extends Reader<
       return this.cache.attributes as Attribute[];
     }
     // starting location of the attribute block
-    let ptr = readU32(this.data, this.ptr);
-    const numAttrs = readU32(this.data, ptr);
-    ptr += 4;
+    let ptr = readU32(this.data, this.ptr + 16);
+    const numAttrs = readU32(this.data, this.ptr + 20);
+
     const attributes = [] as Attribute[];
     for (let i = 0; i < numAttrs; i++) {
-      const attrLen = readU32(this.data, ptr);
-      ptr += 4;
-      attributes[i] = new Attribute(this.data, ptr);
-      ptr += attrLen;
+      const attrVecData = new Uint8Array(this.memory.buffer, ptr, 60)
+      attributes[i] = new Attribute(attrVecData, 0, this.memory);
+      ptr += 60;
     }
     return (this.cache.attributes = attributes);
   }
@@ -465,15 +440,13 @@ export class Tag extends Reader<
       return this.cache.textNodes as Text[];
     }
     // starting location of the text nodes block
-    let ptr = readU32(this.data, this.ptr + 4);
-    const numTextNodes = readU32(this.data, ptr);
+    let ptr = readU32(this.data, this.ptr + 28);
+    const numTextNodes = readU32(this.data, this.ptr + 32);
     const textNodes = [] as Text[];
-    ptr += 4;
     for (let i = 0; i < numTextNodes; i++) {
-      const textLen = readU32(this.data, ptr);
-      ptr += 4;
-      textNodes[i] = new Text(this.data, ptr);
-      ptr += textLen;
+      const textVecData = new Uint8Array(this.memory.buffer, ptr, 28)
+      textNodes[i] = new Text(textVecData, 0, this.memory);
+      ptr += 28;
     }
     return (this.cache.textNodes = textNodes);
   }
@@ -772,33 +745,25 @@ export class SAXParser {
     throw new Error(`Failed to instantiate the parser.`);
   }
 
-  /**
-   * Internal event trap used to deliver the correct
-   * reader for the bytes in the wasm memory based on
-   * the envent type.
-   *
-   * @param event The SaxEventType emitted by the WASM
-   * @param ptr The pointer to the memory location containing
-   * the entity to read
-   * @param len The length in bytes to read
-   */
-  public eventTrap = (event: SaxEventType, ptr: number, len: number): void => {
-    const uint8array = new Uint8Array(this.wasmSaxParser.memory.buffer, ptr, len).slice();
+  public eventTrap = (event: number, ptr: number): void => {
+    if (!this.wasmSaxParser) {
+      return;
+    }
 
     let detail: Detail;
     switch (event) {
       case SaxEventType.Attribute:
-        detail = new Attribute(uint8array);
+        detail = new Attribute(new Uint8Array(this.wasmSaxParser.memory.buffer, ptr, 60), 0, this.wasmSaxParser.memory);
         break;
 
       case SaxEventType.ProcessingInstruction:
-        detail = new ProcInst(uint8array);
+        detail = new ProcInst(new Uint8Array(this.wasmSaxParser.memory.buffer, ptr, 72), 0, this.wasmSaxParser.memory);
         break;
 
       case SaxEventType.OpenTag:
       case SaxEventType.CloseTag:
       case SaxEventType.OpenTagStart:
-        detail = new Tag(uint8array);
+        detail = new Tag(new Uint8Array(this.wasmSaxParser.memory.buffer, ptr, 112), 0, this.wasmSaxParser.memory);
         break;
 
       case SaxEventType.Text:
@@ -806,7 +771,7 @@ export class SAXParser {
       case SaxEventType.Comment:
       case SaxEventType.Doctype:
       case SaxEventType.SGMLDeclaration:
-        detail = new Text(uint8array);
+        detail = new Text(new Uint8Array(this.wasmSaxParser.memory.buffer, ptr, 28), 0, this.wasmSaxParser.memory);
         break;
 
       default:
@@ -822,7 +787,11 @@ export class SAXParser {
 export const readString = (data: Uint8Array, offset: number, length: number): string => {
   // Node
   if (globalThis.hasOwnProperty('Buffer')) {
-    return Buffer.from(data.buffer, data.byteOffset + offset, length).toString();
+    try {
+      return Buffer.from(data.buffer, data.byteOffset + offset, length).toString();
+    } catch (e) {
+      debugger
+    }
   }
   // Web
   return (
