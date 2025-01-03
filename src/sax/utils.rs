@@ -48,11 +48,11 @@ pub fn ascii_icompare(expected: &str, test: &str) -> bool {
 /// ```
 /// use sax_wasm::sax::utils::to_char_code;
 ///
-/// assert_eq!(to_char_code("A"), 65);
-/// assert_eq!(to_char_code("é"), 233);
+/// assert_eq!(to_char_code(("A".as_bytes())), 65);
+/// assert_eq!(to_char_code("é".as_bytes()), 233);
 /// ```
-pub fn to_char_code(grapheme: &str) -> u32 {
-    let bytes = grapheme.as_bytes();
+pub fn to_char_code(grapheme: &[u8]) -> u32 {
+    let bytes = grapheme;
     unsafe {
         match bytes.len() {
             1 => *bytes.get_unchecked(0) as u32,
@@ -73,65 +73,21 @@ pub fn to_char_code(grapheme: &str) -> u32 {
     }
 }
 
-/// Checks if a grapheme cluster is a whitespace character.
-///
-/// This function checks if a given grapheme cluster (represented as a string slice) is a
-/// whitespace character. It considers the following characters as whitespace:
-/// - Space (' ')
-/// - Newline ('\n')
-/// - Tab ('\t')
-/// - Carriage return ('\r')
-///
-/// # Arguments
-///
-/// * `grapheme` - A string slice representing a grapheme cluster.
-///
-/// # Returns
-///
-/// * `true` if the grapheme cluster is a whitespace character, `false` otherwise.
-///
-/// # Examples
-///
-/// ```
-/// use sax_wasm::sax::utils::is_whitespace;
-///
-/// assert!(is_whitespace(" "));
-/// assert!(is_whitespace("\n"));
-/// assert!(!is_whitespace("A"));
-/// ```
 #[inline(always)]
-pub fn is_whitespace(grapheme: &str) -> bool {
-    let byte = grapheme.as_bytes()[0];
-    byte == b' ' || byte == b'\n' || byte == b'\t' || byte == b'\r'
-}
+pub fn match_byte(haystack: &[u8], byte: u8) -> bool {
+    let ptr = haystack.as_ptr();
 
-/// Checks if a grapheme cluster is a quote character.
-///
-/// This function checks if a given grapheme cluster (represented as a string slice) is a
-/// quote character. It considers the following characters as quotes:
-/// - Double quote ('"')
-/// - Single quote ('\'')
-///
-/// # Arguments
-///
-/// * `grapheme` - A string slice representing a grapheme cluster.
-///
-/// # Returns
-///
-/// * `true` if the grapheme cluster is a quote character, `false` otherwise.
-///
-/// # Examples
-///
-/// ```
-/// use sax_wasm::sax::utils::is_quote;
-///
-/// assert!(is_quote("\""));
-/// assert!(is_quote("'"));
-/// assert!(!is_quote("A"));
-/// ```
-pub fn is_quote(grapheme: &str) -> bool {
-    let byte = unsafe { grapheme.as_bytes().get_unchecked(0) };
-    byte == &b'"' || byte == &b'\''
+    if unsafe { *ptr.add(0) } == byte {
+        return true;
+    }
+
+    let len = haystack.len();
+    for i in 1..len {
+        if unsafe { *ptr.add(i) } == byte {
+            return true;
+        }
+    }
+    false
 }
 
 /// Determines the length of a grapheme cluster based on the first byte.

@@ -25,10 +25,10 @@ use super::utils::to_char_code;
 /// ```
 /// use sax_wasm::sax::names::is_name_start_char;
 ///
-/// assert!(is_name_start_char("A"));
-/// assert!(!is_name_start_char("1"));
+/// assert!(is_name_start_char("A".as_bytes()));
+/// assert!(!is_name_start_char("1".as_bytes()));
 /// ```
-pub fn is_name_start_char(grapheme: &str) -> bool {
+pub fn is_name_start_char(grapheme: &[u8]) -> bool {
     let c = to_char_code(grapheme);
 
     // Quick lookup for common ASCII characters
@@ -77,11 +77,11 @@ pub fn is_name_start_char(grapheme: &str) -> bool {
 /// ```
 /// use sax_wasm::sax::names::is_name_char;
 ///
-/// assert!(is_name_char("A"));
-/// assert!(is_name_char("1"));
-/// assert!(!is_name_char(" "));
+/// assert!(is_name_char("A".as_bytes()));
+/// assert!(is_name_char("1".as_bytes()));
+/// assert!(!is_name_char(" ".as_bytes()));
 /// ```
-pub fn is_name_char(grapheme: &str) -> bool {
+pub fn is_name_char(grapheme: &[u8]) -> bool {
     let c = to_char_code(grapheme);
 
     // Quick lookup for common ASCII characters

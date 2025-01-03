@@ -36,15 +36,38 @@ export type Detail = Position | Attribute | Text | Tag | ProcInst;
  * @template T - The type of detail to be read.
  */
 export declare abstract class Reader<T = Detail> {
-    #private;
     protected data: Uint8Array;
-    protected ptr: number;
     protected memory: WebAssembly.Memory;
     protected cache: {
         [prop: string]: T;
     };
-    get dataView(): Uint8Array<ArrayBufferLike>;
-    constructor(data: Uint8Array, ptr: number, memory: WebAssembly.Memory);
+    protected dataView: Uint8Array;
+    /**
+     * Creates a new Reader instance.
+     *
+     * @param data - The data buffer containing the event data.
+     * @param ptr - The initial pointer position.
+     * @param memory - The WebAssembly memory instance.
+     */
+    constructor(data: Uint8Array, memory: WebAssembly.Memory);
+    /**
+     * Internally copies a portion of the WebAssembly
+     * memory that represents the reader source data to
+     * guarantee that the data is not garbage collected
+     * and all fields continue to be accessible after
+     * the WASM write process has completed.
+     *
+     * Calling this method is not necessary if all
+     * data is read inside the eventHandler callback
+     * or the parse generator loop. However, if you
+     * need to access the data outside of the callback
+     * or pass it to an async function, calling this
+     * method immediately is required.
+     *
+     * **Note** This method has a very small performance
+     * cost and should be used judiciously on large documents.
+     */
+    abstract toBoxed(): void;
     /**
      * Converts the reader data to a JSON object.
      *
@@ -89,10 +112,15 @@ export declare enum AttributeType {
  * 4. 'value' bytes - byte position name_length-n (n bytes)
  */
 export declare class Attribute extends Reader<Text | AttributeType> {
+    static LENGTH: 60;
     type: AttributeType;
     name: Text;
     value: Text;
-    constructor(buffer: Uint8Array, ptr: number, memory: WebAssembly.Memory);
+    constructor(data: Uint8Array, memory: WebAssembly.Memory);
+    /**
+     * @inheritdoc
+     */
+    toBoxed(): void;
     /**
      * @inheritDoc
      */
@@ -133,9 +161,14 @@ export declare class Attribute extends Reader<Text | AttributeType> {
  * * `ptr` - The initial pointer position.
  */
 export declare class ProcInst extends Reader<Position | Text> {
+    static LENGTH: 72;
     target: Text;
     content: Text;
-    constructor(buffer: Uint8Array, ptr: number, memory: WebAssembly.Memory);
+    constructor(data: Uint8Array, memory: WebAssembly.Memory);
+    /**
+     * @inheritdoc
+     */
+    toBoxed(): void;
     /**
      * Gets the start position of the processing instruction.
      *
@@ -156,33 +189,19 @@ export declare class ProcInst extends Reader<Position | Text> {
     toJSON(): {
         [p: string]: Position | Text;
     };
+    /**
+     * @inheritdoc
+     */
     toString(): string;
 }
 /**
  * Represents a text node in the XML data.
  *
- * This class decodes the text node data sent across the FFI boundary.
- * The encoded data has the following schema:
- *
- * 1. Start position (line and character) - byte positions 0-7 (8 bytes)
- * 2. End position (line and character) - byte positions 8-15 (8 bytes)
- * 3. Value length - byte positions 16-19 (4 bytes)
- * 4. Value bytes - byte positions 20-(20 + value length - 1) (value length bytes)
- *
- * The `Text` class decodes this data into its respective fields: `start`, `end`, and `value`.
- *
- * # Fields
- *
- * * `start` - The start position of the text node.
- * * `end` - The end position of the text node.
- * * `value` - The value of the text node.
- *
- * # Arguments
- *
- * * `buffer` - The buffer containing the text node data.
- * * `ptr` - The initial pointer position.
+ * This class decodes the text node data sent across the FFI boundary
+ * into its respective fields: `start`, `end`, and `value`.
  */
 export declare class Text extends Reader<string | Position> {
+    static LENGTH: 28;
     /**
      * Gets the start position of the text node.
      *
@@ -195,6 +214,10 @@ export declare class Text extends Reader<string | Position> {
      * @returns The end position of the text node.
      */
     get end(): Position;
+    /**
+     * @inheritdoc
+     */
+    toBoxed(): void;
     /**
      * Gets the value of the text node.
      *
@@ -219,42 +242,16 @@ export declare class Text extends Reader<string | Position> {
 /**
  * Represents a tag in the XML data.
  *
- * This class decodes the tag data sent across the FFI boundary.
- * The encoded data has the following schema:
- *
- * 1. Start position of the tag opening (line and character) - byte positions 8-15 (8 bytes)
- * 2. End position of the tag opening (line and character) - byte positions 16-23 (8 bytes)
- * 3. Start position of the tag closing (line and character) - byte positions 24-31 (8 bytes)
- * 4. End position of the tag closing (line and character) - byte positions 32-39 (8 bytes)
- * 5. Self-closing flag - byte position 40 (1 byte)
- * 6. Name length - byte positions 41-44 (4 bytes)
- * 7. Name bytes - byte positions 45-(45 + name length - 1) (name length bytes)
- * 8. Attributes block start position - byte positions 0-3 (4 bytes)
- * 9. Number of attributes - byte positions (attributes block start position)-(attributes block start position + 3) (4 bytes)
- * 10. Attribute data - variable length
- * 11. Text nodes block start position - byte positions 4-7 (4 bytes)
- * 12. Number of text nodes - byte positions (text nodes block start position)-(text nodes block start position + 3) (4 bytes)
- * 13. Text node data - variable length
- *
- * The `Tag` class decodes this data into its respective fields: `openStart`, `openEnd`, `closeStart`, `closeEnd`, `selfClosing`, `name`, `attributes`, and `textNodes`.
- *
- * # Fields
- *
- * * `openStart` - The start position of the tag opening.
- * * `openEnd` - The end position of the tag opening.
- * * `closeStart` - The start position of the tag closing.
- * * `closeEnd` - The end position of the tag closing.
- * * `selfClosing` - The self-closing flag of the tag.
- * * `name` - The name of the tag.
- * * `attributes` - The attributes of the tag.
- * * `textNodes` - The text nodes within the tag.
- *
- * # Arguments
- *
- * * `buffer` - The buffer containing the tag data.
- * * `ptr` - The initial pointer position.
+ * This class decodes the tag data sent across the FFI boundary
+ * into its respective fields: `openStart`, `openEnd`, `closeStart`,
+ * `closeEnd`, `selfClosing`, `name`, `attributes`, and `textNodes`.
  */
 export declare class Tag extends Reader<Attribute[] | Text[] | Position | string | number | boolean> {
+    static LENGTH: 112;
+    /**
+     * @inheritdoc
+     */
+    toBoxed(): void;
     /**
      * Gets the start position of the tag opening.
      *
