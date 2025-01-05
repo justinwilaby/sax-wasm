@@ -16,6 +16,8 @@ describe('SaxWasm', () => {
         SaxEventType.OpenTag |
         SaxEventType.CloseTag;
 
+        parser.events = SaxEventType.Comment | SaxEventType.CloseTag;
+
     _data = [];
     _event = 0;
 

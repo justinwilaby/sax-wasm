@@ -129,7 +129,7 @@ export enum AttributeType {
  * 4. 'value' bytes - byte position name_length-n (n bytes)
  */
 export class Attribute extends Reader<Text | AttributeType> {
-  public static LENGTH = 60 as const;
+  public static LENGTH = 76 as const;
 
   public type: AttributeType;
   public name: Text;
@@ -139,7 +139,7 @@ export class Attribute extends Reader<Text | AttributeType> {
     super(data, memory);
     this.name = new Text(new Uint8Array(data.buffer, data.byteOffset, Text.LENGTH), memory);
     this.value = new Text(new Uint8Array(data.buffer, data.byteOffset + Text.LENGTH, Text.LENGTH), memory);
-    this.type = data[56];
+    this.type = data[64];
   }
 
   /**
@@ -199,7 +199,7 @@ export class Attribute extends Reader<Text | AttributeType> {
  * * `ptr` - The initial pointer position.
  */
 export class ProcInst extends Reader<Position | Text> {
-  public static LENGTH = 72 as const;
+  public static LENGTH = 80 as const;
 
   public target: Text;
   public content: Text;
@@ -207,8 +207,8 @@ export class ProcInst extends Reader<Position | Text> {
   constructor(data: Uint8Array, memory: WebAssembly.Memory) {
     super(data, memory);
 
-    this.target = new Text(new Uint8Array(data.buffer, data.byteOffset + 16, Text.LENGTH), memory);
-    this.content = new Text(new Uint8Array(data.buffer, data.byteOffset + 16 + Text.LENGTH, Text.LENGTH), memory);
+    this.target = new Text(new Uint8Array(data.buffer, data.byteOffset + 24, Text.LENGTH), memory);
+    this.content = new Text(new Uint8Array(data.buffer, data.byteOffset + 24 + Text.LENGTH, Text.LENGTH), memory);
   }
 
   /**
@@ -229,7 +229,7 @@ export class ProcInst extends Reader<Position | Text> {
   public get start(): Position {
     return (
       (this.cache.start as Position) ||
-      (this.cache.start = readPosition(this.data, 0))
+      (this.cache.start = readPosition(this.data, 8))
     );
   }
 
@@ -241,7 +241,7 @@ export class ProcInst extends Reader<Position | Text> {
   public get end(): Position {
     return (
       (this.cache.end as Position) ||
-      (this.cache.end = readPosition(this.data, 8))
+      (this.cache.end = readPosition(this.data, 16))
     );
   }
 
@@ -271,14 +271,14 @@ export class ProcInst extends Reader<Position | Text> {
  * into its respective fields: `start`, `end`, and `value`.
  */
 export class Text extends Reader<string | Position> {
-  public static LENGTH = 28 as const;
+  public static LENGTH = 36 as const;
   /**
    * Gets the start position of the text node.
    *
    * @returns The start position of the text node.
    */
   public get start(): Position {
-    return this.cache.start as Position || (this.cache.start = readPosition(this.data, 12));
+    return this.cache.start as Position || (this.cache.start = readPosition(this.data, 20));
   }
 
   /**
@@ -287,7 +287,7 @@ export class Text extends Reader<string | Position> {
    * @returns The end position of the text node.
    */
   public get end(): Position {
-    return this.cache.end as Position || (this.cache.end = readPosition(this.data, 20));
+    return this.cache.end as Position || (this.cache.end = readPosition(this.data, 28));
   }
 
   /**
@@ -296,10 +296,10 @@ export class Text extends Reader<string | Position> {
   public toBoxed(): void {
     this.data = this.data.slice();
     // Build our data view and update the pointer
-    const vecPtr = readU32(this.data, 4);
-    const valueLen = readU32(this.data, 8);
+    const vecPtr = readU32(this.data, 12);
+    const valueLen = readU32(this.data, 16);
     this.dataView = new Uint8Array(this.memory.buffer, vecPtr, valueLen).slice();
-    this.data.set([0,0,0,0], 4); // Set the vecPtr to 0
+    this.data.set([0,0,0,0], 12); // Set the vecPtr to 0
     this.memory = undefined;
   }
 
@@ -312,8 +312,8 @@ export class Text extends Reader<string | Position> {
     if (this.cache.value) {
       return this.cache.value as string;
     }
-    const vecPtr = readU32(this.data, 4);
-    const valueLen = readU32(this.data, 8);
+    const vecPtr = readU32(this.data, 12);
+    const valueLen = readU32(this.data, 16);
     return (this.cache.value = readString(this.dataView, vecPtr, valueLen));
   }
 
@@ -345,7 +345,7 @@ export class Text extends Reader<string | Position> {
  * `closeEnd`, `selfClosing`, `name`, `attributes`, and `textNodes`.
  */
 export class Tag extends Reader<Attribute[] | Text[] | Position | string | number | boolean> {
-  public static LENGTH = 112 as const;
+  public static LENGTH = 82 as const;
 
   /**
    * @inheritdoc
@@ -415,7 +415,7 @@ export class Tag extends Reader<Attribute[] | Text[] | Position | string | numbe
    * @returns The self-closing flag of the tag.
    */
   public get selfClosing(): boolean {
-    return !!this.data[36];
+    return !!this.data[44];
   }
 
   /**
@@ -448,7 +448,7 @@ export class Tag extends Reader<Attribute[] | Text[] | Position | string | numbe
 
     const attributes = [] as Attribute[];
     for (let i = 0; i < numAttrs; i++) {
-      const attrVecData = new Uint8Array(this.memory.buffer, ptr, Attribute.LENGTH);
+      const attrVecData = new Uint8Array(this.dataView.buffer, ptr, Attribute.LENGTH);
       attributes[i] = new Attribute(attrVecData, this.memory);
       ptr += Attribute.LENGTH;
     }
@@ -470,7 +470,7 @@ export class Tag extends Reader<Attribute[] | Text[] | Position | string | numbe
     const numTextNodes = readU32(this.data, 32);
     const textNodes = [] as Text[];
     for (let i = 0; i < numTextNodes; i++) {
-      const textVecData = new Uint8Array(this.memory.buffer, ptr, Text.LENGTH);
+      const textVecData = new Uint8Array(this.dataView.buffer, ptr, Text.LENGTH);
       textNodes[i] = new Text(textVecData, this.memory);
       ptr += Text.LENGTH;
     }
@@ -803,7 +803,7 @@ export class SAXParser {
       default:
         throw new Error("No reader for this event type");
     }
-
+    const js = JSON.parse(JSON.stringify(detail))
     if (this.eventHandler) {
       this.eventHandler(event, detail);
     }

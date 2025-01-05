@@ -112,7 +112,7 @@ export declare enum AttributeType {
  * 4. 'value' bytes - byte position name_length-n (n bytes)
  */
 export declare class Attribute extends Reader<Text | AttributeType> {
-    static LENGTH: 60;
+    static LENGTH: 76;
     type: AttributeType;
     name: Text;
     value: Text;
@@ -161,7 +161,7 @@ export declare class Attribute extends Reader<Text | AttributeType> {
  * * `ptr` - The initial pointer position.
  */
 export declare class ProcInst extends Reader<Position | Text> {
-    static LENGTH: 72;
+    static LENGTH: 80;
     target: Text;
     content: Text;
     constructor(data: Uint8Array, memory: WebAssembly.Memory);
@@ -201,7 +201,7 @@ export declare class ProcInst extends Reader<Position | Text> {
  * into its respective fields: `start`, `end`, and `value`.
  */
 export declare class Text extends Reader<string | Position> {
-    static LENGTH: 28;
+    static LENGTH: 36;
     /**
      * Gets the start position of the text node.
      *
@@ -247,7 +247,7 @@ export declare class Text extends Reader<string | Position> {
  * `closeEnd`, `selfClosing`, `name`, `attributes`, and `textNodes`.
  */
 export declare class Tag extends Reader<Attribute[] | Text[] | Position | string | number | boolean> {
-    static LENGTH: 112;
+    static LENGTH: 82;
     /**
      * @inheritdoc
      */

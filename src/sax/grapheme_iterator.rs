@@ -161,7 +161,11 @@ impl GraphemeClusters<'_> {
                 line += 1;
                 character = 0;
             } else {
-                character += if len != 4 { 1 } else { 2 };
+                character += if len != 4 {
+                    1
+                } else {
+                    2
+                };
             }
             cursor += len;
         }
@@ -189,7 +193,7 @@ impl GraphemeClusters<'_> {
         while cursor < byte_len {
             let next_byte = unsafe { *self.bytes.get_unchecked(cursor) };
             if !match_byte(&[b' ', b'\n', b'\r', b'\t'], next_byte) {
-              break;
+                break;
             }
             // if next_byte != b' ' && next_byte != b'\n' && next_byte != b'\r' && next_byte != b'\t' {
             //     break;
@@ -234,8 +238,16 @@ impl GraphemeClusters<'_> {
     pub fn get_slice_range(&self, range: Range<usize>) -> Range<usize> {
         let mut byte_indices = self.byte_indices.borrow_mut();
         let mut largest_idx = byte_indices.len() - 1;
-        let mut start_idx = if largest_idx >= range.start { byte_indices[range.start] } else { byte_indices[largest_idx] };
-        let mut end_idx = if largest_idx >= range.end { byte_indices[range.end] } else { byte_indices[largest_idx] };
+        let mut start_idx = if largest_idx >= range.start {
+            byte_indices[range.start]
+        } else {
+            byte_indices[largest_idx]
+        };
+        let mut end_idx = if largest_idx >= range.end {
+            byte_indices[range.end]
+        } else {
+            byte_indices[largest_idx]
+        };
 
         while largest_idx < range.end {
             let byte = unsafe { *self.bytes.get_unchecked(end_idx) };
@@ -337,7 +349,11 @@ impl<'a> Iterator for GraphemeClusters<'a> {
             line += 1;
             character = 0;
         } else {
-            character += if len != 4 { 1 } else { 2 };
+            character += if len != 4 {
+                1
+            } else {
+                2
+            };
         }
 
         let s = unsafe { bytes.get_unchecked(cursor..end) };

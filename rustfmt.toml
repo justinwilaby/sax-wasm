@@ -1,3 +1,2 @@
 max_width = 140
-use_small_heuristics = "Max"
-
+use_small_heuristics = "off"

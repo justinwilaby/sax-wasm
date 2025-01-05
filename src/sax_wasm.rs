@@ -45,7 +45,7 @@ pub unsafe extern "C" fn parser(events: u32) {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn write(ptr: *mut u8, length: usize) {
+pub unsafe extern "C" fn write(ptr: *const u8, length: usize) {
     let document = slice::from_raw_parts(ptr, length);
     (*SAX).write(document);
 }
