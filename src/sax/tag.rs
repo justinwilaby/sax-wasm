@@ -1,4 +1,4 @@
-use core::slice;
+use std::{cell::Cell, slice};
 
 #[repr(C)]
 #[derive(Clone)]
@@ -30,19 +30,20 @@ impl Tag {
         }
     }
 
-    pub fn get_name(&mut self, ptr: *const u8) -> &Vec<u8>{
-      let (start, end) = self.header;
-        if start >= end {
-            return &self.name;
+    pub fn get_name_slice(&mut self, ptr: *const u8) -> &[u8] {
+        let (start, end) = self.header;
+        if start < end {
+            let len = end - start;
+            if len > 0 {
+                return unsafe { slice::from_raw_parts(ptr.add(start), len) };
+            }
         }
-        let len = end - start;
-        if len > 0 {
-            let slice = unsafe { slice::from_raw_parts(ptr.add(start), len) };
-            self.name.extend_from_slice(slice);
+
+        if !self.name.is_empty() {
+            return self.get_name(ptr);
         }
-        self.header.0 = 0;
-        self.header.1 = 0;
-        &self.name
+
+        &[]
     }
 
     pub fn hydrate(&mut self, ptr: *const u8) -> bool {
@@ -54,6 +55,21 @@ impl Tag {
         }
         self.get_name(ptr);
         true
+    }
+
+    fn get_name(&mut self, ptr: *const u8) -> &Vec<u8> {
+        let (start, end) = self.header;
+        if start >= end {
+            return &self.name;
+        }
+        let len = end - start;
+        if len > 0 {
+            let slice = unsafe { slice::from_raw_parts(ptr.add(start), len) };
+            self.name.extend_from_slice(slice);
+        }
+        self.header.0 = 0;
+        self.header.1 = 0;
+        &self.name
     }
 }
 
@@ -154,4 +170,62 @@ pub enum Entity<'a> {
 pub enum AttrType {
     Normal = 0x00,
     JSX = 0x01,
+}
+
+pub struct Accumulator {
+    pub header: (usize, usize),
+    pub value: Cell<Vec<u8>>,
+}
+
+impl Accumulator {
+    pub fn new() -> Accumulator {
+        return Accumulator {
+            header: (0, 0),
+            value: Cell::new(Vec::with_capacity(20)),
+        };
+    }
+
+    pub fn clear(&mut self) {
+        self.header = (0, 0);
+        self.value.take();
+    }
+
+    pub fn get_value_slice(&self, ptr: *const u8) -> &[u8] {
+        let mut sl = &[] as &[u8];
+
+        let (start, end) = self.header;
+        if start < end {
+            let len = end - start;
+            if len > 0 {
+                sl = unsafe { slice::from_raw_parts(ptr.add(start), len) }
+            }
+        }
+
+        let mut v = self.value.take();
+        if !v.is_empty() {
+            v.extend_from_slice(sl);
+            let len = v.len();
+            let v_slice = v.as_slice();
+            let v_ptr = v_slice.as_ptr();
+
+            sl = unsafe { slice::from_raw_parts(v_ptr.add(start), len) };
+            self.value.replace(v);
+        }
+
+        sl
+    }
+
+    pub fn hydrate(&self, ptr: *const u8) {
+        let (start, end) = self.header;
+        if start >= end {
+            return;
+        }
+        let len = end - start;
+        if len > 0 {
+            let sl = unsafe { slice::from_raw_parts(ptr.add(start), len) };
+            let mut v = self.value.take();
+            v.extend_from_slice(sl);
+            self.value.replace(v);
+        }
+    }
 }

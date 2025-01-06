@@ -169,7 +169,8 @@ impl GraphemeClusters<'_> {
             }
             cursor += len;
         }
-
+        // We've run out of bytes - deliver what we have
+        // even though the ascii wasn't found
         if cursor > byte_len {
             cursor = byte_len - (cursor - byte_len);
         }

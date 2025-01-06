@@ -3,6 +3,9 @@
   xsi:noNamespaceSchemaLocation="xml.xsd">
   test text node
   <?process-root instruction?>
+  <div></div>
+  <self-closing/>
+  <div></div>
   <test-tag id="test-id">testing this tag</test-tag>
   <div disabled="">
     testing
@@ -81,7 +84,7 @@
                                               <draw thought="reason">-949411801.0695429
                                               <![CDATA[those]]>
                                               </draw>
-                                              <late>highest</late>
+                                              <late><self-closing id="closed"/>highest</late>
                                               <![CDATA[collect blanket]]>
                                               <plenty decide="limited">
                                                 <!--feet-->somewhere </plenty>
@@ -8702,7 +8705,7 @@
                                                                                         recognize </control>
                                                                                       <![CDATA[tiny torn phrase]]>
                                                                                       <duty>space</duty>
-                                                                                      <late>
+                                                                                      <late><self-closing id="closed"/>
                                                                                         -696699129.7972851</late>
                                                                                       <pattern>burn</pattern>
                                                                                       <paper>

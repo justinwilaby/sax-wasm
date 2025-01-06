@@ -27,6 +27,7 @@ describe('When parsing JSX, the SaxWasm', () => {
 
   afterEach(() => {
     parser.end();
+
   });
 
   it('should recognize child tags within javascript', () => {
@@ -36,8 +37,8 @@ describe('When parsing JSX, the SaxWasm', () => {
     </Component>`));
 
     deepStrictEqual(_event,SaxEventType.CloseTag);
-    deepStrictEqual(_data[0].name,'SignIn');
-    deepStrictEqual(_data[1].name,'User');
+    deepStrictEqual(_data[0].name,'User');
+    deepStrictEqual(_data[1].name,'SignIn');
     deepStrictEqual(_data[2].name,'Component');
   });
 

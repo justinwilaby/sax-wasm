@@ -10,8 +10,8 @@
  * ```
  * Event subscriptions can be updated between write operations.
  *
- * Note that minimizing the numnber of events will have a
- * slight performance improvement which becomes more noticable
+ * Note that minimizing the number of events will have a
+ * slight performance improvement which becomes more noticeable
  * on very large documents.
  */
 export enum SaxEventType {
@@ -139,7 +139,7 @@ export class Attribute extends Reader<Text | AttributeType> {
     super(data, memory);
     this.name = new Text(new Uint8Array(data.buffer, data.byteOffset, Text.LENGTH), memory);
     this.value = new Text(new Uint8Array(data.buffer, data.byteOffset + Text.LENGTH, Text.LENGTH), memory);
-    this.type = data[64];
+    this.type = data[72];
   }
 
   /**
@@ -207,8 +207,8 @@ export class ProcInst extends Reader<Position | Text> {
   constructor(data: Uint8Array, memory: WebAssembly.Memory) {
     super(data, memory);
 
-    this.target = new Text(new Uint8Array(data.buffer, data.byteOffset + 24, Text.LENGTH), memory);
-    this.content = new Text(new Uint8Array(data.buffer, data.byteOffset + 24 + Text.LENGTH, Text.LENGTH), memory);
+    this.target = new Text(new Uint8Array(data.buffer, data.byteOffset + 16, Text.LENGTH), memory);
+    this.content = new Text(new Uint8Array(data.buffer, data.byteOffset + 16 + Text.LENGTH, Text.LENGTH), memory);
   }
 
   /**
@@ -229,7 +229,7 @@ export class ProcInst extends Reader<Position | Text> {
   public get start(): Position {
     return (
       (this.cache.start as Position) ||
-      (this.cache.start = readPosition(this.data, 8))
+      (this.cache.start = readPosition(this.data, 16))
     );
   }
 
@@ -241,7 +241,7 @@ export class ProcInst extends Reader<Position | Text> {
   public get end(): Position {
     return (
       (this.cache.end as Position) ||
-      (this.cache.end = readPosition(this.data, 16))
+      (this.cache.end = readPosition(this.data, 8))
     );
   }
 
@@ -415,7 +415,7 @@ export class Tag extends Reader<Attribute[] | Text[] | Position | string | numbe
    * @returns The self-closing flag of the tag.
    */
   public get selfClosing(): boolean {
-    return !!this.data[44];
+    return !!this.data[36];
   }
 
   /**
@@ -745,7 +745,7 @@ export class SAXParser {
    * })();
    * ```
    *
-   * @param saxWasm Uint8Array contaning the WASM or a promise that will resolve to it.
+   * @param saxWasm Uint8Array containing the WASM or a promise that will resolve to it.
    */
   public async prepareWasm(saxWasm: Response | Promise<Response>): Promise<boolean>;
   public async prepareWasm(saxWasm: Uint8Array): Promise<boolean>;
@@ -803,7 +803,7 @@ export class SAXParser {
       default:
         throw new Error("No reader for this event type");
     }
-    const js = JSON.parse(JSON.stringify(detail))
+
     if (this.eventHandler) {
       this.eventHandler(event, detail);
     }

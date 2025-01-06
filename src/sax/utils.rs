@@ -17,12 +17,12 @@ use std::u8;
 /// # Examples
 ///
 /// ```
-/// use sax_wasm::sax::utils::ascii_icompare;
+/// use sax_wasm::sax::utils::ascii_compare;
 ///
-/// assert!(ascii_icompare("Hello", "hello"));
-/// assert!(!ascii_icompare("Hello", "world"));
+/// assert!(ascii_compare("Hello", "hello"));
+/// assert!(!ascii_compare("Hello", "world"));
 /// ```
-pub fn ascii_icompare(expected: &str, test: &str) -> bool {
+pub fn ascii_compare(expected: &str, test: &str) -> bool {
     if expected.len() != test.len() {
         return false;
     }
