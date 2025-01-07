@@ -1,4 +1,4 @@
-use std::{cell::Cell, slice};
+use std::slice;
 
 #[repr(C)]
 #[derive(Clone)]
@@ -174,23 +174,23 @@ pub enum AttrType {
 
 pub struct Accumulator {
     pub header: (usize, usize),
-    pub value: Cell<Vec<u8>>,
+    pub value: Vec<u8>,
 }
 
 impl Accumulator {
     pub fn new() -> Accumulator {
         return Accumulator {
             header: (0, 0),
-            value: Cell::new(Vec::with_capacity(20)),
+            value: Vec::new(),
         };
     }
 
     pub fn clear(&mut self) {
         self.header = (0, 0);
-        self.value.take();
+        self.value.clear();
     }
 
-    pub fn get_value_slice(&self, ptr: *const u8) -> &[u8] {
+    pub fn get_value_slice(&mut self, ptr: *const u8) -> &[u8] {
         let mut sl = &[] as &[u8];
 
         let (start, end) = self.header;
@@ -201,7 +201,7 @@ impl Accumulator {
             }
         }
 
-        let mut v = self.value.take();
+        let v = &mut self.value;
         if !v.is_empty() {
             v.extend_from_slice(sl);
             let len = v.len();
@@ -209,13 +209,13 @@ impl Accumulator {
             let v_ptr = v_slice.as_ptr();
 
             sl = unsafe { slice::from_raw_parts(v_ptr.add(start), len) };
-            self.value.replace(v);
+
         }
 
         sl
     }
 
-    pub fn hydrate(&self, ptr: *const u8) {
+    pub fn hydrate(&mut self, ptr: *const u8) {
         let (start, end) = self.header;
         if start >= end {
             return;
@@ -223,9 +223,7 @@ impl Accumulator {
         let len = end - start;
         if len > 0 {
             let sl = unsafe { slice::from_raw_parts(ptr.add(start), len) };
-            let mut v = self.value.take();
-            v.extend_from_slice(sl);
-            self.value.replace(v);
+            self.value.extend_from_slice(sl);
         }
     }
 }

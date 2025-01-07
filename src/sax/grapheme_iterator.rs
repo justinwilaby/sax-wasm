@@ -1,6 +1,6 @@
 use std::cell::RefCell;
 use std::ops::{Index, Range};
-use std::str;
+use std::{mem, str};
 
 use super::utils::{grapheme_len, match_byte};
 
@@ -25,6 +25,7 @@ pub struct GraphemeClusters<'a> {
     pub line: u32,
     pub character: u32,
     pub cursor: usize,
+    pub last_cursor_pos: usize,
 }
 
 impl GraphemeClusters<'_> {
@@ -52,6 +53,7 @@ impl GraphemeClusters<'_> {
             byte_len: bytes.len(),
             bytes_needed: 0,
             cursor: 0,
+            last_cursor_pos: 0,
             byte_indices: RefCell::new(vec![0]),
             line: 0,
             character: 0,
@@ -178,27 +180,23 @@ impl GraphemeClusters<'_> {
         if start >= cursor {
             return None;
         }
-
-        self.cursor = cursor;
+        self.last_cursor_pos = mem::replace(&mut self.cursor, cursor);
         self.line = line;
         self.character = character;
         let s = unsafe { self.bytes.get_unchecked(start..cursor) };
         Some(s)
     }
 
-    pub fn skip_whitespace(&mut self) -> bool {
+    pub fn skip_whitespace(&mut self) -> usize {
         let mut cursor = self.cursor;
         let mut line = self.line;
         let mut character = self.character;
         let byte_len = self.byte_len;
         while cursor < byte_len {
             let next_byte = unsafe { *self.bytes.get_unchecked(cursor) };
-            if !match_byte(&[b' ', b'\n', b'\r', b'\t'], next_byte) {
+            if next_byte != b' ' && next_byte != b'\n' && next_byte != b'\r' && next_byte != b'\t' {
                 break;
             }
-            // if next_byte != b' ' && next_byte != b'\n' && next_byte != b'\r' && next_byte != b'\t' {
-            //     break;
-            // }
 
             if next_byte == b'\n' {
                 line += 1;
@@ -208,7 +206,7 @@ impl GraphemeClusters<'_> {
             }
             cursor += 1;
         }
-        let whitespace_skipped = cursor != self.cursor;
+        let whitespace_skipped = cursor - self.cursor;
         self.cursor = cursor;
         self.line = line;
         self.character = character;
@@ -358,7 +356,7 @@ impl<'a> Iterator for GraphemeClusters<'a> {
         }
 
         let s = unsafe { bytes.get_unchecked(cursor..end) };
-        self.cursor = end;
+        self.last_cursor_pos = mem::replace(&mut self.cursor, end);
         self.line = line;
         self.character = character;
 

@@ -2,7 +2,6 @@ use std::mem;
 use std::ops::Index;
 use std::ops::IndexMut;
 use std::ptr;
-use std::slice;
 use std::str;
 
 use super::grapheme_iterator::GraphemeClusters;
@@ -10,7 +9,6 @@ use super::names::is_name_char;
 use super::names::is_name_start_char;
 use super::tag::*;
 use super::utils::ascii_compare;
-use super::utils::grapheme_len;
 use super::utils::match_byte;
 
 /// Byte Order Mark (BOM) for UTF-8 encoded files.
@@ -72,19 +70,18 @@ pub struct SAXParser<'a> {
     cdata: Text,
     comment: Text,
     doctype: Text,
-    text: Text,
+    text: Option<Text>,
     proc_inst: ProcInst,
     sgml_decl: Text,
     attribute: Attribute,
     tag: Tag,
-    partial_close_tag: Vec<u8>,
+    close_tag: Accumulator,
 
     // Position Tracking
     pub leftover_bytes_info: Option<([u8; 4], usize, usize)>,
     end_pos: [u32; 2],
     source_ptr: *const u8,
     end_offset: usize,
-    close_tag_mem_position: (usize, usize),
 }
 
 impl<'a> SAXParser<'a> {
@@ -154,18 +151,17 @@ impl<'a> SAXParser<'a> {
             cdata: Text::new([0, 0]),
             comment: Text::new([0, 0]),
             doctype: Text::new([0, 0]),
-            text: Text::new([0, 0]),
+            text: None,
             proc_inst: ProcInst::new(),
             sgml_decl: Text::new([0, 0]),
             attribute: Attribute::new(),
             tag: Tag::new([0, 0]),
-            partial_close_tag: Vec::new(),
+            close_tag: Accumulator::new(),
 
             // Position Tracking
             leftover_bytes_info: None,
             end_pos: [0, 0],
             end_offset: 0,
-            close_tag_mem_position: (0, 0),
             source_ptr: ptr::null(),
         }
     }
@@ -222,6 +218,7 @@ impl<'a> SAXParser<'a> {
     /// ```
     pub fn write(&mut self, source: &[u8]) {
         self.source_ptr = source.as_ptr();
+        
         let mut gc = GraphemeClusters::new(source);
         gc.line = self.end_pos[0];
         gc.character = self.end_pos[1];
@@ -241,12 +238,8 @@ impl<'a> SAXParser<'a> {
         self.end_pos = [gc.line, gc.character];
         self.leftover_bytes_info = gc.get_remaining_bytes();
         self.end_offset = gc.cursor;
-        self.hydrate();
 
-        if self.state == State::CloseTag && self.close_tag_mem_position != (0, 0) {
-            let (start, end) = self.close_tag_mem_position;
-            self.partial_close_tag.extend_from_slice(&source[start..end]);
-        }
+        self.hydrate();
         self.source_ptr = ptr::null();
     }
 
@@ -256,8 +249,10 @@ impl<'a> SAXParser<'a> {
             tag.hydrate(ptr);
         }
         self.attribute.hydrate(ptr);
-        self.text.hydrate(ptr);
-
+        if let Some(text) = &mut self.text {
+            text.hydrate(ptr);
+        }
+        self.close_tag.hydrate(ptr);
         self.cdata.hydrate(ptr);
         self.doctype.hydrate(ptr);
         self.proc_inst.hydrate(ptr);
@@ -332,7 +327,7 @@ impl<'a> SAXParser<'a> {
     /// ```
     pub fn identity(&mut self) {
         // flush text at the EOF
-        self.text = Text::new([0; 2]);
+        self.text = None;
         self.state = State::Begin;
         self.attribute = Attribute::new();
         self.brace_ct = 0;
@@ -358,6 +353,7 @@ impl<'a> SAXParser<'a> {
             State::AttribValue => self.attribute_value(gc, current),
             State::AttribValueQuoted => self.attribute_value_quoted(gc, current),
             State::BeginWhitespace => self.begin_white_space(gc, current),
+            State::TextTrimLeading => self.text_trim_leading(gc, current),
             State::Text => self.text(gc, current),
             State::CloseTag => self.close_tag(gc, current),
             State::SgmlDecl => self.sgml_decl(gc, current),
@@ -396,12 +392,24 @@ impl<'a> SAXParser<'a> {
         self.begin_white_space(gc, current);
     }
 
+    fn begin_white_space(&mut self, gc: &mut GraphemeClusters, current: &[u8]) {
+        if current[0] == b'<' {
+            self.state = State::LT;
+            return;
+        }
+
+        self.new_text(gc.line, gc.character, gc.last_cursor_pos, false);
+    }
+
     fn less_than(&mut self, gc: &mut GraphemeClusters, current: &[u8]) {
         // If this char is a name start char, get the
         // entire name now and move into the open tag state
         if is_name_start_char(current) {
+            // this is a legit tag so we can flush
+            // any previous text in play
+            self.flush_text(gc.line, gc.character, gc.last_cursor_pos.saturating_sub(1));
             self.tag = Tag::new([gc.line, gc.character - 2]);
-            self.tag.header.0 = gc.cursor - 1;
+            self.tag.header.0 = gc.last_cursor_pos;
 
             self.state = State::OpenTag;
             self.open_tag(gc, current);
@@ -410,22 +418,27 @@ impl<'a> SAXParser<'a> {
         let byte = current[0];
         match byte {
             b'!' => {
+                self.flush_text(gc.line, gc.character - 1, gc.last_cursor_pos.saturating_sub(1));
                 self.state = State::SgmlDecl;
                 self.sgml_decl.start = [gc.line, gc.character - 1];
             }
 
             b'/' => {
+                self.flush_text(gc.line, gc.character - 1, gc.last_cursor_pos.saturating_sub(1));
                 self.state = State::CloseTag;
                 self.tag.close_start = [gc.line, gc.character - 2];
             }
 
             b'?' => {
+                self.flush_text(gc.line, gc.character - 1, gc.last_cursor_pos.saturating_sub(1));
                 self.state = State::ProcInst;
                 self.proc_inst.start = [gc.line, gc.character - 1];
                 self.proc_inst.target.start = [gc.line, gc.character];
             }
 
             b'>' => {
+                // We could have text in play here. e.g 'foo bar<></>'
+                self.flush_text(gc.line, gc.character - 1, gc.last_cursor_pos.saturating_sub(1));
                 self.process_open_tag(false, gc); // JSX fragment
             }
 
@@ -434,13 +447,14 @@ impl<'a> SAXParser<'a> {
                 // we don't want to process '< name' as an open tag.
                 // backup 2 graphemes (not bytes) since we might have gotten
                 // something like '< ' or '< *multi-bytes-grapheme*'
-                self.new_text(gc.line, gc.character, gc.cursor - 1 - grapheme_len(byte));
+                self.new_text(gc.line, gc.character, gc.last_cursor_pos, false);
             }
         }
     }
 
     fn open_tag(&mut self, gc: &mut GraphemeClusters, current: &[u8]) {
         if is_name_char(current) {
+            self.flush_text(gc.line, gc.character, gc.last_cursor_pos.saturating_sub(1));
             gc.take_until_ascii(TAG_NAME_END);
             self.tag.header.1 = gc.cursor;
             return;
@@ -458,46 +472,51 @@ impl<'a> SAXParser<'a> {
         }
     }
 
-    fn begin_white_space(&mut self, gc: &mut GraphemeClusters, current: &[u8]) {
+    fn text_trim_leading(&mut self, gc: &mut GraphemeClusters, current: &[u8]) {
         let byte = current[0];
+        if byte == b'\n' {
+            gc.skip_whitespace();
+            if let Some(text) = &mut self.text {
+                text.header.0 = gc.cursor;
+            }
+        }
         if byte == b'<' {
-            self.flush_text(gc.line, gc.character, gc.cursor - 1);
             self.state = State::LT;
             return;
         }
-
-        self.new_text(gc.line, gc.character, gc.cursor - grapheme_len(byte));
-        // self.write_text(current);
+        self.text(gc, current);
     }
 
     fn text(&mut self, gc: &mut GraphemeClusters, current: &[u8]) {
         let byte = current[0];
         if byte != b'<' {
             gc.take_until_ascii(&[b'<', b'\n']);
-            return;
+        } else if byte == b'\n' {
+            // Newlines flush text
+            self.flush_text(gc.line, gc.character, gc.last_cursor_pos);
         }
-        self.flush_text(gc.line, gc.character, gc.cursor - 1);
-        self.state = State::LT;
+        self.state = State::BeginWhitespace;
     }
 
     fn flush_text(&mut self, line: u32, character: u32, offset: usize) {
-        let emit_close_tag = self.events[Event::CloseTag];
-        let emit_text = self.events[Event::Text];
-        if !emit_close_tag && !emit_text {
-            return;
-        }
+        if let Some(mut text) = self.text.take() {
+            text.end = [line, character - 1];
+            text.header.1 = offset;
 
-        let mut text = mem::replace(&mut self.text, Text::new([0, 0]));
-        text.end = [line, character - 1];
-        text.header.1 = offset;
-        if emit_text && text.hydrate(self.source_ptr) {
-            self.event_handler.handle_event(Event::Text, Entity::Text(&text));
-        }
+            // Empty
+            if text.header.0 == text.header.1 && text.value.is_empty() {
+                return;
+            }
 
-        let len = self.tags.len();
-        // Store these only if we're interested in CloseTag events
-        if len != 0 && emit_close_tag {
-            self.tags[len - 1].text_nodes.push(text);
+            if self.events[Event::Text] && text.hydrate(self.source_ptr) {
+                self.event_handler.handle_event(Event::Text, Entity::Text(&text));
+            }
+
+            let len = self.tags.len();
+            // Store these only if we're interested in CloseTag events
+            if len != 0 && self.events[Event::CloseTag] {
+                self.tags[len - 1].text_nodes.push(text);
+            }
         }
     }
 
@@ -511,7 +530,7 @@ impl<'a> SAXParser<'a> {
                 } else {
                     self.state = State::Cdata;
                 }
-                self.cdata.header.0 = gc.cursor - 1;
+                self.cdata.header.0 = gc.last_cursor_pos;
                 self.cdata.start = [gc.line, gc.character - 8];
                 false
             }
@@ -519,7 +538,7 @@ impl<'a> SAXParser<'a> {
             "--" => {
                 self.state = State::Comment;
                 self.comment.start = [gc.line, gc.character - 4];
-                self.comment.header.0 = gc.cursor - 1;
+                self.comment.header.0 = gc.last_cursor_pos;
                 self.comment(gc, current);
                 false
             }
@@ -541,7 +560,7 @@ impl<'a> SAXParser<'a> {
                 self.event_handler.handle_event(Event::SGMLDeclaration, Entity::Text(&sgml_decl));
             }
 
-            self.new_text(gc.line, gc.character, gc.cursor);
+            self.new_text(gc.line, gc.character, gc.cursor, true);
             return;
         }
 
@@ -567,7 +586,7 @@ impl<'a> SAXParser<'a> {
 
     fn doctype(&mut self, gc: &mut GraphemeClusters, current: &[u8]) {
         if current[0] == b'>' {
-            self.new_text(gc.line, gc.character, gc.cursor);
+            self.new_text(gc.line, gc.character, gc.cursor, true);
             if self.events[Event::Doctype] {
                 let mut doctype = mem::replace(&mut self.doctype, Text::new([0, 0]));
                 doctype.end = [gc.line, gc.character - 1];
@@ -659,10 +678,10 @@ impl<'a> SAXParser<'a> {
     fn cdata_ending(&mut self, current: &[u8]) {
         // first ']' in ']]>'
         self.state = if current[0] == b']' {
-          State::CdataEnding2
+            State::CdataEnding2
         } else {
-          // we might have got something like ']some more text ]}>'
-          State::Cdata
+            // we might have got something like ']some more text ]}>'
+            State::Cdata
         };
     }
 
@@ -674,7 +693,7 @@ impl<'a> SAXParser<'a> {
         }
         // the '>' in ']]>' which must not be separated by whitespace
         if byte == b'>' {
-            self.new_text(gc.line, gc.character, gc.cursor);
+            self.new_text(gc.line, gc.character, gc.cursor, true);
             let mut cdata = mem::replace(&mut self.cdata, Text::new([0, 0]));
             cdata.end = [gc.line, gc.character - 1];
             cdata.header.1 = gc.cursor - 3; // back up from the ']]>'
@@ -732,7 +751,7 @@ impl<'a> SAXParser<'a> {
 
     fn proc_inst_ending(&mut self, gc: &mut GraphemeClusters, current: &[u8]) {
         if current[0] == b'>' {
-            self.new_text(gc.line, gc.character, gc.cursor);
+            self.new_text(gc.line, gc.character, gc.cursor, true);
             let mut proc_inst = mem::replace(&mut self.proc_inst, ProcInst::new());
             if self.events[Event::ProcessingInstruction] {
                 proc_inst.end = [gc.line, gc.character];
@@ -763,7 +782,7 @@ impl<'a> SAXParser<'a> {
             self.state = State::OpenTagSlash;
         } else {
             self.attribute.name.start = [gc.line, gc.character - 1];
-            self.attribute.name.header.0 = gc.cursor - 1;
+            self.attribute.name.header.0 = gc.last_cursor_pos;
             self.state = State::AttribName;
         }
     }
@@ -780,7 +799,6 @@ impl<'a> SAXParser<'a> {
             }
             grapheme if match_byte(WHITESPACE, grapheme) == true => {
                 self.state = State::AttribNameSawWhite;
-                //gc.skip_whitespace();
             }
             _ => {
                 gc.take_until_ascii(ATTRIBUTE_NAME_END);
@@ -837,7 +855,7 @@ impl<'a> SAXParser<'a> {
     fn attribute_value_quoted(&mut self, gc: &mut GraphemeClusters, current: &[u8]) {
         if current[0] == self.quote {
             self.attribute.value.end = [gc.line, gc.character - 1];
-            self.attribute.value.header.1 = gc.cursor - 1;
+            self.attribute.value.header.1 = gc.last_cursor_pos;
             self.process_attribute();
             self.quote = 0;
             self.state = State::AttribValueClosed;
@@ -854,7 +872,7 @@ impl<'a> SAXParser<'a> {
         } else if current[0] == b'/' {
             self.state = State::OpenTagSlash;
         } else {
-            self.attribute.name.header.0 = gc.cursor - 1;
+            self.attribute.name.header.0 = gc.last_cursor_pos;
             self.state = State::AttribName;
         }
     }
@@ -865,7 +883,7 @@ impl<'a> SAXParser<'a> {
             return;
         }
         self.attribute.value.end = [gc.line, gc.character - 1];
-        self.attribute.value.header.1 = gc.cursor - 1;
+        self.attribute.value.header.1 = gc.last_cursor_pos;
         self.process_attribute();
         if current[0] == b'>' {
             self.process_open_tag(false, gc);
@@ -879,22 +897,13 @@ impl<'a> SAXParser<'a> {
         // and the current byte needs inspecting to determine
         // if this is the start of a close tag name.
         if is_name_start_char(current) {
+            // legit start to a close tag
             // Try to take the entire close tag name
-            let start = gc.cursor - 1;
+            let start = gc.last_cursor_pos;
             gc.take_until_ascii(&[b'>']);
             let end = gc.cursor;
+            self.close_tag.header = (start, end);
 
-            if self.partial_close_tag.is_empty() {
-                self.close_tag_mem_position = (start, end);
-            } else {
-                // This should be exceedingly rare with the likeliness
-                // increasing with the size of the document.
-                unsafe {
-                    let ptr = self.source_ptr.add(start);
-                    let sl = slice::from_raw_parts(ptr, end - start);
-                    self.partial_close_tag.extend_from_slice(sl);
-                }
-            }
             return;
         }
         // We've hit a close tag - process it
@@ -941,19 +950,15 @@ impl<'a> SAXParser<'a> {
         if !self_closing {
             self.tags.push(tag);
         }
-        self.new_text(gc.line, gc.character, gc.cursor);
+
+        self.new_text(gc.line, gc.character, gc.cursor, true);
     }
 
     fn process_close_tag(&mut self, gc: &mut GraphemeClusters) {
-        self.new_text(gc.line, gc.character, gc.cursor);
+        self.new_text(gc.line, gc.character, gc.cursor, true);
         let mut tags_len = self.tags.len();
 
-        let close_tag_name = if self.partial_close_tag.is_empty() {
-            let (start, end) = self.close_tag_mem_position;
-            unsafe { slice::from_raw_parts(self.source_ptr.add(start), end - start) }
-        } else {
-            self.partial_close_tag.as_slice()
-        };
+        let close_tag_name = self.close_tag.get_value_slice(self.source_ptr);
 
         let mut found = false;
         let mut tag_index = 0;
@@ -971,16 +976,17 @@ impl<'a> SAXParser<'a> {
 
         // Rare encounter of an </orphan> tag
         let close_tag_name_len = close_tag_name.len();
+        self.close_tag.clear();
 
         if !found && close_tag_name_len > 0 {
-            self.text.header.0 = gc.cursor - (close_tag_name_len + 3);
-            self.text.start = self.tag.close_start;
+            if let Some(text) = &mut self.text {
+                text.header.0 = gc.cursor - (close_tag_name_len + 3);
+                text.start = self.tag.close_start;
+            }
             self.flush_text(gc.line, gc.character + 1, gc.cursor);
-            self.new_text(gc.line, gc.character, gc.cursor);
+            self.new_text(gc.line, gc.character, gc.cursor, true);
             return;
         }
-        self.close_tag_mem_position = (0, 0);
-        self.partial_close_tag.clear();
 
         if !self.events[Event::CloseTag] {
             if tag_index > 1 {
@@ -988,7 +994,7 @@ impl<'a> SAXParser<'a> {
                 return;
             }
 
-            self.tag = self.tags.remove(tag_index);
+            self.tags.remove(tag_index);
             return;
         }
 
@@ -1000,7 +1006,6 @@ impl<'a> SAXParser<'a> {
             tag.hydrate(self.source_ptr);
 
             self.event_handler.handle_event(Event::CloseTag, Entity::Tag(&tag));
-            self.tag = tag;
         }
     }
 
@@ -1013,7 +1018,7 @@ impl<'a> SAXParser<'a> {
 
         if self.brace_ct == 0 {
             self.attribute.value.end = [gc.line, gc.character - 1];
-            self.attribute.value.header.1 = gc.cursor - 1;
+            self.attribute.value.header.1 = gc.last_cursor_pos;
             self.process_attribute();
             self.state = State::AttribValueClosed;
             return;
@@ -1021,12 +1026,17 @@ impl<'a> SAXParser<'a> {
         gc.take_until_ascii(&[b'{', b'}']);
     }
 
-    fn new_text(&mut self, line: u32, character: u32, offset: usize) {
-        if self.events[Event::Text] || self.events[Event::CloseTag] {
-            self.text = Text::new([line, character]);
-            self.text.header.0 = offset;
+    fn new_text(&mut self, line: u32, character: u32, offset: usize, trim_leading: bool) {
+        if self.text.is_none() && (self.events[Event::Text] || self.events[Event::CloseTag]) {
+            let mut text = Text::new([line, character]);
+            text.header.0 = offset;
+            self.text = Some(text);
         }
-        self.state = State::Text;
+        self.state = if trim_leading {
+            State::TextTrimLeading
+        } else {
+            State::Text
+        };
     }
 }
 
@@ -1131,6 +1141,8 @@ enum State {
     CloseTagSawWhite = 29,
     // props={() => {}}
     JSXAttributeExpression = 30,
+    // Text but omit the leading whitespace
+    TextTrimLeading = 31,
 }
 
 #[cfg(test)]
@@ -1180,7 +1192,7 @@ mod tests {
         events[Event::CloseTag] = true;
         events[Event::Text] = true;
         sax.events = events;
-        let str = "<component data-id=\"user_1234\"key=\"23\" disabled />";
+        let str = r#"<component data-id="user_1234"key="23" disabled />"#;
 
         sax.write(str.as_bytes());
         sax.identity();
@@ -1200,7 +1212,7 @@ mod tests {
         events[Event::CloseTag] = true;
         events[Event::Text] = true;
         sax.events = events;
-        let str = "<div><a href=\"http://github.com\">GitHub</a></orphan></div>";
+        let str = r#"<div><a href="http://github.com">GitHub</a></orphan></div>"#;
 
         sax.write(str.as_bytes());
         sax.identity();
@@ -1329,6 +1341,7 @@ mod tests {
         let mut sax = SAXParser::new(&event_handler);
         let mut events = [false; 10];
         events[Event::Text] = true;
+        events[Event::CloseTag] = true;
         sax.events = events;
         let str = "<foo>{bar < baz ? <div></div> : <></>}</foo>";
 
@@ -1336,12 +1349,11 @@ mod tests {
         sax.identity();
 
         let texts = event_handler.texts.borrow();
-        assert_eq!(texts.len(), 4);
+        assert_eq!(texts.len(), 3);
 
-        assert_eq!(String::from_utf8(texts[0].value.clone()).unwrap(), "{bar ");
-        assert_eq!(String::from_utf8(texts[1].value.clone()).unwrap(), "< baz ? ");
-        assert_eq!(String::from_utf8(texts[2].value.clone()).unwrap(), " : ");
-        assert_eq!(String::from_utf8(texts[3].value.clone()).unwrap(), "}");
+        assert_eq!(String::from_utf8(texts[0].value.clone()).unwrap(), "{bar < baz ? ");
+        assert_eq!(String::from_utf8(texts[1].value.clone()).unwrap(), " : ");
+        assert_eq!(String::from_utf8(texts[2].value.clone()).unwrap(), "}");
         Ok(())
     }
 
