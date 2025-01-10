@@ -92,10 +92,27 @@ impl Text {
         };
     }
 
+    pub fn get_value_slice(&mut self, ptr: *const u8) -> &[u8] {
+        let (start, end) = self.header;
+        if start < end {
+            let len = end - start;
+            if len > 0 {
+                return unsafe { slice::from_raw_parts(ptr.add(start), len) };
+            }
+        }
+
+        if !self.value.is_empty() {
+            self.hydrate(ptr);
+            return self.value.as_slice();
+        }
+
+        &[]
+    }
+
     pub fn hydrate(&mut self, ptr: *const u8) -> bool {
         let (start, end) = self.header;
         if start >= end {
-            return false;
+            return self.value.len() > 0;
         }
         let len = end - start;
         if len > 0 {
@@ -126,9 +143,7 @@ impl Attribute {
     }
 
     pub fn hydrate(&mut self, ptr: *const u8) -> bool {
-        self.name.hydrate(ptr);
-        self.value.hydrate(ptr);
-        true
+        self.name.hydrate(ptr) | self.value.hydrate(ptr)
     }
 }
 
@@ -209,7 +224,6 @@ impl Accumulator {
             let v_ptr = v_slice.as_ptr();
 
             sl = unsafe { slice::from_raw_parts(v_ptr.add(start), len) };
-
         }
 
         sl

@@ -20,7 +20,7 @@ export enum SaxEventType {
   // 2
   ProcessingInstruction = 0b10,
   // 4
-  SGMLDeclaration = 0b100,
+  Declaration = 0b100,
   // 8
   Doctype = 0b1000,
   // 16
@@ -796,7 +796,7 @@ export class SAXParser {
       case SaxEventType.Cdata:
       case SaxEventType.Comment:
       case SaxEventType.Doctype:
-      case SaxEventType.SGMLDeclaration:
+      case SaxEventType.Declaration:
         detail = new Text(new Uint8Array(memoryBuffer, ptr, Text.LENGTH), this.wasmSaxParser.memory);
         break;
 

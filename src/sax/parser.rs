@@ -2,7 +2,6 @@ use std::mem;
 use std::ops::Index;
 use std::ops::IndexMut;
 use std::ptr;
-use std::str;
 
 use super::grapheme_iterator::GraphemeClusters;
 use super::names::is_name_char;
@@ -67,12 +66,11 @@ pub struct SAXParser<'a> {
 
     // Parsing Buffers
     tags: Vec<Tag>,
-    cdata: Text,
-    comment: Text,
-    doctype: Text,
     text: Option<Text>,
+    markup_decl: Option<Text>,
+    markup_entity: Option<Text>,
+
     proc_inst: ProcInst,
-    sgml_decl: Text,
     attribute: Attribute,
     tag: Tag,
     close_tag: Accumulator,
@@ -147,14 +145,13 @@ impl<'a> SAXParser<'a> {
             event_handler,
 
             // Parsing Buffers
-            tags: Vec::new(),
-            cdata: Text::new([0, 0]),
-            comment: Text::new([0, 0]),
-            doctype: Text::new([0, 0]),
             text: None,
-            proc_inst: ProcInst::new(),
-            sgml_decl: Text::new([0, 0]),
+            tags: Vec::new(),
+            markup_decl: None,
+            markup_entity: None,
+
             attribute: Attribute::new(),
+            proc_inst: ProcInst::new(),
             tag: Tag::new([0, 0]),
             close_tag: Accumulator::new(),
 
@@ -218,7 +215,7 @@ impl<'a> SAXParser<'a> {
     /// ```
     pub fn write(&mut self, source: &[u8]) {
         self.source_ptr = source.as_ptr();
-        
+
         let mut gc = GraphemeClusters::new(source);
         gc.line = self.end_pos[0];
         gc.character = self.end_pos[1];
@@ -240,7 +237,6 @@ impl<'a> SAXParser<'a> {
         self.end_offset = gc.cursor;
 
         self.hydrate();
-        self.source_ptr = ptr::null();
     }
 
     fn hydrate(&mut self) {
@@ -248,16 +244,21 @@ impl<'a> SAXParser<'a> {
         for tag in &mut self.tags {
             tag.hydrate(ptr);
         }
-        self.attribute.hydrate(ptr);
         if let Some(text) = &mut self.text {
             text.hydrate(ptr);
         }
-        self.close_tag.hydrate(ptr);
-        self.cdata.hydrate(ptr);
-        self.doctype.hydrate(ptr);
+        if let Some(markup_decl) = &mut self.markup_decl {
+            markup_decl.hydrate(ptr);
+        }
+        if let Some(markup_entity) = &mut self.markup_entity {
+            markup_entity.hydrate(ptr);
+        }
+        if self.state == State::CloseTag {
+            self.close_tag.hydrate(ptr);
+        }
+        self.attribute.hydrate(ptr);
+
         self.proc_inst.hydrate(ptr);
-        self.comment.hydrate(ptr);
-        self.sgml_decl.hydrate(ptr);
         self.tag.hydrate(ptr);
     }
 
@@ -327,7 +328,7 @@ impl<'a> SAXParser<'a> {
     /// ```
     pub fn identity(&mut self) {
         // flush text at the EOF
-        self.text = None;
+        self.flush_text(self.end_pos[0], self.end_pos[1], self.end_offset);
         self.state = State::Begin;
         self.attribute = Attribute::new();
         self.brace_ct = 0;
@@ -356,18 +357,12 @@ impl<'a> SAXParser<'a> {
             State::TextTrimLeading => self.text_trim_leading(gc, current),
             State::Text => self.text(gc, current),
             State::CloseTag => self.close_tag(gc, current),
-            State::SgmlDecl => self.sgml_decl(gc, current),
-            State::SgmlDeclQuoted => self.sgml_quoted(current),
-            State::Doctype => self.doctype(gc, current),
-            State::DoctypeQuoted => self.doctype_quoted(current),
-            State::DoctypeDtd => self.doctype_dtd(current),
-            State::DoctypeDtdQuoted => self.doctype_dtd_quoted(current),
+            State::MarkupDecl => self.markup_decl(gc, current),
             State::Comment => self.comment(gc, current),
-            State::CommentEnding => self.comment_ending(current),
-            State::CommentEnded => self.comment_ended(gc, current),
             State::Cdata => self.cdata(gc, current),
-            State::CdataEnding => self.cdata_ending(current),
-            State::CdataEnding2 => self.cdata_ending_2(gc, current),
+            State::Doctype => self.doctype(gc, current),
+            State::DoctypeEntity => self.doctype(gc, current),
+            State::Entity => self.entity(gc, current),
             State::ProcInst => self.proc_inst(gc, current),
             State::ProcInstValue => self.proc_inst_value(gc, current),
             State::ProcInstEnding => self.proc_inst_ending(gc, current),
@@ -393,6 +388,12 @@ impl<'a> SAXParser<'a> {
     }
 
     fn begin_white_space(&mut self, gc: &mut GraphemeClusters, current: &[u8]) {
+        let byte = current[0];
+
+        if byte == b'\n' {
+            gc.skip_whitespace();
+        }
+
         if current[0] == b'<' {
             self.state = State::LT;
             return;
@@ -408,7 +409,7 @@ impl<'a> SAXParser<'a> {
             // this is a legit tag so we can flush
             // any previous text in play
             self.flush_text(gc.line, gc.character, gc.last_cursor_pos.saturating_sub(1));
-            self.tag = Tag::new([gc.line, gc.character - 2]);
+            self.tag = Tag::new([gc.line, gc.character - 1]);
             self.tag.header.0 = gc.last_cursor_pos;
 
             self.state = State::OpenTag;
@@ -419,14 +420,17 @@ impl<'a> SAXParser<'a> {
         match byte {
             b'!' => {
                 self.flush_text(gc.line, gc.character - 1, gc.last_cursor_pos.saturating_sub(1));
-                self.state = State::SgmlDecl;
-                self.sgml_decl.start = [gc.line, gc.character - 1];
+                self.state = State::MarkupDecl;
+                let mut markup_decl = Text::new([gc.line, gc.character - 1]);
+                markup_decl.header.0 = gc.last_cursor_pos.saturating_sub(1);
+                self.markup_decl = Some(markup_decl);
             }
 
             b'/' => {
                 self.flush_text(gc.line, gc.character - 1, gc.last_cursor_pos.saturating_sub(1));
                 self.state = State::CloseTag;
-                self.tag.close_start = [gc.line, gc.character - 2];
+                self.tag.close_start = [gc.line, gc.character - 1];
+                self.close_tag.header.0 = gc.last_cursor_pos;
             }
 
             b'?' => {
@@ -453,11 +457,13 @@ impl<'a> SAXParser<'a> {
     }
 
     fn open_tag(&mut self, gc: &mut GraphemeClusters, current: &[u8]) {
+        let mut byte = current[0];
         if is_name_char(current) {
             self.flush_text(gc.line, gc.character, gc.last_cursor_pos.saturating_sub(1));
-            gc.take_until_ascii(TAG_NAME_END);
-            self.tag.header.1 = gc.cursor;
-            return;
+            if let Some((span, _)) = gc.take_until_one_found(TAG_NAME_END, true) {
+                byte = span[span.len() - 1];
+            }
+            self.tag.header.1 = gc.cursor - 1;
         }
 
         if self.events[Event::OpenTagStart] {
@@ -465,10 +471,37 @@ impl<'a> SAXParser<'a> {
             self.event_handler.handle_event(Event::OpenTagStart, Entity::Tag(&self.tag));
         }
 
-        match current[0] {
+        match byte {
             b'>' => self.process_open_tag(false, gc),
             b'/' => self.state = State::OpenTagSlash,
-            _ => self.state = State::Attrib,
+            b' ' => self.state = State::Attrib,
+            _ => {}
+        }
+    }
+
+    fn close_tag(&mut self, gc: &mut GraphemeClusters, current: &[u8]) {
+        let mut byte = current[0];
+        // By the time we get here, the last byte was '/'
+        // and the current byte needs inspecting to determine
+        // if this is the start of a close tag name.
+        if is_name_start_char(current) {
+            // legit start to a close tag
+            // Try to take the entire close tag name
+            let mut offset: usize = 0;
+            let start = gc.cursor - 1;
+            if let Some((span, found)) = gc.take_until(b'>', true) {
+                byte = span[span.len() - 1];
+                offset = found as usize;
+            }
+            let end = gc.cursor;
+            self.close_tag.header = (start, end - offset);
+        }
+
+        match byte {
+            // We've hit a close tag - process it
+            b'>' => self.process_close_tag(gc),
+            b' ' => self.state = State::CloseTagSawWhite,
+            _ => {}
         }
     }
 
@@ -489,18 +522,21 @@ impl<'a> SAXParser<'a> {
 
     fn text(&mut self, gc: &mut GraphemeClusters, current: &[u8]) {
         let byte = current[0];
-        if byte != b'<' {
-            gc.take_until_ascii(&[b'<', b'\n']);
+        if byte == b'<' {
+            self.state = State::LT;
+            return;
         } else if byte == b'\n' {
             // Newlines flush text
             self.flush_text(gc.line, gc.character, gc.last_cursor_pos);
+        } else {
+            gc.take_until_one_found(&[b'<', b'\n'], false);
         }
         self.state = State::BeginWhitespace;
     }
 
     fn flush_text(&mut self, line: u32, character: u32, offset: usize) {
         if let Some(mut text) = self.text.take() {
-            text.end = [line, character - 1];
+            text.end = [line, character.saturating_sub(1)];
             text.header.1 = offset;
 
             // Empty
@@ -520,192 +556,181 @@ impl<'a> SAXParser<'a> {
         }
     }
 
-    fn sgml_decl(&mut self, gc: &mut GraphemeClusters, current: &[u8]) {
-        let sgml_str = unsafe { str::from_utf8_unchecked(self.sgml_decl.value.as_slice()) };
-        let is_sgml_char = match sgml_str {
-            sgml if ascii_compare("[cdata[", sgml) == true => {
-                // Empty cdata
-                if current[0] == b']' {
-                    self.state = State::CdataEnding;
-                } else {
-                    self.state = State::Cdata;
-                }
-                self.cdata.header.0 = gc.last_cursor_pos;
-                self.cdata.start = [gc.line, gc.character - 8];
-                false
-            }
+    fn markup_decl(&mut self, gc: &mut GraphemeClusters, current: &[u8]) {
+        if !match_byte(&[b' ', b'>', b'-'], current[0]) {
+            gc.take_until_one_found(&[b' ', b'>', b'-'], false);
+        }
 
-            "--" => {
-                self.state = State::Comment;
-                self.comment.start = [gc.line, gc.character - 4];
-                self.comment.header.0 = gc.last_cursor_pos;
-                self.comment(gc, current);
-                false
-            }
+        let markup_decl = self.markup_decl.as_mut().unwrap();
+        markup_decl.header.1 = gc.cursor;
 
-            sgml if ascii_compare("doctype", sgml) == true => {
-                self.state = State::Doctype;
-                self.doctype.start = [gc.line, gc.character - 8];
-                false
-            }
+        let md_slice = markup_decl.get_value_slice(self.source_ptr);
+        let sl_len = md_slice.len();
 
-            _ => true,
-        };
-
-        if current[0] == b'>' {
-            let mut sgml_decl = mem::replace(&mut self.sgml_decl, Text::new([0, 0]));
-            if self.events[Event::SGMLDeclaration] {
-                sgml_decl.value.extend_from_slice(current);
-                sgml_decl.end = [gc.line, gc.character - 1];
-                self.event_handler.handle_event(Event::SGMLDeclaration, Entity::Text(&sgml_decl));
-            }
-
-            self.new_text(gc.line, gc.character, gc.cursor, true);
+        if sl_len >= 4 && &md_slice[..4] == b"<!--" {
+            markup_decl.start = [gc.line, gc.character.saturating_sub(4)];
+            self.state = State::Comment;
             return;
         }
 
-        if is_sgml_char {
-            self.sgml_decl.value.extend_from_slice(current);
+        if sl_len >= 9 && ascii_compare(&md_slice[..9], b"<![CDATA[") {
+            markup_decl.start = [gc.line, gc.character.saturating_sub(9)];
+            self.state = State::Cdata;
+            return;
+        }
+
+        if sl_len >= 9 && ascii_compare(&md_slice[..9], b"<!DOCTYPE") {
+            markup_decl.start = [gc.line, gc.character.saturating_sub(9)];
+            self.state = State::Doctype;
+            return;
+        }
+
+        let bytes_to_check = if sl_len > 2 {
+            &md_slice[..3]
         } else {
-            self.sgml_decl = Text::new([0, 0]);
-        }
-        let byte = current[0];
-        if byte == b'"' || byte == b'\'' {
-            self.state = State::SgmlDeclQuoted;
-        }
-    }
+            md_slice
+        };
+        if bytes_to_check != b"<!-" && bytes_to_check != b"<![" && !ascii_compare(b"<!D", bytes_to_check) {
+            let mut markup_entity = Text::new([gc.line, gc.character.saturating_sub(2)]);
+            markup_entity.header.0 = gc.cursor;
 
-    fn sgml_quoted(&mut self, current: &[u8]) {
-        let maybe_quote = unsafe { *current.get_unchecked(0) };
-        if maybe_quote == self.quote {
-            self.quote = 0;
-            self.state = State::SgmlDecl;
-        }
-        self.sgml_decl.value.extend_from_slice(current);
-    }
-
-    fn doctype(&mut self, gc: &mut GraphemeClusters, current: &[u8]) {
-        if current[0] == b'>' {
-            self.new_text(gc.line, gc.character, gc.cursor, true);
-            if self.events[Event::Doctype] {
-                let mut doctype = mem::replace(&mut self.doctype, Text::new([0, 0]));
-                doctype.end = [gc.line, gc.character - 1];
-                self.event_handler.handle_event(Event::Doctype, Entity::Text(&doctype));
-            }
+            self.markup_entity = Some(markup_entity);
+            self.state = State::Entity;
+            self.markup_decl = None;
             return;
-        }
-        let byte = current[0];
-        self.doctype.value.extend_from_slice(current);
-        if byte == b']' {
-            self.state = State::DoctypeDtd;
-        } else if byte == b'"' || byte == b'\'' {
-            self.state = State::DoctypeQuoted;
-            self.quote = byte;
-        }
-    }
-
-    fn doctype_quoted(&mut self, current: &[u8]) {
-        self.doctype.value.extend_from_slice(current);
-        let maybe_quote = unsafe { *current.get_unchecked(0) };
-        if maybe_quote == self.quote {
-            self.quote = 0;
-            self.state = State::Doctype;
-        }
-    }
-
-    fn doctype_dtd(&mut self, current: &[u8]) {
-        let byte = current[0];
-        self.doctype.value.extend_from_slice(current);
-        if byte == b']' {
-            self.state = State::Doctype;
-        } else if byte == b'"' || byte == b'\'' {
-            self.state = State::DoctypeDtdQuoted;
-            self.quote = byte
-        }
-    }
-
-    fn doctype_dtd_quoted(&mut self, current: &[u8]) {
-        self.doctype.value.extend_from_slice(current);
-        let maybe_quote = unsafe { *current.get_unchecked(0) };
-        if self.quote == maybe_quote {
-            self.state = State::DoctypeDtd;
-            self.quote = 0;
         }
     }
 
     fn comment(&mut self, gc: &mut GraphemeClusters, current: &[u8]) {
-        if current[0] == b'-' {
-            self.state = State::CommentEnding;
-            return;
-        }
-        gc.take_until_ascii(&[b'-']);
-    }
+        let markup_decl = self.markup_decl.as_mut().unwrap();
 
-    fn comment_ending(&mut self, current: &[u8]) {
-        if current[0] == b'-' {
-            self.state = State::CommentEnded;
-            return;
+        if current[0] != b'>' {
+            gc.take_until(b'>', true);
         }
-        // We didn't find the last b'-' so we treat this
-        // as part of the comment
-        self.state = State::Comment;
-    }
 
-    fn comment_ended(&mut self, gc: &mut GraphemeClusters, current: &[u8]) {
-        if current[0] == b'>' {
-            let mut comment = mem::replace(&mut self.comment, Text::new([0, 0]));
-            comment.end = [gc.line, gc.character - 1];
-            comment.header.1 = gc.cursor - 3;
-            if self.events[Event::Comment] && comment.hydrate(self.source_ptr) {
-                self.event_handler.handle_event(Event::Comment, Entity::Text(&comment));
+        markup_decl.header.1 = gc.cursor;
+
+        let markup_slice = markup_decl.get_value_slice(self.source_ptr);
+        let len = markup_slice.len();
+
+        // We're looking for exactly '-->'
+        if len > 3 && &markup_slice[(len - 3)..] == b"-->" {
+            markup_decl.end = [gc.line, gc.character];
+            if self.events[Event::Comment] && markup_decl.hydrate(self.source_ptr) {
+                markup_decl.value.drain(0..4); // remove <!--
+                markup_decl.value.truncate(markup_decl.value.len() - 3); // remove -->
+                self.event_handler.handle_event(Event::Comment, Entity::Text(&markup_decl));
             }
+            self.markup_decl = None;
             self.state = State::BeginWhitespace;
-            return;
         }
-        // We didn't find the b'>' so we treat this
-        // as part of the comment
-        self.state = State::Comment;
     }
 
     fn cdata(&mut self, gc: &mut GraphemeClusters, current: &[u8]) {
-        if current[0] == b']' {
-            self.state = State::CdataEnding;
-            return;
+        if current[0] != b'>' {
+            gc.take_until(b'>', true);
         }
-        gc.take_until_ascii(&[b']']);
-    }
 
-    fn cdata_ending(&mut self, current: &[u8]) {
-        // first ']' in ']]>'
-        self.state = if current[0] == b']' {
-            State::CdataEnding2
-        } else {
-            // we might have got something like ']some more text ]}>'
-            State::Cdata
-        };
-    }
+        let markup_decl = self.markup_decl.as_mut().unwrap();
+        markup_decl.header.1 = gc.cursor;
 
-    fn cdata_ending_2(&mut self, gc: &mut GraphemeClusters, current: &[u8]) {
-        let byte = current[0];
-        // second ']' in ']]>'
-        if byte == b']' {
-            return;
-        }
-        // the '>' in ']]>' which must not be separated by whitespace
-        if byte == b'>' {
-            self.new_text(gc.line, gc.character, gc.cursor, true);
-            let mut cdata = mem::replace(&mut self.cdata, Text::new([0, 0]));
-            cdata.end = [gc.line, gc.character - 1];
-            cdata.header.1 = gc.cursor - 3; // back up from the ']]>'
-
-            if self.events[Event::Cdata] {
-                cdata.hydrate(self.source_ptr); // allow empty
-                self.event_handler.handle_event(Event::Cdata, Entity::Text(&cdata));
+        let markup_slice = markup_decl.get_value_slice(self.source_ptr);
+        let len = markup_slice.len();
+        // We're looking for exactly ']]>'
+        if len > 3 && &markup_slice[(len - 3)..] == b"]]>" {
+            markup_decl.end = [gc.line, gc.character];
+            if self.events[Event::Cdata] && markup_decl.hydrate(self.source_ptr) {
+                markup_decl.value.truncate(markup_decl.value.len() - 3); // remove ]]>
+                markup_decl.value.drain(0..9); // remove <!CDATA[
+                self.event_handler.handle_event(Event::Cdata, Entity::Text(&markup_decl));
             }
+            self.markup_decl = None;
+            self.state = State::BeginWhitespace;
+        }
+    }
+
+    /// DOCTYPE can be simple:
+    ///
+    /// <!DOCTYPE message SYSTEM "message.dtd">
+    ///
+    /// or contain entities:
+    ///
+    /// <!DOCTYPE address [
+    ///   <!ELEMENT address (name,company,phone)>
+    ///   <!ELEMENT name (#P_CDATA)>
+    ///   <!ELEMENT company (#P_CDATA)>
+    ///   <!ELEMENT phone (#P_CDATA)>
+    /// ]>
+    fn doctype(&mut self, gc: &mut GraphemeClusters, current: &[u8]) {
+        let mut byte = current[0];
+
+        let markup_decl = self.markup_decl.as_mut().unwrap();
+        // determine where to stop taking bytes for
+        // for the markup_decl value
+        if self.state != State::DoctypeEntity && !match_byte(&[b'[', b'>'], byte) {
+            if let Some((span, _)) = gc.take_until_one_found(&[b'[', b'>'], true) {
+                byte = span[span.len() - 1];
+            }
+            markup_decl.header.1 = gc.cursor;
+        }
+
+        if !match_byte(&[b'!', b'>'], byte) {
+            if let Some((span, _)) = gc.take_until_one_found(&[b'!', b'>'], true) {
+                byte = span[span.len() - 1];
+            }
+        }
+
+        // <!ENTITY or similar
+        if byte == b'!' {
+            self.state = State::Entity;
+            let mut markup_entity = Text::new([gc.line, gc.character]);
+            markup_entity.header.0 = gc.cursor;
+
+            self.markup_entity = Some(markup_entity);
             return;
-        } else {
-            // ']]' has occurred in CDATA without the '>' immediately following
-            self.state = State::Cdata;
+        }
+
+        if byte == b'>' {
+            markup_decl.end = [gc.line, gc.character];
+            if self.events[Event::Doctype] && markup_decl.hydrate(self.source_ptr) {
+                markup_decl.value.drain(0..9); // remove '<!DOCTYPE
+                markup_decl.value.truncate(markup_decl.value.len() - 1); // remove '>' or '['
+
+                self.event_handler.handle_event(Event::Cdata, Entity::Text(&markup_decl));
+            }
+            self.markup_decl = None;
+            self.state = State::BeginWhitespace;
+        }
+    }
+
+    fn entity(&mut self, gc: &mut GraphemeClusters, current: &[u8]) {
+        let mut byte = current[0];
+
+        if byte != b'>' {
+            if let Some((span, _)) = gc.take_until(b'>', true) {
+                byte = span[span.len() - 1];
+            }
+        }
+
+        if byte == b'>' {
+            let markup_entity = self.markup_entity.as_mut().unwrap();
+            markup_entity.header.1 = gc.cursor - 1;
+            markup_entity.end = [gc.line, gc.character - 1];
+
+            if self.events[Event::Declaration] && markup_entity.hydrate(self.source_ptr) {
+                self.event_handler.handle_event(Event::Cdata, Entity::Text(&markup_entity));
+            }
+            self.markup_entity = None;
+            // if we have a markup_decl, we previously
+            // were processing a doctype and encountered
+            // entities and now need to complete the doctype
+            self.state = if self.markup_decl.is_some() {
+                State::DoctypeEntity
+            } else {
+                State::BeginWhitespace
+            };
+            gc.skip_whitespace();
+            return;
         }
     }
 
@@ -725,7 +750,7 @@ impl<'a> SAXParser<'a> {
         }
 
         self.proc_inst.target.value.extend_from_slice(current);
-        if let Some(target) = gc.take_until_ascii(&[b'>', b'?', b' ']) {
+        if let Some((target, _)) = gc.take_until_one_found(&[b'>', b'?', b' '], false) {
             self.proc_inst.target.value.extend_from_slice(target);
         }
     }
@@ -743,7 +768,7 @@ impl<'a> SAXParser<'a> {
             self.proc_inst.content.end = [gc.line, gc.character - 1];
         } else {
             self.proc_inst.content.value.extend_from_slice(current);
-            if let Some(proc_inst_value) = gc.take_until_ascii(&[b'?']) {
+            if let Some((proc_inst_value, _)) = gc.take_until(b'?', false) {
                 self.proc_inst.content.value.extend_from_slice(proc_inst_value);
             }
         }
@@ -754,7 +779,7 @@ impl<'a> SAXParser<'a> {
             self.new_text(gc.line, gc.character, gc.cursor, true);
             let mut proc_inst = mem::replace(&mut self.proc_inst, ProcInst::new());
             if self.events[Event::ProcessingInstruction] {
-                proc_inst.end = [gc.line, gc.character];
+                proc_inst.end = [gc.line, gc.character - 1];
                 self.event_handler.handle_event(Event::ProcessingInstruction, Entity::ProcInst(&proc_inst));
             }
             return;
@@ -801,7 +826,7 @@ impl<'a> SAXParser<'a> {
                 self.state = State::AttribNameSawWhite;
             }
             _ => {
-                gc.take_until_ascii(ATTRIBUTE_NAME_END);
+                gc.take_until_one_found(ATTRIBUTE_NAME_END, false);
                 self.attribute.name.end = [gc.line, gc.character];
                 self.attribute.name.header.1 = gc.cursor;
             }
@@ -848,7 +873,7 @@ impl<'a> SAXParser<'a> {
             self.brace_ct += 1;
         } else {
             self.state = State::AttribValueUnquoted;
-            gc.take_until_ascii(&[b' ', b'>', b'/']);
+            gc.take_until_one_found(&[b' ', b'>', b'/'], false);
         }
     }
 
@@ -861,7 +886,7 @@ impl<'a> SAXParser<'a> {
             self.state = State::AttribValueClosed;
             return;
         }
-        gc.take_until_ascii(&[self.quote]);
+        gc.take_until(self.quote, false);
     }
 
     fn attribute_value_closed(&mut self, gc: &mut GraphemeClusters, current: &[u8]) {
@@ -889,28 +914,6 @@ impl<'a> SAXParser<'a> {
             self.process_open_tag(false, gc);
         } else {
             self.state = State::Attrib;
-        }
-    }
-
-    fn close_tag(&mut self, gc: &mut GraphemeClusters, current: &[u8]) {
-        // By the time we get here, the last byte was '/'
-        // and the current byte needs inspecting to determine
-        // if this is the start of a close tag name.
-        if is_name_start_char(current) {
-            // legit start to a close tag
-            // Try to take the entire close tag name
-            let start = gc.last_cursor_pos;
-            gc.take_until_ascii(&[b'>']);
-            let end = gc.cursor;
-            self.close_tag.header = (start, end);
-
-            return;
-        }
-        // We've hit a close tag - process it
-        if current[0] == b'>' {
-            self.process_close_tag(gc);
-        } else {
-            self.state = State::CloseTagSawWhite;
         }
     }
 
@@ -976,7 +979,6 @@ impl<'a> SAXParser<'a> {
 
         // Rare encounter of an </orphan> tag
         let close_tag_name_len = close_tag_name.len();
-        self.close_tag.clear();
 
         if !found && close_tag_name_len > 0 {
             if let Some(text) = &mut self.text {
@@ -985,9 +987,10 @@ impl<'a> SAXParser<'a> {
             }
             self.flush_text(gc.line, gc.character + 1, gc.cursor);
             self.new_text(gc.line, gc.character, gc.cursor, true);
+            self.close_tag.clear();
             return;
         }
-
+        self.close_tag.clear();
         if !self.events[Event::CloseTag] {
             if tag_index > 1 {
                 self.tags.truncate(tag_index);
@@ -1023,7 +1026,7 @@ impl<'a> SAXParser<'a> {
             self.state = State::AttribValueClosed;
             return;
         }
-        gc.take_until_ascii(&[b'{', b'}']);
+        gc.take_until_one_found(&[b'{', b'}'], false);
     }
 
     fn new_text(&mut self, line: u32, character: u32, offset: usize, trim_leading: bool) {
@@ -1039,14 +1042,14 @@ impl<'a> SAXParser<'a> {
         };
     }
 }
-
+#[derive(Clone, Copy)]
 pub enum Event {
     // 1
     Text = 0,
     // 2
     ProcessingInstruction = 1,
     // 4
-    SGMLDeclaration = 2,
+    Declaration = 2,
     // 8
     Doctype = 3,
     // 16
@@ -1087,30 +1090,18 @@ enum State {
     Text = 2,
     // <
     LT = 3,
-    // <!div
-    SgmlDecl = 4,
-    // <!div foo "bar
-    SgmlDeclQuoted = 5,
-    // <!doctype
+    // the start of <!--, <!DOCTYPE, <![CDATA, <!ENTITY etc..
+    MarkupDecl = 4,
+    // <!ENTITY, <!ELEMENT, <!ATTLIST, etc
+    Entity = 5,
+    // <!DOCTYPE
     Doctype = 6,
-    // <!doctype "//blah
-    DoctypeQuoted = 7,
-    // <!doctype "//blah" [ ...
-    DoctypeDtd = 8,
-    // <!doctype "//blah" [ "foo
-    DoctypeDtdQuoted = 9,
+    // <!DOCTYPE [
+    DoctypeEntity = 7,
     // <!--
-    Comment = 10,
-    // <!-- blah -
-    CommentEnding = 11,
-    // <!-- blah --
-    CommentEnded = 12,
-    // <![cdata[ something
-    Cdata = 13,
-    // ]
-    CdataEnding = 14,
-    // ]]
-    CdataEnding2 = 15,
+    Comment = 8,
+    // <![CDATA[
+    Cdata = 15,
     // <?hi
     ProcInst = 16,
     // <?hi there
@@ -1221,9 +1212,12 @@ mod tests {
         let texts = event_handler.texts.borrow();
         assert_eq!(tags.len(), 2);
         assert_eq!(texts.len(), 2);
-        let tag = &tags[0];
-        let text_value = String::from_utf8(tag.name.clone()).unwrap();
-        assert_eq!(text_value, "a");
+
+        assert_eq!(&texts[0].value, b"GitHub");
+        assert_eq!(&texts[1].value, b"</orphan>");
+
+        let tag: &Tag = &tags[0];
+        assert_eq!(tag.name, b"a");
         assert_eq!(tag.close_start[1], 39);
         Ok(())
     }
@@ -1233,16 +1227,20 @@ mod tests {
         let mut sax = SAXParser::new(&event_handler);
         let mut events = [false; 10];
         events[Event::Comment] = true;
+        events[Event::Text] = true;
         sax.events = events;
         let str = "<!--name='test 3 attr' this is a comment--> <-- name='test 3 attr' this is just text -->";
 
         sax.write(str.as_bytes());
         sax.identity();
 
-        let comments = event_handler.texts.borrow();
-        assert_eq!(comments.len(), 1);
-        let text_value = String::from_utf8(comments[0].value.clone()).unwrap();
-        assert_eq!(text_value, "name='test 3 attr' this is a comment");
+        let texts = event_handler.texts.borrow();
+        assert_eq!(texts.len(), 2);
+        let comment_value = String::from_utf8(texts[0].value.clone()).unwrap();
+        assert_eq!(comment_value, "name='test 3 attr' this is a comment");
+
+        let text_value = String::from_utf8(texts[1].value.clone()).unwrap();
+        assert_eq!(text_value, " <-- name='test 3 attr' this is just text -->");
 
         Ok(())
     }
@@ -1358,7 +1356,37 @@ mod tests {
     }
 
     #[test]
-    fn parse_empty_cdata() -> Result<()> {
+    fn test_doctype() -> Result<()> {
+        let event_handler = TextEventHandler::new();
+        let mut sax = SAXParser::new(&event_handler);
+        let mut events = [false; 10];
+        events[Event::Doctype] = true;
+        events[Event::Declaration] = true;
+        sax.events = events;
+        let str = r#"
+        <!DOCTYPE movie [
+          <!ENTITY COM "Comedy">
+          <!LIST title xml:lang TOKEN "EN" id ID #IMPLIED>
+          <!ENTITY SF "Science Fiction">
+          <!ELEMENT movie (title+,genre,year)>
+          <!ELEMENT title (#DATA)>
+          <!ELEMENT genre (#DATA)>
+          <!ELEMENT year (#DATA)>
+        ]>"#;
+        sax.write(str.as_bytes());
+        sax.identity();
+
+        let doctypes = event_handler.texts.borrow();
+        assert_eq!(doctypes.len(), 8);
+        assert_eq!(doctypes[0].value, r#"ENTITY COM "Comedy""#.as_bytes());
+        assert_eq!(doctypes[1].value, r#"LIST title xml:lang TOKEN "EN" id ID #IMPLIED"#.as_bytes());
+        assert_eq!(doctypes[7].value, b" movie ");
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_empty_cdata() -> Result<()> {
         let event_handler = TextEventHandler::new();
         let mut sax = SAXParser::new(&event_handler);
         let mut events = [false; 10];
@@ -1379,8 +1407,7 @@ mod tests {
         let cdatas = event_handler.texts.borrow();
         assert_eq!(cdatas.len(), 2);
         assert!(cdatas[0].value.is_empty());
-        let text_value = String::from_utf8(cdatas[1].value.clone()).unwrap();
-        assert_eq!(text_value, "something");
+        assert_eq!(cdatas[1].value, b"something");
 
         Ok(())
     }

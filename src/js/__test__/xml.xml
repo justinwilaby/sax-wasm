@@ -1,4 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE root [
+  <!ELEMENT address (name,company,phone)>
+  <!ELEMENT name (#PCDATA)>
+  <!ELEMENT company (#PCDATA)>
+  <!ELEMENT phone (#PCDATA)>
+]>
 <root xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
   xsi:noNamespaceSchemaLocation="xml.xsd">
   test text node

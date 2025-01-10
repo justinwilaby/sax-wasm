@@ -19,14 +19,14 @@ use std::u8;
 /// ```
 /// use sax_wasm::sax::utils::ascii_compare;
 ///
-/// assert!(ascii_compare("Hello", "hello"));
-/// assert!(!ascii_compare("Hello", "world"));
+/// assert!(ascii_compare(b"Hello", b"hello"));
+/// assert!(!ascii_compare(b"Hello", b"world"));
 /// ```
-pub fn ascii_compare(expected: &str, test: &str) -> bool {
+pub fn ascii_compare(expected: &[u8], test: &[u8]) -> bool {
     if expected.len() != test.len() {
         return false;
     }
-    expected.chars().zip(test.chars()).all(|(e, t)| e.eq_ignore_ascii_case(&t))
+    expected.iter().zip(test.iter()).all(|(&e, &t)| e.eq_ignore_ascii_case(&t))
 }
 
 /// Converts a grapheme cluster to its corresponding Unicode code point.
