@@ -1,6 +1,7 @@
 {
     "jest.rootPath": "./",
     "cSpell.words": [
-        "repr"
+        "repr",
+        "stylesheet"
     ]
 }

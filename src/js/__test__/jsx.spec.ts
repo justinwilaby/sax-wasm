@@ -83,11 +83,10 @@ describe('When parsing JSX, the SaxWasm', () => {
     deepStrictEqual(_data[1].name,'');
     deepStrictEqual(_data[2].name,'foo');
 
-    deepStrictEqual(_data[2].textNodes.length, 4);
+    deepStrictEqual(_data[2].textNodes.length, 3);
 
-    deepStrictEqual(_data[2].textNodes[0].value, '{bar ');
-    deepStrictEqual(_data[2].textNodes[1].value, '< baz ? ');
-    deepStrictEqual(_data[2].textNodes[2].value, ' : ');
-    deepStrictEqual(_data[2].textNodes[3].value, '}');
+    deepStrictEqual(_data[2].textNodes[0].value, '{bar < baz ? ');
+    deepStrictEqual(_data[2].textNodes[1].value, ' : ');
+    deepStrictEqual(_data[2].textNodes[2].value, '}');
   })
 });

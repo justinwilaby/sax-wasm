@@ -30,16 +30,18 @@ describe('SaxWasm', () => {
 
     it('should correctly recognize elements after reporting a comment', () => {
       parser.events = SaxEventType.Comment | SaxEventType.Attribute | SaxEventType.OpenTag;
-        parser.write(Buffer.from(`<?xml version="1.0" encoding="UTF-8"?>
+        parser.write(Buffer.from(`
+            <?xml version="1.0" encoding="UTF-8"?>
 <plugin name="test 1 attr">
 
-  <name name="test 2 attr">the plugin name</name>
+            <name name="test 2 attr">the plugin name</name>
 
-  <!--name="test 3 attr" some comment-->
+            <!--name="test 3 attr" some comment-->
 
-  <keywords name="test 4 attr">some,key,words</keywords>
+            <keywords name="test 4 attr">some,key,words</keywords>
 
-</plugin>`));
+            </plugin>
+        `));
         const names = [
             'name',
             'plugin',

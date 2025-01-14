@@ -1,8 +1,6 @@
-use std::cell::RefCell;
-use std::ops::{Index, Range};
-use std::{mem, str};
+use std::{mem, ptr};
 
-use super::utils::{grapheme_len, match_byte};
+use super::utils::grapheme_len;
 
 /// Represents an iterator over grapheme clusters in a byte slice.
 ///
@@ -20,10 +18,10 @@ use super::utils::{grapheme_len, match_byte};
 pub struct GraphemeClusters<'a> {
     bytes: &'a [u8],
     byte_len: usize,
-    bytes_needed: usize,
-    byte_indices: RefCell<Vec<usize>>,
     pub line: u32,
+    pub last_line: u32,
     pub character: u32,
+    pub last_character: u32,
     pub cursor: usize,
     pub last_cursor_pos: usize,
 }
@@ -51,12 +49,12 @@ impl GraphemeClusters<'_> {
         GraphemeClusters {
             bytes,
             byte_len: bytes.len(),
-            bytes_needed: 0,
             cursor: 0,
             last_cursor_pos: 0,
-            byte_indices: RefCell::new(vec![0]),
             line: 0,
+            last_line:0,
             character: 0,
+            last_character:0,
         }
     }
 
@@ -117,66 +115,76 @@ impl GraphemeClusters<'_> {
     /// let mut gc = GraphemeClusters::new(bytes);
     ///
     /// // Take until a comma or space is encountered
-    /// if let Some(result) = gc.take_until_one_found(&[b',', b' ']) {
+    /// if let Some((result, _)) = gc.take_until_one_found(&[b',', b' '], false) {
     ///     assert_eq!(result, "hello".as_bytes());
     ///     assert_eq!(gc.line, 0);
     ///     assert_eq!(gc.character, 5);
     /// }
     ///
     /// // Continue taking until an exclamation mark is encountered
-    /// if let Some(result) = gc.take_until_one_found(&[b'!']) {
+    /// if let Some((result, _)) = gc.take_until_one_found(&[b'!'], false) {
     ///     assert_eq!(result, ", world".as_bytes());
     ///     assert_eq!(gc.line, 0);
     ///     assert_eq!(gc.character, 12);
     /// }
     ///
     /// // No more grapheme clusters to take
-    /// assert!(gc.take_until_one_found(&[b'!']).is_none());
+    /// assert!(gc.take_until_one_found(&[b'!'], false).is_none());
     ///
     /// // Handle broken surrogate at the end
     /// let bytes = "hello, world!🐉🐉🐉".as_bytes();
     /// let mut gc_with_surrogate = GraphemeClusters::new(&bytes[..14]);
-    /// if let Some(result) = gc_with_surrogate.take_until_one_found(&[b'!']) {
+    /// if let Some((result, _)) = gc_with_surrogate.take_until_one_found(&[b'!'], false) {
     ///     assert_eq!(result, "hello, world".as_bytes());
     ///     assert_eq!(gc.line, 0);
     ///     assert_eq!(gc.character, 12);
     /// }
-    /// assert!(gc_with_surrogate.take_until_one_found(&[b'!']).is_none());
+    /// assert!(gc_with_surrogate.take_until_one_found(&[b'!'], false).is_none());
     /// ```
     pub fn take_until_one_found(&mut self, haystack: &[u8], include_match: bool) -> Option<(&'_ [u8], bool)> {
         if self.cursor == self.byte_len {
             return None;
         }
-        let mut cursor = self.cursor;
+
         let start = self.cursor;
+        let mut cursor = self.cursor;
         let mut line = self.line;
         let mut character = self.character;
         let byte_len = self.byte_len;
-        // Take until we encounter an ASCII
-        // or run out of bytes
-        while cursor < byte_len {
-            let next_byte = unsafe { *self.bytes.get_unchecked(cursor) };
+        let mut matched_byte = b'0';
+        let ptr = self.bytes.as_ptr();
+        let mut found = false;
+        let mut len = 0;
 
-            if match_byte(haystack, next_byte) {
+        while cursor < byte_len {
+
+            let next_byte = unsafe { *ptr.add(cursor) };
+
+            // Check if next_byte is in haystack using a loop instead of contains
+            if haystack.contains(&next_byte) {
+                found = true;
+                matched_byte = next_byte;
                 break;
             }
 
-            let len = grapheme_len(next_byte);
+            len = grapheme_len(next_byte);
             if next_byte == b'\n' {
                 line += 1;
                 character = 0;
             } else {
-                character += if len != 4 {
-                    1
-                } else {
-                    2
-                };
+                character += if len != 4 { 1 } else { 2 };
             }
             cursor += len;
         }
-        let found = cursor <= byte_len;
 
-        if include_match && found {
+        if found && include_match {
+            if matched_byte == b'\n' {
+                line += 1;
+                character = 0;
+            } else {
+                character += 1;
+            }
+            len = 1;
             cursor += 1;
         }
 
@@ -187,15 +195,18 @@ impl GraphemeClusters<'_> {
             cursor = byte_len - (cursor - byte_len);
         }
 
-        // If the slice len is zero, we have nothing
+        // If the slice len is zero, return None
         if start == cursor {
             return None;
         }
-        self.last_cursor_pos = mem::replace(&mut self.cursor, cursor);
-        self.line = line;
-        self.character = character;
-        let s = unsafe { self.bytes.get_unchecked(start..cursor) };
-        Some((s, found))
+        self.cursor = cursor;
+        self.last_cursor_pos = cursor - len;
+
+        self.last_line = std::mem::replace(&mut self.line, line);
+        self.last_character = std::mem::replace(&mut self.character, character);
+
+        // Use unsafe slice creation for performance
+        Some((unsafe { &*ptr::slice_from_raw_parts(ptr.add(start), cursor - start) }, found))
     }
 
     pub fn take_until(&mut self, match_byte: u8, include_match_or_exhaust: bool) -> Option<(&'_ [u8], bool)> {
@@ -204,13 +215,21 @@ impl GraphemeClusters<'_> {
         }
         let start = self.cursor;
         let byte_len = self.byte_len;
+        let ptr = self.bytes.as_ptr();
         let mut cursor = self.cursor;
         let mut line = self.line;
         let mut character = self.character;
         let mut found = false;
+        let mut len = 0;
+
         while cursor < byte_len {
-            let next_byte = unsafe { *self.bytes.get_unchecked(cursor) };
-            let len = grapheme_len(next_byte);
+            let next_byte = unsafe { *ptr.add(cursor) };
+            len = grapheme_len(next_byte);
+
+            if next_byte == match_byte {
+                found = true;
+                break;
+            }
 
             if next_byte == b'\n' {
                 line += 1;
@@ -222,15 +241,17 @@ impl GraphemeClusters<'_> {
                     2
                 };
             }
-
-            if next_byte == match_byte {
-                found = true;
-                break;
-            }
             cursor += len;
         }
 
         if include_match_or_exhaust && cursor < byte_len {
+            if match_byte == b'\n' {
+                line += 1;
+                character = 0;
+            } else {
+                character += 1;
+            }
+            len = 1;
             cursor += 1;
         }
         // We've run out of bytes - deliver what we have
@@ -239,21 +260,25 @@ impl GraphemeClusters<'_> {
         if cursor > byte_len {
             cursor = byte_len - (cursor - byte_len);
         }
-        self.last_cursor_pos = mem::replace(&mut self.cursor, cursor);
-        self.line = line;
-        self.character = character;
-        let s = unsafe { self.bytes.get_unchecked(start..cursor) };
-        Some((s, found))
+        self.cursor = cursor;
+        self.last_cursor_pos = cursor - len;
+        self.last_line = std::mem::replace(&mut self.line, line);
+        self.last_character = std::mem::replace(&mut self.character, character);
+
+        Some((unsafe { &*ptr::slice_from_raw_parts(ptr.add(start), cursor - start) }, found))
     }
 
-    pub fn skip_whitespace(&mut self) -> usize {
+    pub fn skip_whitespace(&mut self) -> bool {
         let mut cursor = self.cursor;
         let mut line = self.line;
         let mut character = self.character;
+        let mut done = false;
         let byte_len = self.byte_len;
+        let ptr = self.bytes.as_ptr();
         while cursor < byte_len {
-            let next_byte = unsafe { *self.bytes.get_unchecked(cursor) };
-            if next_byte != b' ' && next_byte != b'\n' && next_byte != b'\r' && next_byte != b'\t' {
+            let next_byte = unsafe { *ptr.add(cursor) };
+            if next_byte > 32 {
+                done = true;
                 break;
             }
 
@@ -265,115 +290,24 @@ impl GraphemeClusters<'_> {
             }
             cursor += 1;
         }
-        let whitespace_skipped = cursor - self.cursor;
         self.cursor = cursor;
-        self.line = line;
-        self.character = character;
-        whitespace_skipped
-    }
+        self.last_cursor_pos = cursor - 1;
+        self.last_line = std::mem::replace(&mut self.line, line);
+        self.last_character = std::mem::replace(&mut self.character, character);
 
-    /// Converts a grapheme cluster range to a slice range.
-    ///
-    /// This function converts a range of grapheme clusters to a corresponding byte slice range.
-    ///
-    /// # Arguments
-    ///
-    /// * `range` - A range of grapheme cluster indices.
-    ///
-    /// # Returns
-    ///
-    /// * A `Range<usize>` representing the byte slice range.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use sax_wasm::sax::grapheme_iterator::GraphemeClusters;
-    ///
-    /// let s = "🐶 my dog's name is Spot 🐶";
-    /// let gc = GraphemeClusters::new(s.as_bytes());
-    /// assert_eq!(&s[gc.get_slice_range(0..8)], "🐶 my dog");
-    /// ```
-    pub fn get_slice_range(&self, range: Range<usize>) -> Range<usize> {
-        let mut byte_indices = self.byte_indices.borrow_mut();
-        let mut largest_idx = byte_indices.len() - 1;
-        let mut start_idx = if largest_idx >= range.start {
-            byte_indices[range.start]
-        } else {
-            byte_indices[largest_idx]
-        };
-        let mut end_idx = if largest_idx >= range.end {
-            byte_indices[range.end]
-        } else {
-            byte_indices[largest_idx]
-        };
-
-        while largest_idx < range.end {
-            let byte = unsafe { *self.bytes.get_unchecked(end_idx) };
-            end_idx += grapheme_len(byte);
-            largest_idx += 1;
-            byte_indices.push(end_idx);
-            if largest_idx == range.start {
-                start_idx = end_idx;
-            }
-        }
-        start_idx..end_idx
+        done
     }
 
     /// Returns the remaining bytes in the iterator.
     ///
-    /// This function returns the remaining bytes in the iterator as a tuple containing:
-    /// - A fixed-size array of up to 4 bytes representing the remaining bytes.
-    /// - The length of the remaining bytes.
-    /// - The number of bytes needed to complete the current grapheme cluster.
-    ///
-    /// # Returns
-    ///
-    /// An `Option` containing a tuple with the following elements:
-    /// - A `[u8; 4]` array with the remaining bytes. If there are fewer than 4 bytes remaining,
-    ///   the unused elements of the array will be set to 0.
-    /// - A `usize` representing the length of the remaining bytes.
-    /// - A `usize` representing the number of bytes needed to complete the current grapheme cluster.
-    ///
-    /// If there are no remaining bytes, the function returns `None`.
-    ///
-    /// # Safety
-    ///
-    /// This function uses `unsafe` code to access the underlying byte slice without bounds checking.
-    /// It is the caller's responsibility to ensure that the `cursor` is within the valid range of the byte slice.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use sax_wasm::sax::grapheme_iterator::GraphemeClusters;
-    ///
-    /// let bytes = "hello, world!🐶".as_bytes();
-    /// let mut gc = GraphemeClusters::new(&bytes[..14]);
-    ///
-    /// // Consume some grapheme clusters
-    /// gc.take_until_one_found(&[b'1']); // 1 is not in the byte slice
-    /// gc.next(); // try to consume the next grapheme cluster which will have a broken surrogate
-    ///
-    /// // Get the remaining bytes
-    /// if let Some((remaining_bytes, len, bytes_needed)) = gc.get_remaining_bytes() {
-    ///     assert_eq!(remaining_bytes, [33, 240, 0, 0]); // &bytes[12..14] sized to 4
-    ///     assert_eq!(len, 2);
-    ///     assert_eq!(bytes_needed, 0);
-    /// }
-    /// ```
-    pub fn get_remaining_bytes(&self) -> Option<([u8; 4], usize, usize)> {
+    /// This function returns the remaining bytes in the iterator
+    pub fn get_remaining_bytes(&self) -> Option<&[u8]> {
         if self.cursor == self.byte_len {
             return None;
         }
         let bytes = unsafe { self.bytes.get_unchecked(self.cursor..) };
-        let mut remaining_bytes: [u8; 4] = [0, 0, 0, 0];
-        let len = bytes.len();
-        let mut i = len;
-        while i > 0 {
-            i -= 1;
-            remaining_bytes[i] = unsafe { *bytes.get_unchecked(i) };
-        }
 
-        Some((remaining_bytes, len, self.bytes_needed))
+        Some(bytes)
     }
 }
 /// An iterator for grapheme clusters in a utf-8 formatted string
@@ -398,7 +332,6 @@ impl<'a> Iterator for GraphemeClusters<'a> {
         let end = cursor + len;
 
         if end > byte_len {
-            self.bytes_needed = end - byte_len;
             return None;
         }
 
@@ -416,19 +349,10 @@ impl<'a> Iterator for GraphemeClusters<'a> {
 
         let s = unsafe { bytes.get_unchecked(cursor..end) };
         self.last_cursor_pos = mem::replace(&mut self.cursor, end);
-        self.line = line;
-        self.character = character;
+        self.last_line = std::mem::replace(&mut self.line, line);
+        self.last_character = std::mem::replace(&mut self.character, character);
 
         Some(s)
-    }
-}
-
-impl<'a> Index<usize> for GraphemeClusters<'a> {
-    type Output = str;
-
-    fn index(&self, index: usize) -> &Self::Output {
-        let range = self.get_slice_range(index..index + 1);
-        unsafe { str::from_utf8_unchecked(&self.bytes[range]) }
     }
 }
 
@@ -466,23 +390,6 @@ mod grapheme_iterator_tests {
         assert_eq!(len, 23);
     }
 
-    #[test]
-    fn slice_test() {
-        let s = "🚀this is a test string🚀";
-        let gc = GraphemeClusters::new(s.as_bytes());
-        let byte_range1 = gc.get_slice_range(1..5);
-
-        let slice = &s[byte_range1.clone()];
-        assert_eq!(slice, "this");
-        assert_eq!(byte_range1, 4..8);
-    }
-
-    #[test]
-    fn index_test() {
-        let s = "🚀this is a test string🚀";
-        let gc = GraphemeClusters::new(s.as_bytes());
-        assert_eq!(&gc[22], "🚀")
-    }
     #[test]
     fn take_until_one_found_test() {
         let s = "🚀this is 🐉 a test string🚀";

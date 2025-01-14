@@ -31,24 +31,24 @@ describe('When parsing XML, the SaxWasm', () => {
   it('should report CDATA (upper case) correctly', () => {
     parser.write(Buffer.from('<div><![CDATA[did you know "x < y" & "z > y"? so I [guess] that means that z > x ]]></div>'));
     const {start, end, value} = _data[0];
-    deepStrictEqual(JSON.parse(JSON.stringify(start)), { line: 0, character: 7 });
-    deepStrictEqual(JSON.parse(JSON.stringify(end)), { line: 0, character: 83 });
+    deepStrictEqual(JSON.parse(JSON.stringify(start)), { line: 0, character: 5 });
+    deepStrictEqual(JSON.parse(JSON.stringify(end)), { line: 0, character: 84 });
     strictEqual(value, 'did you know "x < y" & "z > y"? so I [guess] that means that z > x ');
   });
 
   it('should report cdata (lower case) correctly', () => {
     parser.write(Buffer.from('<div><![cdata[ did you know "x < y" & "z > y"? so I guess that means that z > x ]]></div>'));
     const {start, end, value} = _data[0];
-    deepStrictEqual(JSON.parse(JSON.stringify(start)), { line: 0, character: 7 });
-    deepStrictEqual(JSON.parse(JSON.stringify(end)), { line: 0, character: 82 });
+    deepStrictEqual(JSON.parse(JSON.stringify(start)), { line: 0, character: 5 });
+    deepStrictEqual(JSON.parse(JSON.stringify(end)), { line: 0, character: 83 });
     strictEqual(value, ' did you know "x < y" & "z > y"? so I guess that means that z > x ');
   });
 
   it('should report cDaTa (mixed case) correctly', () => {
     parser.write(Buffer.from('<div><![cDaTa[ did you know "x < y" & "z > y"? so I guess that means that z > x ]]></div>'));
     const {start, end, value} = _data[0];
-    deepStrictEqual(JSON.parse(JSON.stringify(start)), { line: 0, character: 7 });
-    deepStrictEqual(JSON.parse(JSON.stringify(end)), { line: 0, character: 82 });
+    deepStrictEqual(JSON.parse(JSON.stringify(start)), { line: 0, character: 5 });
+    deepStrictEqual(JSON.parse(JSON.stringify(end)), { line: 0, character: 83 });
     strictEqual(value, ' did you know "x < y" & "z > y"? so I guess that means that z > x ');
   });
 

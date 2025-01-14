@@ -38,7 +38,7 @@ describe('SaxWasm', () => {
     deepStrictEqual(_data[2].value,' to emphasize');
   });
 
-  it('should capture control chars properly', () => {
+  it('should not capture empty white space between tags', () => {
     const str = `<div>
 
 
@@ -46,12 +46,12 @@ describe('SaxWasm', () => {
   parser.write(Buffer.from(str));
   parser.end();
 
-  deepStrictEqual(_data[0].value,'\n\n\n');
+  deepStrictEqual(_data.length, 0);
   });
 
   it('should serialize to JSON as deepStrictEqualed', () => {
     parser.write(Buffer.from('a happy little parser'));
     parser.end();
-    deepStrictEqual(JSON.stringify(_data[0]),'{"start":{"line":0,"character":1},"end":{"line":0,"character":21},"value":"a happy little parser"}');
+    deepStrictEqual(JSON.stringify(_data[0]),'{"start":{"line":0,"character":0},"end":{"line":0,"character":21},"value":"a happy little parser"}');
   });
 });

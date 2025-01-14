@@ -31,24 +31,24 @@ describe('When parsing XML, the SaxWasm', () => {
   it('should report DOCTYPE (upper case) correctly', () => {
     parser.write(Buffer.from('<!DOCTYPE html>\n<body><div>Hello HTML!</div></body>'));
     const {start, end, value} = _data[0];
-    deepStrictEqual(JSON.parse(JSON.stringify(start)), { line: 0, character: 2 });
-    deepStrictEqual(JSON.parse(JSON.stringify(end)), { line: 0, character: 14 });
+    deepStrictEqual(start, { line: 0, character: 0 });
+    deepStrictEqual(end, { line: 0, character: 15 });
     strictEqual(value, 'html');
   });
 
   it('should report doctype (lower case) correctly', () => {
     parser.write(Buffer.from('<!doctype html>\n<body><div>Hello HTML!</div></body>'));
     const {start, end, value} = _data[0];
-    deepStrictEqual(JSON.parse(JSON.stringify(start)), { line: 0, character: 2 });
-    deepStrictEqual(JSON.parse(JSON.stringify(end)), { line: 0, character: 14 });
+    deepStrictEqual(start, { line: 0, character: 0 });
+    deepStrictEqual(end, { line: 0, character: 15 });
     strictEqual(value, 'html');
   });
 
   it('should report DocType (mixed case) correctly', () => {
     parser.write(Buffer.from('<!DocType html>\n<body><div>Hello HTML!</div></body>'));
     const {start, end, value} = _data[0];
-    deepStrictEqual(JSON.parse(JSON.stringify(start)), { line: 0, character: 2 });
-    deepStrictEqual(JSON.parse(JSON.stringify(end)), { line: 0, character: 14 });
+    deepStrictEqual(start, { line: 0, character: 0 });
+    deepStrictEqual(end, { line: 0, character: 15 });
     strictEqual(value, 'html');
   });
 });

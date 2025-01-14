@@ -199,7 +199,7 @@ export class Attribute extends Reader<Text | AttributeType> {
  * * `ptr` - The initial pointer position.
  */
 export class ProcInst extends Reader<Position | Text> {
-  public static LENGTH = 80 as const;
+  public static LENGTH = 88 as const;
 
   public target: Text;
   public content: Text;
@@ -229,7 +229,7 @@ export class ProcInst extends Reader<Position | Text> {
   public get start(): Position {
     return (
       (this.cache.start as Position) ||
-      (this.cache.start = readPosition(this.data, 16))
+      (this.cache.start = readPosition(this.data, 80))
     );
   }
 
@@ -525,7 +525,6 @@ type TextDecoder = {
     options?: { stream?: boolean }
   ) => string;
 };
-
 export class SAXParser {
   public static textDecoder: TextDecoder; // Web only
 
@@ -533,6 +532,26 @@ export class SAXParser {
   public wasmSaxParser?: WasmSaxParser;
 
   public eventHandler?: (type: SaxEventType, detail: Detail) => void;
+
+  private createDetailConstructor<T extends { new(...args: any[]): {}; LENGTH: number }>(Constructor: T) {
+    return (memoryBuffer: ArrayBuffer, ptr: number): Detail => {
+      return new Constructor(new Uint8Array(memoryBuffer, ptr, Constructor.LENGTH), this.wasmSaxParser.memory) as Detail;
+    };
+  }
+
+  private eventToDetailConstructor = new Map<SaxEventType, (memoryBuffer: ArrayBuffer, ptr: number) => Detail>([
+    [SaxEventType.Attribute, this.createDetailConstructor(Attribute)],
+    [SaxEventType.ProcessingInstruction, this.createDetailConstructor(ProcInst)],
+    [SaxEventType.OpenTag, this.createDetailConstructor(Tag)],
+    [SaxEventType.CloseTag, this.createDetailConstructor(Tag)],
+    [SaxEventType.OpenTagStart, this.createDetailConstructor(Tag)],
+    [SaxEventType.Text, this.createDetailConstructor(Text)],
+    [SaxEventType.Cdata, this.createDetailConstructor(Text)],
+    [SaxEventType.Comment, this.createDetailConstructor(Text)],
+    [SaxEventType.Doctype, this.createDetailConstructor(Text)],
+    [SaxEventType.Declaration, this.createDetailConstructor(Text)],
+  ]);
+
   private writeBuffer?: Uint8Array;
 
   constructor(events = 0) {
@@ -772,41 +791,20 @@ export class SAXParser {
   }
 
   public eventTrap = (event: number, ptr: number): void => {
-    if (!this.wasmSaxParser) {
+    if (!this.wasmSaxParser || !this.eventHandler) {
       return;
     }
     const memoryBuffer = this.wasmSaxParser.memory.buffer;
     let detail: Detail;
-    switch (event) {
-      case SaxEventType.Attribute:
-        detail = new Attribute(new Uint8Array(memoryBuffer, ptr, Attribute.LENGTH), this.wasmSaxParser.memory);
-        break;
 
-      case SaxEventType.ProcessingInstruction:
-        detail = new ProcInst(new Uint8Array(memoryBuffer, ptr, ProcInst.LENGTH), this.wasmSaxParser.memory);
-        break;
-
-      case SaxEventType.OpenTag:
-      case SaxEventType.CloseTag:
-      case SaxEventType.OpenTagStart:
-        detail = new Tag(new Uint8Array(memoryBuffer, ptr, Tag.LENGTH), this.wasmSaxParser.memory);
-        break;
-
-      case SaxEventType.Text:
-      case SaxEventType.Cdata:
-      case SaxEventType.Comment:
-      case SaxEventType.Doctype:
-      case SaxEventType.Declaration:
-        detail = new Text(new Uint8Array(memoryBuffer, ptr, Text.LENGTH), this.wasmSaxParser.memory);
-        break;
-
-      default:
-        throw new Error("No reader for this event type");
+    const constructor = this.eventToDetailConstructor.get(event);
+    if (constructor) {
+      detail = constructor(memoryBuffer, ptr);
+    } else {
+      throw new Error("No reader for this event type");
     }
 
-    if (this.eventHandler) {
-      this.eventHandler(event, detail);
-    }
+    this.eventHandler(event, detail);
   };
 }
 

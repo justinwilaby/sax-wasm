@@ -166,9 +166,8 @@ impl ProcInst {
         };
     }
 
-    pub fn hydrate(&mut self, ptr: *const u8) {
-        self.target.hydrate(ptr);
-        self.content.hydrate(ptr);
+    pub fn hydrate(&mut self, ptr: *const u8) -> bool {
+        self.target.hydrate(ptr) | self.content.hydrate(ptr)
     }
 }
 
