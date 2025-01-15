@@ -39,7 +39,7 @@ export enum SaxEventType {
 /**
  * Represents the detail of a SAX event.
  */
-export type Detail = Position | Attribute | Text | Tag | ProcInst;
+export type Detail = Attribute | Text | Tag | ProcInst;
 
 /**
  * Abstract class for decoding SAX event data.
@@ -78,7 +78,7 @@ export abstract class Reader<T = Detail> {
    * **Note** This method has a very small performance
    * cost and should be used judiciously on large documents.
    */
-  public abstract toBoxed(): void;
+  public abstract toBoxed(): this;
 
   /**
    * Converts the reader data to a JSON object.
@@ -145,10 +145,11 @@ export class Attribute extends Reader<Text | AttributeType> {
   /**
    * @inheritdoc
    */
-  public toBoxed(): void {
+  public toBoxed(): this {
     this.name.toBoxed();
     this.value.toBoxed();
     this.memory = undefined;
+    return this;
   }
 
   /**
@@ -214,11 +215,12 @@ export class ProcInst extends Reader<Position | Text> {
   /**
    * @inheritdoc
    */
-  public toBoxed(): void {
+  public toBoxed(): this {
     this.data = this.data.slice();
     this.target.toBoxed();
     this.content.toBoxed();
     this.memory = undefined;
+    return this;
   }
 
   /**
@@ -293,7 +295,7 @@ export class Text extends Reader<string | Position> {
   /**
    * @inheritdoc
    */
-  public toBoxed(): void {
+  public toBoxed(): this {
     this.data = this.data.slice();
     // Build our data view and update the pointer
     const vecPtr = readU32(this.data, 12);
@@ -301,6 +303,7 @@ export class Text extends Reader<string | Position> {
     this.dataView = new Uint8Array(this.memory.buffer, vecPtr, valueLen).slice();
     this.data.set([0,0,0,0], 12); // Set the vecPtr to 0
     this.memory = undefined;
+    return this
   }
 
   /**
@@ -350,7 +353,7 @@ export class Tag extends Reader<Attribute[] | Text[] | Position | string | numbe
   /**
    * @inheritdoc
    */
-  public toBoxed(): void {
+  public toBoxed(): this {
     delete this.cache.attributes;
     delete this.cache.textNodes;
     this.data = this.data.slice();
@@ -360,7 +363,9 @@ export class Tag extends Reader<Attribute[] | Text[] | Position | string | numbe
     for (const attribute of this.attributes) {
       attribute.toBoxed();
     }
+    this.name
     this.memory = undefined;
+    return this
   }
 
   /**

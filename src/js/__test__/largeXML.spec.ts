@@ -8,16 +8,13 @@ const saxWasm = readFileSync(pathResolve(__dirname, '../../../lib/sax-wasm.wasm'
 const options = {highWaterMark: 32 * 1024};
 describe('When parsing XML, the SaxWasm', () => {
   let parser: SAXParser;
-  let _event;
   let _data;
   beforeAll(async () => {
     parser = new SAXParser(SaxEventType.CloseTag);
     _data = [];
-    _event = 0;
 
     parser.eventHandler = function (event, data) {
-      _event = event;
-      _data.push(data);
+      _data.push(data.toBoxed());
     };
     return parser.prepareWasm(saxWasm);
   });

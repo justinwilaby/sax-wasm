@@ -15,7 +15,7 @@ describe('SaxWasm', () => {
 
         parser.eventHandler = function (event: SaxEventType, data: Detail) {
             _event = event;
-            _data.push(JSON.parse(JSON.stringify(data)));
+            _data.push(data.toBoxed() as (Attribute & Text & Tag));
         };
         return parser.prepareWasm(saxWasm);
     });

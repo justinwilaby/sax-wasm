@@ -1,7 +1,7 @@
 import { ProcInst, SaxEventType, SAXParser } from '../saxWasm';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
-import { deepStrictEqual, strictEqual } from 'assert';
+import { deepEqual, strictEqual } from 'assert';
 
 const saxWasm = readFileSync(resolve(__dirname, '../../../lib/sax-wasm.wasm'));
 
@@ -15,7 +15,7 @@ describe('When parsing JSX, the SaxWasm', () => {
 
     parser.eventHandler = function (event, data) {
       _event = event;
-      _data = JSON.parse(JSON.stringify(data)) as ProcInst;
+      _data = data.toBoxed() as ProcInst;
     };
     return parser.prepareWasm(saxWasm);
   });
@@ -33,29 +33,12 @@ describe('When parsing JSX, the SaxWasm', () => {
     strictEqual(_event, SaxEventType.ProcessingInstruction);
     strictEqual(_data?.target.value, 'xml')
     strictEqual(_data.content.value, 'version="1.0" encoding="utf-8"');
-    deepStrictEqual(_data.content, {
-      end: {
-        character: 36,
-        line: 0
-      },
-      start: {
-        character: 6,
-        line: 0
-      },
-      value: 'version="1.0" encoding="utf-8"'
-    });
+    deepEqual(_data.content.start, { character: 6, line: 0 })
+    deepEqual(_data.content.end, { character: 36, line: 0 });
 
-    deepStrictEqual(_data.target, {
-      end: {
-        character: 5,
-        line: 0
-      },
-      start: {
-        character: 2,
-        line: 0
-      },
-      value: 'xml'
-    });
+    deepEqual(_data.target.start, { character: 2, line: 0 })
+    deepEqual(_data.target.end, { character: 5, line: 0 });
+
   });
 
   it('should parse the "unexpected question mark instead of tag name" as a processing instruction', () => {
@@ -68,7 +51,7 @@ describe('When parsing JSX, the SaxWasm', () => {
     parser.write(Buffer.from(doc));
     strictEqual(_event, SaxEventType.ProcessingInstruction);
 
-    deepStrictEqual(_data?.start, {line: 2, character: 35});
-    deepStrictEqual(_data.end, {line: 2, character: 37});
+    deepEqual(_data?.start, {line: 2, character: 35});
+    deepEqual(_data?.end, {line: 2, character: 37});
   })
 });

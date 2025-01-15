@@ -15,7 +15,7 @@ describe('When parsing XML, the SaxWasm', () => {
 
     parser.eventHandler = function (event, data) {
       _event = event;
-      _data.push(JSON.parse(JSON.stringify(data)) as Text);
+      _data.push(data.toBoxed() as Text);
     };
     return parser.prepareWasm(saxWasm);
   });

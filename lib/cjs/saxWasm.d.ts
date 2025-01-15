@@ -10,14 +10,14 @@
  * ```
  * Event subscriptions can be updated between write operations.
  *
- * Note that minimizing the numnber of events will have a
- * slight performance improvement which becomes more noticable
+ * Note that minimizing the number of events will have a
+ * slight performance improvement which becomes more noticeable
  * on very large documents.
  */
 export declare enum SaxEventType {
     Text = 1,
     ProcessingInstruction = 2,
-    SGMLDeclaration = 4,
+    Declaration = 4,
     Doctype = 8,
     Comment = 16,
     OpenTagStart = 32,
@@ -29,7 +29,7 @@ export declare enum SaxEventType {
 /**
  * Represents the detail of a SAX event.
  */
-export type Detail = Position | Attribute | Text | Tag | ProcInst;
+export type Detail = Attribute | Text | Tag | ProcInst;
 /**
  * Abstract class for decoding SAX event data.
  *
@@ -67,7 +67,7 @@ export declare abstract class Reader<T = Detail> {
      * **Note** This method has a very small performance
      * cost and should be used judiciously on large documents.
      */
-    abstract toBoxed(): void;
+    abstract toBoxed(): this;
     /**
      * Converts the reader data to a JSON object.
      *
@@ -120,7 +120,7 @@ export declare class Attribute extends Reader<Text | AttributeType> {
     /**
      * @inheritdoc
      */
-    toBoxed(): void;
+    toBoxed(): this;
     /**
      * @inheritDoc
      */
@@ -161,14 +161,14 @@ export declare class Attribute extends Reader<Text | AttributeType> {
  * * `ptr` - The initial pointer position.
  */
 export declare class ProcInst extends Reader<Position | Text> {
-    static LENGTH: 80;
+    static LENGTH: 88;
     target: Text;
     content: Text;
     constructor(data: Uint8Array, memory: WebAssembly.Memory);
     /**
      * @inheritdoc
      */
-    toBoxed(): void;
+    toBoxed(): this;
     /**
      * Gets the start position of the processing instruction.
      *
@@ -217,7 +217,7 @@ export declare class Text extends Reader<string | Position> {
     /**
      * @inheritdoc
      */
-    toBoxed(): void;
+    toBoxed(): this;
     /**
      * Gets the value of the text node.
      *
@@ -251,7 +251,7 @@ export declare class Tag extends Reader<Attribute[] | Text[] | Position | string
     /**
      * @inheritdoc
      */
-    toBoxed(): void;
+    toBoxed(): this;
     /**
      * Gets the start position of the tag opening.
      *
@@ -328,6 +328,8 @@ export declare class SAXParser {
     events?: number;
     wasmSaxParser?: WasmSaxParser;
     eventHandler?: (type: SaxEventType, detail: Detail) => void;
+    private createDetailConstructor;
+    private eventToDetailConstructor;
     private writeBuffer?;
     constructor(events?: number);
     /**
@@ -475,7 +477,7 @@ export declare class SAXParser {
      * })();
      * ```
      *
-     * @param saxWasm Uint8Array contaning the WASM or a promise that will resolve to it.
+     * @param saxWasm Uint8Array containing the WASM or a promise that will resolve to it.
      */
     prepareWasm(saxWasm: Response | Promise<Response>): Promise<boolean>;
     prepareWasm(saxWasm: Uint8Array): Promise<boolean>;
