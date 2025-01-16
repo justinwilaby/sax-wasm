@@ -1,7 +1,7 @@
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 import { deepStrictEqual } from  'assert';
-import { SaxEventType, SAXParser } from '../saxWasm';
+import { Detail, Reader, SaxEventType, SAXParser } from '../saxWasm';
 
 const saxWasm = readFileSync(resolve(__dirname, '../../../lib/sax-wasm.wasm'));
 describe('SaxWasm', () => {
@@ -16,9 +16,9 @@ describe('SaxWasm', () => {
     _data = [];
     _event = 0;
 
-    parser.eventHandler = function (event, data) {
+    parser.eventHandler = function (event: SaxEventType, data:Reader<Detail>) {
       _event = event;
-      _data.push(data);
+      _data.push(data.toJSON());
     };
     return parser.prepareWasm(saxWasm);
   });
@@ -38,7 +38,7 @@ describe('SaxWasm', () => {
     deepStrictEqual(_data[2].value,' to emphasize');
   });
 
-  it('should capture control chars properly', () => {
+  it('should not capture empty white space between tags', () => {
     const str = `<div>
 
 
@@ -46,12 +46,12 @@ describe('SaxWasm', () => {
   parser.write(Buffer.from(str));
   parser.end();
 
-  deepStrictEqual(_data[0].value,'\n\n\n');
+  deepStrictEqual(_data.length, 0);
   });
 
   it('should serialize to JSON as deepStrictEqualed', () => {
     parser.write(Buffer.from('a happy little parser'));
     parser.end();
-    deepStrictEqual(JSON.stringify(_data[0]),'{"start":{"line":0,"character":1},"end":{"line":0,"character":21},"value":"a happy little parser"}');
+    deepStrictEqual(JSON.stringify(_data[0]),'{"start":{"line":0,"character":0},"end":{"line":0,"character":21},"value":"a happy little parser"}');
   });
 });

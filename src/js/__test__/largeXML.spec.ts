@@ -1,23 +1,20 @@
 import { readFileSync, createReadStream } from 'fs';
 import { resolve as pathResolve } from 'path';
 import {deepEqual, equal, notStrictEqual} from 'assert';
-import { Detail, SaxEventType, SAXParser } from '../saxWasm';
+import { Detail, Reader, SaxEventType, SAXParser } from '../saxWasm';
 import { Readable } from 'stream';
 
 const saxWasm = readFileSync(pathResolve(__dirname, '../../../lib/sax-wasm.wasm'));
 const options = {highWaterMark: 32 * 1024};
 describe('When parsing XML, the SaxWasm', () => {
   let parser: SAXParser;
-  let _event;
   let _data;
   beforeAll(async () => {
-    parser = new SAXParser(SaxEventType.OpenTag | SaxEventType.CloseTag);
+    parser = new SAXParser(SaxEventType.CloseTag);
     _data = [];
-    _event = 0;
 
-    parser.eventHandler = function (event, data) {
-      _event = event;
-      _data.push(data);
+    parser.eventHandler = function (event: SaxEventType, data:Reader<Detail>) {
+      _data.push(data.toJSON());
     };
     return parser.prepareWasm(saxWasm);
   });
@@ -61,12 +58,12 @@ describe('When parsing XML, the SaxWasm', () => {
     const webReadable = Readable.toWeb(readable);
     const eventsFromGenerator: [SaxEventType, Detail][] = [];
     for await (const [event, detail] of parser.parse(webReadable.getReader())) {
-      eventsFromGenerator.push([event,detail]);
+      eventsFromGenerator.push([event, detail.toJSON()]);
     }
 
     const eventsFromEventHandler: [SaxEventType, Detail][] = [];
-    parser.eventHandler = function (event, data) {
-      eventsFromEventHandler.push([event, data]);
+    parser.eventHandler = function (event, detail) {
+      eventsFromEventHandler.push([event, detail.toJSON()]);
     };
     await new Promise(resolve => {
       const readable = createReadStream(pathResolve(__dirname + '/xml.xml'), options);

@@ -1,4 +1,4 @@
-import { AttributeType, SaxEventType, SAXParser } from '../saxWasm';
+import { AttributeType, Detail, Reader, SaxEventType, SAXParser } from '../saxWasm';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 import {deepStrictEqual} from 'assert';
@@ -7,17 +7,16 @@ import { Tag } from '../saxWasm';
 const saxWasm = readFileSync(resolve(__dirname, '../../../lib/sax-wasm.wasm'));
 describe('When parsing JSX, the SaxWasm', () => {
   let parser: SAXParser;
-  let _event: SaxEventType;
+  let _event: SaxEventType | undefined;
   let _data: Tag[];
 
   beforeAll(async () => {
     parser = new SAXParser(SaxEventType.CloseTag);
     _data = [];
-    _event = 0;
 
-    parser.eventHandler = function (event, data) {
+    parser.eventHandler = function (event: SaxEventType, data:Reader<Detail>) {
       _event = event;
-      _data.push(data as Tag);
+      _data.push(data.toJSON() as Tag);
     };
     return parser.prepareWasm(saxWasm);
   });
@@ -28,6 +27,7 @@ describe('When parsing JSX, the SaxWasm', () => {
 
   afterEach(() => {
     parser.end();
+
   });
 
   it('should recognize child tags within javascript', () => {
@@ -83,11 +83,10 @@ describe('When parsing JSX, the SaxWasm', () => {
     deepStrictEqual(_data[1].name,'');
     deepStrictEqual(_data[2].name,'foo');
 
-    deepStrictEqual(_data[2].textNodes.length, 4);
+    deepStrictEqual(_data[2].textNodes.length, 3);
 
-    deepStrictEqual(_data[2].textNodes[0].value, '{bar ');
-    deepStrictEqual(_data[2].textNodes[1].value, '< baz ? ');
-    deepStrictEqual(_data[2].textNodes[2].value, ' : ');
-    deepStrictEqual(_data[2].textNodes[3].value, '}');
+    deepStrictEqual(_data[2].textNodes[0].value, '{bar < baz ? ');
+    deepStrictEqual(_data[2].textNodes[1].value, ' : ');
+    deepStrictEqual(_data[2].textNodes[2].value, '}');
   })
 });

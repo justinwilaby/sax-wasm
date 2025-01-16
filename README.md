@@ -1,32 +1,31 @@
 # SAX (Simple API for XML) for WebAssembly
 
-[![Build Status](https://travis-ci.org/justinwilaby/sax-wasm.svg?branch=master)](https://travis-ci.org/justinwilaby/sax-wasm)
-[![Coverage Status](https://coveralls.io/repos/github/justinwilaby/sax-wasm/badge.svg?branch=master)](https://coveralls.io/github/justinwilaby/sax-wasm?branch=master)
+![Rust Build Status](https://github.com/justinwilaby/sax-wasm/actions/workflows/rust.yml/badge.svg)
+![TS build status](https://github.com/justinwilaby/sax-wasm/actions/workflows/ci.yml/badge.svg)
 
 *When you absolutely, positively have to have the fastest parser in the room, accept no substitutes.*
 
 The first streamable, low memory XML, HTML, JSX and Angular Template parser for [WebAssembly](https://developer.mozilla.org/en-US/docs/WebAssembly).
 
 Sax Wasm is a sax style parser for XML, HTML, JSX and Angular Templates written in [Rust](https://www.rust-lang.org/en-US/), compiled for
-WebAssembly with the sole motivation to bring **faster than native speeds** to XML and JSX parsing for node and the web.
+WebAssembly with the sole motivation to bring the **fastest possible speeds** to XML and JSX parsing for node and the web.
 Inspired by [sax js](https://github.com/isaacs/sax-js) and rebuilt with Rust for WebAssembly, sax-wasm brings optimizations
 for speed and support for JSX syntax.
 
 Suitable for [LSP](https://langserver.org/) implementations, sax-wasm provides line numbers and character positions within the
 document for elements, attributes and text node which provides the raw building blocks for linting, transpilation and lexing.
 
-## Benchmarks (Node v22.12.0 / 2.7 GHz Quad-Core Intel Core i7)
-All parsers are tested using a large XML document (1 MB) containing a variety of elements and is streamed when supported
-by the parser. This attempts to recreate the best real-world use case for parsing XML. Other libraries test benchmarks using a
-very small XML fragment such as `<foo bar="baz">quux</foo>` which does not hit all code branches responsible for processing the
-document and heavily skews the results in their favor.
+## Benchmarks (Node v20.18.1 / 2.7 GHz Quad-Core Intel Core i7)
+All parsers are tested using a large XML document (3 MB) containing a variety of elements and is streamed from memory to remove variations in disk access latency and focus on benchmarking just the parser alone. Other libraries test benchmarks using a very small XML fragment such as `<foo bar="baz">quux</foo>` which does not hit all code branches responsible for processing the document and heavily skews the results in their favor.
 
-| Parser with Advanced Features                                                              | time/ms (lower is better) | JS     | Runs in browser |
-|--------------------------------------------------------------------------------------------|--------------------------:|:------:|:---------------:|
-| [sax-wasm](https://github.com/justinwilaby/sax-wasm)                                       |                    19.20 | ☑      | ☑               |
-| [sax-js](https://github.com/isaacs/sax-js)                                                 |                    64.23 | ☑      | ☑*              |
-| [ltx](https://github.com/xmppjs/ltx)                                                       |                    21.54 | ☑      | ☑               |
-| [node-xml](https://github.com/dylang/node-xml)                                             |                    87.06 | ☑      | ☐               |
+| Parser with Advanced Features                                                              | time/ms (lower is better)| JS     | Runs in browser |
+|--------------------------------------------------------------------------------------------|-------------------------:|:------:|:---------------:|
+| [sax-wasm](https://github.com/justinwilaby/sax-wasm)                                       |                    18.54 | ☑      | ☑               |
+| [saxes](https://github.com/lddubeau/saxes)                                                 |                    41.01 | ☑      | ☑               |
+| [ltx(using Saxes as the parser)](https://github.com/xmppjs/ltx)                            |                    44.56 | ☑      | ☑               |
+| [sax-js](https://github.com/isaacs/sax-js)                                                 |                   116.98 | ☑      | ☑*              |
+| [node-xml](https://github.com/dylang/node-xml)                                             |                   124.49 | ☑      | ☐               |
+| [node-expat](https://github.com/xmppo/node-expat)                                          |                   149.61 | ☑      | ☐               |
 <sub>*built for node but *should* run in the browser</sub>
 
 ## Installation
@@ -40,25 +39,17 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { SaxEventType, SAXParser } from 'sax-wasm';
 
-// Get the path to the WebAssembly binary and load it
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const saxPath = path.resolve(__dirname, 'node_modules/sax-wasm/lib/sax-wasm.wasm');
-const saxWasmBuffer = fs.readFileSync(saxPath);
+const wasmUrl = new URL(import.meta.resolve('sax-wasm/lib/sax-wasm.wasm'));
+const saxWasm = await readFile(wasmUrl);
+const parser = new SAXParser(SaxEventType.Cdata | SaxEventType.OpenTag);
 
-// Instantiate
-const parser = new SAXParser(SaxEventType.Attribute | SaxEventType.OpenTag);
-
-// Instantiate and prepare the wasm for parsing
-const ready = await parser.prepareWasm(saxWasmBuffer);
-if (ready) {
-  // stream from a file in the current directory
-  const readable = fs.createReadStream(path.resolve(__dirname, 'path/to/document.xml'), options);
+if (await parser.prepareWasm(saxWasm)) {
+  const xmlPath = import.meta.resolve('../src/xml.xml');
+  const readable = createReadStream(new URL(xmlPath));
   const webReadable = Readable.toWeb(readable);
-
   for await (const [event, detail] of parser.parse(webReadable.getReader())) {
-    if (event === SaxEventType.Attribute) {
-      // process attribute
+    if (event === SaxEventType.Cdata) {
+      // process Cdata
     } else {
       // process open tag
     }
@@ -75,7 +66,8 @@ under the hood to load the wasm.
 import { SaxEventType, SAXParser } from 'sax-wasm';
 
 // Fetch the WebAssembly binary
-const response = fetch('path/to/sax-wasm.wasm');
+const wasmUrl = new URL(import.meta.resolve('sax-wasm/lib/sax-wasm.wasm'));
+const response = fetch(wasmUrl);
 
 // Instantiate
 const parser = new SAXParser(SaxEventType.Attribute | SaxEventType.OpenTag);
@@ -96,17 +88,22 @@ if (ready) {
   }
 }
 ```
+## The 'Lifetime' of events
+`Tag`, `Attribute`, `ProcInst` and `Text` objects received from the parsing operation have a 'lifetime' that is limited to the `eventHandler()` or the function loop body for the `*parse()` generator. Data sent across the FFI (Foreign Function Interface) boundary is read directly from WASM memory which is partly why sax-wasm is so fast. This comes with the tradeoff that this memory is temporary because it is overwritten on the next write operation. If you need to persist the event data for long term use, call `toJSON()` on each object as needed. This comes at a slight performance cost and should not be necessary for the vast majority of use cases.
 
-## Differences from sax-js
-Besides being incredibly fast, there are some notable differences between sax-wasm and sax-js that may affect some users
-when migrating:
+## Differences from other parsers
+Besides being incredibly fast, there are some notable differences between other SAX style parsers:
 
+1. This repo is maintained
+1. UTF-16 encoded documents are supported. 1-4 byte graphemes are fully supported even if streaming causes a break between surrogates.
 1. JSX is supported including JSX fragments. Things like `<foo bar={this.bar()}></bar>` and `<><foo/><bar/></>` will parse as expected.
 1. Angular 2+ templates are supported. Things like <button type="submit" [disabled]=disabled *ngIf=boolean (click)="clickHandler(event)"></button> will parse as expected.
+1. HTML is supported provided it is not a "quirks mode" document that ran in IE9.
 1. No attempt is made to validate the document. sax-wasm reports what it sees. If you need strict mode or document validation, it may
 be recreated by applying rules to the events that are reported by the parser.
 1. Namespaces are reported in attributes. No special events dedicated to namespaces.
 1. Streaming utf-8 code points in a Uint8Array is required.
+1. Whitespace between XML elements is not reported. If you need this, a simple subtraction of the `line` and `character` between the end of one tag and the start of the next will reveal where this whitespace exists.
 
 ## Streaming
 Streaming is supported with sax-wasm by writing utf-8 code points (Uint8Array) to the parser instance. Writes can occur safely

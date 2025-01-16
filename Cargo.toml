@@ -12,12 +12,7 @@ categories = ["wasm", "parser-implementations"]
 [lib]
 crate-type = ["cdylib", "rlib"]
 
-[dependencies]
-
-
 [dev-dependencies]
-wasm-bindgen-test = "0.3"
-wasm-bindgen = "0.2"
 wasm-opt = "0.116"
 
 [profile.release]
@@ -26,7 +21,4 @@ lto = "fat"            # Enable Link Time Optimization (LTO)
 codegen-units = 1      # Single codegen unit for better optimization
 panic = "abort"        # Reduce binary size by disabling unwinding
 strip = "symbols"      # Remove debug symbols for smaller binaries
-
 [target.wasm32-unknown-unknown]
-linker = "wasm-ld"
-rustflags = ["-C", "link-arg=--no-entry"]

@@ -1,27 +1,27 @@
-import { ProcInst, SaxEventType, SAXParser } from '../saxWasm';
+import { Detail, ProcInst, Reader, SaxEventType, SAXParser } from '../saxWasm';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
-import { deepStrictEqual, strictEqual } from 'assert';
+import { deepEqual, strictEqual } from 'assert';
 
 const saxWasm = readFileSync(resolve(__dirname, '../../../lib/sax-wasm.wasm'));
 
 describe('When parsing JSX, the SaxWasm', () => {
   let parser: SAXParser;
   let _event: SaxEventType;
-  let _data: ProcInst;
+  let _data: ProcInst | undefined;
 
   beforeAll(async () => {
     parser = new SAXParser(SaxEventType.ProcessingInstruction);
 
-    parser.eventHandler = function (event, data) {
+    parser.eventHandler = function (event: SaxEventType, data:Reader<Detail>) {
       _event = event;
-      _data = data as ProcInst;
+      _data = data.toJSON() as ProcInst;
     };
     return parser.prepareWasm(saxWasm);
   });
 
   beforeEach(() => {
-    _data = null;
+    _data = undefined;
   });
 
   afterEach(() => {
@@ -31,32 +31,14 @@ describe('When parsing JSX, the SaxWasm', () => {
   it('should recognize Processing Instructions', () => {
     parser.write(Buffer.from('<?xml version="1.0" encoding="utf-8"?>'));
     strictEqual(_event, SaxEventType.ProcessingInstruction);
-    strictEqual('' + _data, '<? xml version="1.0" encoding="utf-8" ?>')
-    strictEqual('' + _data.content, 'version="1.0" encoding="utf-8"');
-    const result: Record<keyof ProcInst, Text> = JSON.parse(JSON.stringify(_data));
-    deepStrictEqual(result.content, {
-      end: {
-        character: 36,
-        line: 0
-      },
-      start: {
-        character: 6,
-        line: 0
-      },
-      value: 'version="1.0" encoding="utf-8"'
-    });
+    strictEqual(_data?.target.value, 'xml')
+    strictEqual(_data.content.value, 'version="1.0" encoding="utf-8"');
+    deepEqual(_data.content.start, { character: 6, line: 0 })
+    deepEqual(_data.content.end, { character: 36, line: 0 });
 
-    deepStrictEqual(result.target, {
-      end: {
-        character: 5,
-        line: 0
-      },
-      start: {
-        character: 3,
-        line: 0
-      },
-      value: 'xml'
-    });
+    deepEqual(_data.target.start, { character: 2, line: 0 })
+    deepEqual(_data.target.end, { character: 5, line: 0 });
+
   });
 
   it('should parse the "unexpected question mark instead of tag name" as a processing instruction', () => {
@@ -68,8 +50,8 @@ describe('When parsing JSX, the SaxWasm', () => {
     <!--/lit-part-->`;
     parser.write(Buffer.from(doc));
     strictEqual(_event, SaxEventType.ProcessingInstruction);
-    const result: Record<keyof ProcInst, Text> = JSON.parse(JSON.stringify(_data));
-    deepStrictEqual(result.start, {line: 2, character: 35});
-    deepStrictEqual(result.end, {line: 2, character: 37});
+
+    deepEqual(_data?.start, {line: 2, character: 35});
+    deepEqual(_data?.end, {line: 2, character: 37});
   })
 });

@@ -1,111 +1,131 @@
+use std::slice;
+
+#[repr(C)]
 #[derive(Clone)]
 pub struct Tag {
-    pub name: String,
+    pub name: Vec<u8>,
     pub attributes: Vec<Attribute>,
     pub text_nodes: Vec<Text>,
     pub self_closing: bool,
-    pub open_start: (u32, u32),
-    pub open_end: (u32, u32),
-    pub close_start: (u32, u32),
-    pub close_end: (u32, u32),
+    pub open_start: [u32; 2],
+    pub open_end: [u32; 2],
+    pub close_start: [u32; 2],
+    pub close_end: [u32; 2],
+    pub header: (usize, usize),
 }
 
 impl Tag {
-    pub fn new(open_start: (u32, u32)) -> Tag {
+    pub fn new(open_start: [u32; 2]) -> Tag {
         Tag {
-            open_start,
-            open_end: (0, 0),
-            close_start: (0, 0),
-            close_end: (0, 0),
-
+            header: (0, 0),
+            name: Vec::new(),
             attributes: Vec::new(),
             text_nodes: Vec::new(),
-
-            name: String::new(),
             self_closing: false,
+
+            open_start,
+            open_end: [0; 2],
+            close_start: [0; 2],
+            close_end: [0; 2],
         }
+    }
+
+    pub fn get_name_slice(&mut self, ptr: *const u8) -> &[u8] {
+        let (start, end) = self.header;
+        if start < end {
+            let len = end - start;
+            if len > 0 {
+                return unsafe { slice::from_raw_parts(ptr.add(start), len) };
+            }
+        }
+
+        if !self.name.is_empty() {
+            return self.get_name(ptr);
+        }
+
+        &[]
+    }
+
+    pub fn hydrate(&mut self, ptr: *const u8) -> bool {
+        for a in &mut self.attributes {
+            a.hydrate(ptr);
+        }
+        for t in &mut self.text_nodes {
+            t.hydrate(ptr);
+        }
+        self.get_name(ptr);
+        true
+    }
+
+    fn get_name(&mut self, ptr: *const u8) -> &Vec<u8> {
+        let (start, end) = self.header;
+        if start >= end {
+            return &self.name;
+        }
+        let len = end - start;
+        if len > 0 {
+            let slice = unsafe { slice::from_raw_parts(ptr.add(start), len) };
+            self.name.extend_from_slice(slice);
+        }
+        self.header.0 = 0;
+        self.header.1 = 0;
+        &self.name
     }
 }
 
-impl Encode<Vec<u8>> for Tag {
-    fn encode(&self) -> Vec<u8> {
-        let mut v = vec![0, 0, 0, 0, 0, 0, 0, 0];
-
-        // known byte length
-        v.extend_from_slice(&u32::to_le_bytes(self.open_start.0));
-        v.extend_from_slice(&u32::to_le_bytes(self.open_start.1));
-
-        v.extend_from_slice(&u32::to_le_bytes(self.open_end.0));
-        v.extend_from_slice(&u32::to_le_bytes(self.open_end.1));
-
-        v.extend_from_slice(&u32::to_le_bytes(self.close_start.0));
-        v.extend_from_slice(&u32::to_le_bytes(self.close_start.1));
-
-        v.extend_from_slice(&u32::to_le_bytes(self.close_end.0));
-        v.extend_from_slice(&u32::to_le_bytes(self.close_end.1));
-
-        v.push(self.self_closing.clone() as u8);
-
-        v.extend_from_slice(&u32::to_le_bytes(self.name.len() as u32));
-        v.extend_from_slice(self.name.as_bytes());
-
-        // write the starting location for the attributes at bytes 0..4
-        v.splice(0..4, u32::to_le_bytes(v.len() as u32).to_vec());
-        // write the number of attributes
-        v.extend_from_slice(&u32::to_le_bytes(self.attributes.len() as u32));
-        for a in &self.attributes {
-            let mut attr = a.encode();
-            v.extend_from_slice(&u32::to_le_bytes(attr.len() as u32));
-            v.append(&mut attr);
-        }
-
-        // write the starting location for the text node at bytes 4..8
-        v.splice(4..8, u32::to_le_bytes(v.len() as u32).to_vec());
-        // write the number of text nodes
-        v.extend_from_slice(&u32::to_le_bytes(self.text_nodes.len() as u32));
-        for t in &self.text_nodes {
-            let mut text = t.encode();
-            v.extend_from_slice(&u32::to_le_bytes(text.len() as u32));
-            v.append(&mut text);
-        }
-        v
-    }
-}
-
+#[repr(C)]
 #[derive(Clone)]
 pub struct Text {
-    pub value: String,
-    pub start: (u32, u32),
-    pub end: (u32, u32),
+    pub header: (usize, usize),
+    pub value: Vec<u8>,
+    pub start: [u32; 2],
+    pub end: [u32; 2],
 }
 
 impl Text {
-    pub fn new(start: (u32, u32)) -> Text {
+    pub fn new(start: [u32; 2]) -> Text {
         return Text {
             start,
-            value: String::new(),
-            end: (0, 0),
+            value: Vec::new(),
+            end: [0; 2],
+            header: (0, 0),
         };
     }
-}
 
-impl Encode<Vec<u8>> for Text {
-    fn encode(&self) -> Vec<u8> {
-        let mut v = Vec::new();
+    pub fn get_value_slice(&mut self, ptr: *const u8) -> &[u8] {
+        let (start, end) = self.header;
+        if start < end {
+            let len = end - start;
+            if len > 0 {
+                return unsafe { slice::from_raw_parts(ptr.add(start), len) };
+            }
+        }
 
-        v.extend_from_slice(&u32::to_le_bytes(self.start.0));
-        v.extend_from_slice(&u32::to_le_bytes(self.start.1));
+        if !self.value.is_empty() {
+            self.hydrate(ptr);
+            return self.value.as_slice();
+        }
 
-        v.extend_from_slice(&u32::to_le_bytes(self.end.0));
-        v.extend_from_slice(&u32::to_le_bytes(self.end.1));
+        &[]
+    }
 
-        v.extend_from_slice(&u32::to_le_bytes(self.value.len() as u32));
-
-        v.extend_from_slice(self.value.as_bytes());
-        v
+    pub fn hydrate(&mut self, ptr: *const u8) -> bool {
+        let (start, end) = self.header;
+        if start >= end {
+            return self.value.len() > 0;
+        }
+        let len = end - start;
+        if len > 0 {
+            let slice = unsafe { slice::from_raw_parts(ptr.add(start), len) };
+            self.value.extend_from_slice(slice);
+        }
+        self.header.0 = 0;
+        self.header.1 = 0;
+        true
     }
 }
 
+#[repr(C)]
 #[derive(Clone)]
 pub struct Attribute {
     pub name: Text,
@@ -116,31 +136,22 @@ pub struct Attribute {
 impl Attribute {
     pub fn new() -> Attribute {
         return Attribute {
-            name: Text::new((0, 0)),
-            value: Text::new((0, 0)),
+            name: Text::new([0; 2]),
+            value: Text::new([0; 2]),
             attr_type: AttrType::Normal,
         };
     }
-}
 
-impl Encode<Vec<u8>> for Attribute {
-    fn encode(&self) -> Vec<u8> {
-        let mut v: Vec<u8> = Vec::new();
-        v.push(self.attr_type as u8);
-
-        let name = self.name.encode();
-        v.extend_from_slice(&u32::to_le_bytes(name.len() as u32));
-        v.extend_from_slice(name.as_slice());
-
-        v.extend(self.value.encode());
-
-        v
+    pub fn hydrate(&mut self, ptr: *const u8) -> bool {
+        self.name.hydrate(ptr) | self.value.hydrate(ptr)
     }
 }
 
+#[repr(C)]
+#[derive(Clone)]
 pub struct ProcInst {
-    pub start: (u32, u32),
-    pub end: (u32, u32),
+    pub start: [u32; 2],
+    pub end: [u32; 2],
     pub target: Text,
     pub content: Text,
 }
@@ -148,59 +159,91 @@ pub struct ProcInst {
 impl ProcInst {
     pub fn new() -> ProcInst {
         return ProcInst {
-            start: (0, 0),
-            end: (0, 0),
-            target: Text::new((0, 0)),
-            content: Text::new((0, 0)),
+            start: [0; 2],
+            end: [0; 2],
+            target: Text::new([0; 2]),
+            content: Text::new([0; 2]),
         };
     }
-}
 
-impl Encode<Vec<u8>> for ProcInst {
-    fn encode(&self) -> Vec<u8> {
-        let mut v: Vec<u8> = Vec::new();
-
-        v.extend_from_slice(&u32::to_le_bytes(self.start.0));
-        v.extend_from_slice(&u32::to_le_bytes(self.start.1));
-        v.extend_from_slice(&u32::to_le_bytes(self.end.0));
-        v.extend_from_slice(&u32::to_le_bytes(self.end.1));
-
-        let target = self.target.encode();
-        v.extend_from_slice(&u32::to_le_bytes(target.len() as u32));
-        v.extend(target);
-
-        v.extend(self.content.encode());
-        v
+    pub fn hydrate(&mut self, ptr: *const u8) -> bool {
+        self.target.hydrate(ptr) | self.content.hydrate(ptr)
     }
 }
 
+#[repr(C)]
+#[derive(Clone, Copy)]
 pub enum Entity<'a> {
-  Attribute(&'a mut Attribute),
-  ProcInst(&'a mut ProcInst),
-  Tag(&'a mut Tag),
-  Text(&'a mut Text),
+    Attribute(&'a Attribute),
+    ProcInst(&'a ProcInst),
+    Tag(&'a Tag),
+    Text(&'a Text),
 }
 
-impl<'a> Encode<Vec<u8>> for Entity<'a> {
-  fn encode(&self) -> Vec<u8> {
-      match self {
-        Entity::Attribute(a) => a.encode(),
-        Entity::ProcInst(p) =>p.encode(),
-        Entity::Tag(t) => t.encode(),
-        Entity::Text(t) => t.encode()
-      }
-  }
-}
-
-pub trait Encode<T>
-where
-    T: IntoIterator,
-{
-    fn encode(&self) -> T;
+pub enum Dispatched {
+    Attribute(Box<Attribute>),
+    ProcInst(Box<ProcInst>),
+    Tag(Box<Tag>),
+    Text(Box<Text>),
 }
 
 #[derive(Clone, Copy)]
 pub enum AttrType {
     Normal = 0x00,
     JSX = 0x01,
+}
+
+pub struct Accumulator {
+    pub header: (usize, usize),
+    pub value: Vec<u8>,
+}
+
+impl Accumulator {
+    pub fn new() -> Accumulator {
+        return Accumulator {
+            header: (0, 0),
+            value: Vec::new(),
+        };
+    }
+
+    pub fn clear(&mut self) {
+        self.header = (0, 0);
+        self.value.clear();
+    }
+
+    pub fn get_value_slice(&mut self, ptr: *const u8) -> &[u8] {
+        let mut sl = &[] as &[u8];
+
+        let (start, end) = self.header;
+        if start < end {
+            let len = end - start;
+            if len > 0 {
+                sl = unsafe { slice::from_raw_parts(ptr.add(start), len) }
+            }
+        }
+
+        let v = &mut self.value;
+        if !v.is_empty() {
+            v.extend_from_slice(sl);
+            let len = v.len();
+            let v_slice = v.as_slice();
+            let v_ptr = v_slice.as_ptr();
+
+            sl = unsafe { slice::from_raw_parts(v_ptr.add(start), len) };
+        }
+
+        sl
+    }
+
+    pub fn hydrate(&mut self, ptr: *const u8) {
+        let (start, end) = self.header;
+        if start >= end {
+            return;
+        }
+        let len = end - start;
+        if len > 0 {
+            let sl = unsafe { slice::from_raw_parts(ptr.add(start), len) };
+            self.value.extend_from_slice(sl);
+        }
+    }
 }
