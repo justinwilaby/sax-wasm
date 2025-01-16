@@ -420,7 +420,7 @@ export declare class SAXParser {
      * })();
      * ```
      */
-    parse(reader: ReadableStreamDefaultReader<Uint8Array>): AsyncGenerator<[SaxEventType, Detail]>;
+    parse(reader: ReadableStreamDefaultReader<Uint8Array>): AsyncGenerator<[SaxEventType, Reader<Detail>]>;
     /**
      * Writes a chunk of data to the parser.
      *

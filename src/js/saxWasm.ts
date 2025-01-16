@@ -579,10 +579,10 @@ export class SAXParser {
    * })();
    * ```
    */
-  public async *parse(reader: ReadableStreamDefaultReader<Uint8Array>): AsyncGenerator<[SaxEventType, Detail]> {
-    let eventAggregator: [SaxEventType, Detail][] | null = [];
+  public async *parse(reader: ReadableStreamDefaultReader<Uint8Array>): AsyncGenerator<[SaxEventType, Reader<Detail>]> {
+    let eventAggregator: [SaxEventType, Reader<Detail>][] | null = [];
     this.eventHandler = function (event, detail) {
-      eventAggregator.push([event, detail.toJSON()]);
+      eventAggregator.push([event, detail]);
     };
 
     while (true) {

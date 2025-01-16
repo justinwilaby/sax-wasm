@@ -14,6 +14,8 @@
   <test-tag id="test-id">testing this tag</test-tag>
   <div disabled="">
     testing
+    this
+    xml file
   </div>
   <?process-div instruction?>
   <army id="test_id" class="container emphasize">1682443131</army>

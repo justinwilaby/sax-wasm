@@ -58,7 +58,7 @@ describe('When parsing XML, the SaxWasm', () => {
     const webReadable = Readable.toWeb(readable);
     const eventsFromGenerator: [SaxEventType, Detail][] = [];
     for await (const [event, detail] of parser.parse(webReadable.getReader())) {
-      eventsFromGenerator.push([event, detail]);
+      eventsFromGenerator.push([event, detail.toJSON()]);
     }
 
     const eventsFromEventHandler: [SaxEventType, Detail][] = [];

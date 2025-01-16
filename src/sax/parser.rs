@@ -74,6 +74,9 @@ pub struct SAXParser<'a> {
 
     // Event Handling
     event_handler: &'a dyn EventHandler,
+    // Used to make sure dispatched objects
+    // stick around until the next write
+    dispatched: Vec<Dispatched>,
 
     // Parsing Buffers
     tags: Vec<Tag>,
@@ -154,6 +157,7 @@ impl<'a> SAXParser<'a> {
 
             // Event Handling
             event_handler,
+            dispatched: Vec::new(),
 
             // Parsing Buffers
             text: None,
@@ -223,6 +227,7 @@ impl<'a> SAXParser<'a> {
     ///
     /// ```
     pub fn write(&mut self, source: &[u8]) {
+        self.dispatched.clear();
         let mut bytes = source;
 
         let frag_len = self.fragment.len();
@@ -329,6 +334,7 @@ impl<'a> SAXParser<'a> {
         self.brace_ct = 0;
         self.end_pos = [0, 0];
         self.end_offset = 0;
+        self.dispatched.clear();
     }
 
     /// Processes a grapheme cluster.
@@ -494,8 +500,11 @@ impl<'a> SAXParser<'a> {
         }
 
         if self.events[Event::OpenTagStart] {
-            self.tag.hydrate(self.source_ptr);
-            self.event_handler.handle_event(Event::OpenTagStart, Entity::Tag(&self.tag));
+            let mut tag = Box::new(self.tag.clone());
+            tag.hydrate(self.source_ptr);
+
+            self.event_handler.handle_event(Event::OpenTagStart, Entity::Tag(&*tag));
+            self.dispatched.push(Dispatched::Tag(tag));
         }
 
         match byte {
@@ -557,25 +566,29 @@ impl<'a> SAXParser<'a> {
     }
 
     fn flush_text(&mut self, line: u32, character: u32, offset: usize) {
-        if let Some(mut text) = self.text.take() {
-            text.end = [line, character];
-            text.header.1 = offset;
-
-            // Empty
-            if text.header.0 == text.header.1 && text.value.is_empty() {
-                return;
-            }
-
-            if self.events[Event::Text] && text.hydrate(self.source_ptr) {
-                self.event_handler.handle_event(Event::Text, Entity::Text(&text));
-            }
-
-            let len = self.tags.len();
-            // Store these only if we're interested in CloseTag events
-            if len != 0 && self.events[Event::CloseTag] {
-                self.tags[len - 1].text_nodes.push(text);
-            }
+        if self.text.is_none() {
+            return;
         }
+        let mut text = Box::new(unsafe { self.text.take().unwrap_unchecked() });
+        text.end = [line, character];
+        text.header.1 = offset;
+
+        // Empty
+        if text.header.0 == text.header.1 && text.value.is_empty() {
+            return;
+        }
+
+        let len = self.tags.len();
+        // Store these only if we're interested in CloseTag events
+        if len != 0 && self.events[Event::CloseTag] {
+            self.tags[len - 1].text_nodes.push(*text.clone());
+        }
+
+        if self.events[Event::Text] && text.hydrate(self.source_ptr) {
+            self.event_handler.handle_event(Event::Text, Entity::Text(&text));
+            self.dispatched.push(Dispatched::Text(text));
+        }
+
     }
 
     fn markup_decl(&mut self, gc: &mut GraphemeClusters, current: &[u8]) {
@@ -652,8 +665,10 @@ impl<'a> SAXParser<'a> {
         if len > 2 && &markup_slice[(len - 3)..] == b"-->" {
             markup_decl.end = [gc.line, gc.character];
             if self.events[Event::Comment] && markup_decl.hydrate(self.source_ptr) {
+                let mut markup_decl = Box::new(self.markup_decl.take().unwrap());
                 markup_decl.value.truncate(markup_decl.value.len() - 3); // remove '-->'
                 self.event_handler.handle_event(Event::Comment, Entity::Text(&markup_decl));
+                self.dispatched.push(Dispatched::Text(markup_decl));
             }
             self.markup_decl = None;
             self.state = State::BeginWhitespace;
@@ -674,10 +689,11 @@ impl<'a> SAXParser<'a> {
         if len > 2 && &markup_slice[(len - 3)..] == b"]]>" {
             markup_decl.end = [gc.line, gc.character];
             if self.events[Event::Cdata] && markup_decl.hydrate(self.source_ptr) {
+                let mut markup_decl = Box::new(self.markup_decl.take().unwrap());
                 markup_decl.value.truncate(markup_decl.value.len() - 3); // remove ]]>
                 self.event_handler.handle_event(Event::Cdata, Entity::Text(&markup_decl));
+                self.dispatched.push(Dispatched::Text(markup_decl));
             }
-            self.markup_decl = None;
             self.state = State::BeginWhitespace;
         }
     }
@@ -697,13 +713,13 @@ impl<'a> SAXParser<'a> {
     fn doctype(&mut self, gc: &mut GraphemeClusters, current: &[u8]) {
         let mut byte = current[0];
 
-        let markup_decl = self.markup_decl.as_mut().unwrap();
         // determine where to stop taking bytes for
         // for the doctype value. e.g. '<!DOCTYPE movie ' <----- take 'movie' but not 'movie '
         if self.state != State::DoctypeEntity && !DOCTYPE_VALUE_END.contains(&byte) {
             if let Some((span, _)) = gc.take_until_one_found(DOCTYPE_VALUE_END, true) {
                 byte = span[span.len() - 1];
             }
+            let markup_decl = self.markup_decl.as_mut().unwrap();
             markup_decl.header.1 = gc.cursor;
         }
 
@@ -724,13 +740,14 @@ impl<'a> SAXParser<'a> {
         }
 
         if byte == b'>' {
+            let mut markup_decl = Box::new(self.markup_decl.take().unwrap());
             markup_decl.end = [gc.line, gc.character];
             if self.events[Event::Doctype] && markup_decl.hydrate(self.source_ptr) {
                 markup_decl.value.truncate(markup_decl.value.len() - 1); // remove '>' or '['
 
                 self.event_handler.handle_event(Event::Cdata, Entity::Text(&markup_decl));
+                self.dispatched.push(Dispatched::Text(markup_decl));
             }
-            self.markup_decl = None;
             self.state = State::BeginWhitespace;
         }
     }
@@ -745,14 +762,14 @@ impl<'a> SAXParser<'a> {
         }
 
         if byte == b'>' {
-            let markup_entity = self.markup_entity.as_mut().unwrap();
+            let mut markup_entity = Box::new(self.markup_entity.take().unwrap());
             markup_entity.header.1 = gc.cursor - 1;
             markup_entity.end = [gc.line, gc.character.saturating_sub(1)];
 
             if self.events[Event::Declaration] && markup_entity.hydrate(self.source_ptr) {
                 self.event_handler.handle_event(Event::Cdata, Entity::Text(&markup_entity));
+                self.dispatched.push(Dispatched::Text(markup_entity));
             }
-            self.markup_entity = None;
             // if we have a markup_decl, we previously
             // were processing a doctype and encountered
             // entities and now need to complete the doctype
@@ -818,7 +835,7 @@ impl<'a> SAXParser<'a> {
 
     fn process_proc_inst(&mut self, gc: &mut GraphemeClusters) {
         self.state = State::BeginWhitespace;
-        let proc_inst = &mut self.proc_inst.take().unwrap();
+        let mut proc_inst = Box::new(self.proc_inst.take().unwrap());
 
         if self.events[Event::ProcessingInstruction] && proc_inst.hydrate(self.source_ptr) {
             proc_inst.end = [gc.line, gc.character];
@@ -827,6 +844,7 @@ impl<'a> SAXParser<'a> {
             proc_inst.target.value.drain(..2); // remove '<?'
             proc_inst.content.value.truncate(proc_inst.content.value.len().saturating_sub(2)); // remove '?>'
             self.event_handler.handle_event(Event::ProcessingInstruction, Entity::ProcInst(&proc_inst));
+            self.dispatched.push(Dispatched::ProcInst(proc_inst));
         }
     }
 
@@ -970,7 +988,9 @@ impl<'a> SAXParser<'a> {
     fn process_attribute(&mut self) {
         let mut attr = mem::replace(&mut self.attribute, Attribute::new());
         if self.events[Event::Attribute] && attr.hydrate(self.source_ptr) {
-            self.event_handler.handle_event(Event::Attribute, Entity::Attribute(&attr));
+            let attr_box = Box::new(attr.clone());
+            self.event_handler.handle_event(Event::Attribute, Entity::Attribute(&attr_box));
+            self.dispatched.push(Dispatched::Attribute(attr_box));
         }
         // Store them only if we're interested in Open and Close tag events
         if self.events[Event::OpenTag] || self.events[Event::CloseTag] {
@@ -985,17 +1005,11 @@ impl<'a> SAXParser<'a> {
 
         if self.events[Event::OpenTag] {
             tag.hydrate(self.source_ptr);
-            self.event_handler.handle_event(Event::OpenTag, Entity::Tag(&tag));
+            let tag_box = Box::new(tag.clone());
+            self.event_handler.handle_event(Event::OpenTag, Entity::Tag(&tag_box));
+            self.dispatched.push(Dispatched::Tag(tag_box));
         }
-
-        if self_closing && self.events[Event::CloseTag] {
-            tag.hydrate(self.source_ptr);
-            self.event_handler.handle_event(Event::CloseTag, Entity::Tag(&tag));
-        }
-
-        if !self_closing {
-            self.tags.push(tag);
-        }
+        self.tags.push(tag);
 
         self.state = State::BeginWhitespace;
     }
@@ -1037,10 +1051,13 @@ impl<'a> SAXParser<'a> {
             return;
         }
 
-        for tag in self.tags.drain(tag_index..).rev() {
-            let mut tag = tag; // Create a mutable binding
+        let mut i = self.tags.len();
+        while i > tag_index {
+            let mut tag = Box::new(unsafe { self.tags.pop().unwrap_unchecked()});
             tag.hydrate(self.source_ptr);
             self.event_handler.handle_event(Event::CloseTag, Entity::Tag(&tag));
+            self.dispatched.push(Dispatched::Tag(tag));
+            i -= 1;
         }
     }
 

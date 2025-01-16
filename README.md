@@ -20,12 +20,12 @@ All parsers are tested using a large XML document (3 MB) containing a variety of
 
 | Parser with Advanced Features                                                              | time/ms (lower is better)| JS     | Runs in browser |
 |--------------------------------------------------------------------------------------------|-------------------------:|:------:|:---------------:|
-| [sax-wasm](https://github.com/justinwilaby/sax-wasm)                                       |                    26.67 | ☑      | ☑               |
-| [saxes](https://github.com/lddubeau/saxes)                                                 |                    40.99 | ☑      | ☑               |
-| [ltx(using Saxes as the parser)](https://github.com/xmppjs/ltx)                            |                    41.87 | ☑      | ☑               |
-| [sax-js](https://github.com/isaacs/sax-js)                                                 |                   105.18 | ☑      | ☑*              |
-| [node-xml](https://github.com/dylang/node-xml)                                             |                   115.17 | ☑      | ☐               |
-| [node-expat](https://github.com/xmppo/node-expat)                                          |                  148.885 | ☑      | ☐               |
+| [sax-wasm](https://github.com/justinwilaby/sax-wasm)                                       |                    18.54 | ☑      | ☑               |
+| [saxes](https://github.com/lddubeau/saxes)                                                 |                    41.01 | ☑      | ☑               |
+| [ltx(using Saxes as the parser)](https://github.com/xmppjs/ltx)                            |                    44.56 | ☑      | ☑               |
+| [sax-js](https://github.com/isaacs/sax-js)                                                 |                   116.98 | ☑      | ☑*              |
+| [node-xml](https://github.com/dylang/node-xml)                                             |                   124.49 | ☑      | ☐               |
+| [node-expat](https://github.com/xmppo/node-expat)                                          |                   149.61 | ☑      | ☐               |
 <sub>*built for node but *should* run in the browser</sub>
 
 ## Installation
@@ -88,17 +88,22 @@ if (ready) {
   }
 }
 ```
+## The 'Lifetime' of events
+`Tag`, `Attribute`, `ProcInst` and `Text` objects received from the parsing operation have a 'lifetime' that is limited to the `eventHandler()` or the function loop body for the `*parse()` generator. Data sent across the FFI (Foreign Function Interface) boundary is read directly from WASM memory which is partly why sax-wasm is so fast. This comes with the tradeoff that this memory is temporary because it is overwritten on the next write operation. If you need to persist the event data for long term use, call `toJSON()` on each object as needed. This comes at a slight performance cost and should not be necessary for the vast majority of use cases.
 
-## Differences from sax-js
-Besides being incredibly fast, there are some notable differences between sax-wasm and sax-js that may affect some users
-when migrating:
+## Differences from other parsers
+Besides being incredibly fast, there are some notable differences between other SAX style parsers:
 
+1. This repo is maintained
+1. UTF-16 encoded documents are supported. 1-4 byte graphemes are fully supported even if streaming causes a break between surrogates.
 1. JSX is supported including JSX fragments. Things like `<foo bar={this.bar()}></bar>` and `<><foo/><bar/></>` will parse as expected.
 1. Angular 2+ templates are supported. Things like <button type="submit" [disabled]=disabled *ngIf=boolean (click)="clickHandler(event)"></button> will parse as expected.
+1. HTML is supported provided it is not a "quirks mode" document that ran in IE9.
 1. No attempt is made to validate the document. sax-wasm reports what it sees. If you need strict mode or document validation, it may
 be recreated by applying rules to the events that are reported by the parser.
 1. Namespaces are reported in attributes. No special events dedicated to namespaces.
 1. Streaming utf-8 code points in a Uint8Array is required.
+1. Whitespace between XML elements is not reported. If you need this, a simple subtraction of the `line` and `character` between the end of one tag and the start of the next will reveal where this whitespace exists.
 
 ## Streaming
 Streaming is supported with sax-wasm by writing utf-8 code points (Uint8Array) to the parser instance. Writes can occur safely

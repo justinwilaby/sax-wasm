@@ -180,6 +180,13 @@ pub enum Entity<'a> {
     Text(&'a Text),
 }
 
+pub enum Dispatched {
+    Attribute(Box<Attribute>),
+    ProcInst(Box<ProcInst>),
+    Tag(Box<Tag>),
+    Text(Box<Text>),
+}
+
 #[derive(Clone, Copy)]
 pub enum AttrType {
     Normal = 0x00,
