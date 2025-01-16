@@ -1,4 +1,4 @@
-import { Detail, SaxEventType, SAXParser, Tag } from '../saxWasm';
+import { Detail, Reader, SaxEventType, SAXParser, Tag } from '../saxWasm';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 import { deepEqual, equal, strictEqual } from 'assert';
@@ -19,9 +19,9 @@ describe('SaxWasm', () => {
     _data = [];
     _event = 0;
 
-    parser.eventHandler = function (event, data) {
+    parser.eventHandler = function (event: SaxEventType, data:Reader<Detail>) {
       _event |= event as number;
-      _data.push(data.toBoxed() as Tag);
+      _data.push(data.toJSON() as Tag);
     };
     return parser.prepareWasm(saxWasm);
   });

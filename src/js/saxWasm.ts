@@ -36,18 +36,53 @@ export enum SaxEventType {
   // 512
   Cdata = 0b1000000000,
 }
+export type AttributeDetail = {
+  readonly type: 0 | 1;
+  readonly name: TextDetail;
+  readonly value: TextDetail;
+}
+
+export type TagDetail = {
+  readonly textNodes: TextDetail[];
+  readonly attributes: AttributeDetail[];
+
+  readonly openStart: PositionDetail;
+  readonly openEnd: PositionDetail;
+  readonly closeStart: PositionDetail;
+  readonly closeEnd: PositionDetail;
+
+  readonly name: string;
+  readonly selfClosing: boolean;
+}
+
+export type ProcInstDetail = {
+  readonly target: TextDetail;
+  readonly content: TextDetail;
+  readonly start: PositionDetail;
+  readonly end: PositionDetail;
+}
+
+export type TextDetail = {
+  readonly start: PositionDetail;
+  readonly end: PositionDetail;
+  readonly value: string;
+}
+export type PositionDetail = {
+  readonly line: number;
+  readonly character: number;
+}
 /**
  * Represents the detail of a SAX event.
  */
-export type Detail = Attribute | Text | Tag | ProcInst;
+export type Detail = AttributeDetail | TextDetail | TagDetail | ProcInstDetail;
 
 /**
  * Abstract class for decoding SAX event data.
  *
  * @template T - The type of detail to be read.
  */
-export abstract class Reader<T = Detail> {
-  protected cache = {} as { [prop: string]: T };
+export abstract class Reader<T extends Detail = Detail> {
+  protected cache = {} as Record<string, unknown>;
   protected dataView: Uint8Array
 
   /**
@@ -62,30 +97,11 @@ export abstract class Reader<T = Detail> {
   }
 
   /**
-   * Internally copies a portion of the WebAssembly
-   * memory that represents the reader source data to
-   * guarantee that the data is not garbage collected
-   * and all fields continue to be accessible after
-   * the WASM write process has completed.
-   *
-   * Calling this method is not necessary if all
-   * data is read inside the eventHandler callback
-   * or the parse generator loop. However, if you
-   * need to access the data outside of the callback
-   * or pass it to an async function, calling this
-   * method immediately is required.
-   *
-   * **Note** This method has a very small performance
-   * cost and should be used judiciously on large documents.
-   */
-  public abstract toBoxed(): this;
-
-  /**
    * Converts the reader data to a JSON object.
    *
    * @returns A JSON object representing the reader data.
    */
-  public abstract toJSON(): { [prop: string]: T };
+  public abstract toJSON(): { [K in keyof T]: T[K] };
 }
 
 /**
@@ -93,7 +109,7 @@ export abstract class Reader<T = Detail> {
  * integers for entities that are encountered
  * in the document.
  */
-export class Position {
+export class Position implements PositionDetail {
   public line: number;
   public character: number;
 
@@ -128,7 +144,7 @@ export enum AttributeType {
  * 3. 'name' bytes - byte position 5-name_length (name_length bytes)
  * 4. 'value' bytes - byte position name_length-n (n bytes)
  */
-export class Attribute extends Reader<Text | AttributeType> {
+export class Attribute extends Reader<AttributeDetail> implements AttributeDetail {
   public static LENGTH = 76 as const;
 
   public type: AttributeType;
@@ -143,21 +159,11 @@ export class Attribute extends Reader<Text | AttributeType> {
   }
 
   /**
-   * @inheritdoc
-   */
-  public toBoxed(): this {
-    this.name.toBoxed();
-    this.value.toBoxed();
-    this.memory = undefined;
-    return this;
-  }
-
-  /**
    * @inheritDoc
    */
-  public toJSON(): { [prop: string]: Text | AttributeType } {
+  public toJSON() {
     const { name, value, type } = this;
-    return { name, value, type };
+    return { name: name.toJSON(), value: value.toJSON(), type };
   }
 
   /**
@@ -199,7 +205,7 @@ export class Attribute extends Reader<Text | AttributeType> {
  * * `buffer` - The buffer containing the processing instruction data.
  * * `ptr` - The initial pointer position.
  */
-export class ProcInst extends Reader<Position | Text> {
+export class ProcInst extends Reader<ProcInstDetail> implements ProcInstDetail {
   public static LENGTH = 88 as const;
 
   public target: Text;
@@ -213,24 +219,13 @@ export class ProcInst extends Reader<Position | Text> {
   }
 
   /**
-   * @inheritdoc
-   */
-  public toBoxed(): this {
-    this.data = this.data.slice();
-    this.target.toBoxed();
-    this.content.toBoxed();
-    this.memory = undefined;
-    return this;
-  }
-
-  /**
    * Gets the start position of the processing instruction.
    *
    * @returns The start position of the processing instruction.
    */
-  public get start(): Position {
+  public get start(): PositionDetail {
     return (
-      (this.cache.start as Position) ||
+      (this.cache.start as PositionDetail) ||
       (this.cache.start = readPosition(this.data, 80))
     );
   }
@@ -240,9 +235,9 @@ export class ProcInst extends Reader<Position | Text> {
    *
    * @returns The start position of the processing instruction.
    */
-  public get end(): Position {
+  public get end(): PositionDetail {
     return (
-      (this.cache.end as Position) ||
+      (this.cache.end as PositionDetail) ||
       (this.cache.end = readPosition(this.data, 8))
     );
   }
@@ -252,9 +247,9 @@ export class ProcInst extends Reader<Position | Text> {
    *
    * @returns A JSON object representing the processing instruction.
    */
-  public toJSON(): { [p: string]: Position | Text } {
+  public toJSON() {
     const { start, end, target, content } = this;
-    return { start, end, target, content };
+    return { start, end, target: target.toJSON(), content: content.toJSON() };
   }
 
   /**
@@ -272,15 +267,15 @@ export class ProcInst extends Reader<Position | Text> {
  * This class decodes the text node data sent across the FFI boundary
  * into its respective fields: `start`, `end`, and `value`.
  */
-export class Text extends Reader<string | Position> {
+export class Text extends Reader<TextDetail> implements TextDetail {
   public static LENGTH = 36 as const;
   /**
    * Gets the start position of the text node.
    *
    * @returns The start position of the text node.
    */
-  public get start(): Position {
-    return this.cache.start as Position || (this.cache.start = readPosition(this.data, 20));
+  public get start(): PositionDetail {
+    return this.cache.start as PositionDetail || (this.cache.start = readPosition(this.data, 20));
   }
 
   /**
@@ -288,22 +283,8 @@ export class Text extends Reader<string | Position> {
    *
    * @returns The end position of the text node.
    */
-  public get end(): Position {
-    return this.cache.end as Position || (this.cache.end = readPosition(this.data, 28));
-  }
-
-  /**
-   * @inheritdoc
-   */
-  public toBoxed(): this {
-    this.data = this.data.slice();
-    // Build our data view and update the pointer
-    const vecPtr = readU32(this.data, 12);
-    const valueLen = readU32(this.data, 16);
-    this.dataView = new Uint8Array(this.memory.buffer, vecPtr, valueLen).slice();
-    this.data.set([0,0,0,0], 12); // Set the vecPtr to 0
-    this.memory = undefined;
-    return this
+  public get end(): PositionDetail {
+    return this.cache.end as PositionDetail || (this.cache.end = readPosition(this.data, 28));
   }
 
   /**
@@ -325,7 +306,7 @@ export class Text extends Reader<string | Position> {
    *
    * @returns A JSON object representing the text node.
    */
-  public toJSON(): { [prop: string]: string | Position } {
+  public toJSON() {
     const { start, end, value } = this;
     return { start, end, value };
   }
@@ -347,35 +328,17 @@ export class Text extends Reader<string | Position> {
  * into its respective fields: `openStart`, `openEnd`, `closeStart`,
  * `closeEnd`, `selfClosing`, `name`, `attributes`, and `textNodes`.
  */
-export class Tag extends Reader<Attribute[] | Text[] | Position | string | number | boolean> {
+export class Tag extends Reader<TagDetail> implements TagDetail {
   public static LENGTH = 82 as const;
-
-  /**
-   * @inheritdoc
-   */
-  public toBoxed(): this {
-    delete this.cache.attributes;
-    delete this.cache.textNodes;
-    this.data = this.data.slice();
-    for (const textNode of this.textNodes) {
-      textNode.toBoxed();
-    }
-    for (const attribute of this.attributes) {
-      attribute.toBoxed();
-    }
-    this.name
-    this.memory = undefined;
-    return this
-  }
 
   /**
    * Gets the start position of the tag opening.
    *
    * @returns The start position of the tag opening.
    */
-  public get openStart(): Position {
+  public get openStart(): PositionDetail {
     return (
-      (this.cache.openStart as Position) ||
+      (this.cache.openStart as PositionDetail) ||
       (this.cache.openStart = readPosition(this.data, 40))
     );
   }
@@ -384,9 +347,9 @@ export class Tag extends Reader<Attribute[] | Text[] | Position | string | numbe
    *
    * @returns The end position of the tag opening.
    */
-  public get openEnd(): Position {
+  public get openEnd(): PositionDetail {
     return (
-      (this.cache.openEnd as Position) ||
+      (this.cache.openEnd as PositionDetail) ||
       (this.cache.openEnd = readPosition(this.data, 48))
     );
   }
@@ -395,9 +358,9 @@ export class Tag extends Reader<Attribute[] | Text[] | Position | string | numbe
    *
    * @returns The start position of the tag closing.
    */
-  public get closeStart(): Position {
+  public get closeStart(): PositionDetail {
     return (
-      (this.cache.closeStart as Position) ||
+      (this.cache.closeStart as PositionDetail) ||
       (this.cache.closeStart = readPosition(this.data, 56))
     );
   }
@@ -407,9 +370,9 @@ export class Tag extends Reader<Attribute[] | Text[] | Position | string | numbe
    *
    * @returns The end position of the tag closing.
    */
-  public get closeEnd(): Position {
+  public get closeEnd(): PositionDetail {
     return (
-      (this.cache.closeEnd as Position) ||
+      (this.cache.closeEnd as PositionDetail) ||
       (this.cache.closeEnd = readPosition(this.data, 64))
     );
   }
@@ -487,27 +450,16 @@ export class Tag extends Reader<Attribute[] | Text[] | Position | string | numbe
    *
    * @returns A JSON object representing the tag.
    */
-  public toJSON(): {
-    [p: string]: Attribute[] | Text[] | Position | string | number | boolean;
-  } {
-    const {
-      openStart,
-      openEnd,
-      closeStart,
-      closeEnd,
-      name,
-      attributes,
-      textNodes,
-      selfClosing,
-    } = this;
+  public toJSON() {
+    const { openStart, openEnd, closeStart, closeEnd, name, attributes, textNodes, selfClosing, } = this;
     return {
       openStart,
       openEnd,
       closeStart,
       closeEnd,
       name,
-      attributes,
-      textNodes,
+      attributes: attributes.map(a => a.toJSON()),
+      textNodes: textNodes.map(t => t.toJSON()),
       selfClosing,
     };
   }
@@ -531,20 +483,20 @@ type TextDecoder = {
   ) => string;
 };
 export class SAXParser {
-  public static textDecoder: TextDecoder; // Web only
+  public static textDecoder: TextDecoder = new TextDecoder();
 
   public events?: number;
   public wasmSaxParser?: WasmSaxParser;
 
-  public eventHandler?: (type: SaxEventType, detail: Detail) => void;
+  public eventHandler?: (type: SaxEventType, detail: Reader<Detail>) => void;
 
-  private createDetailConstructor<T extends { new(...args: any[]): {}; LENGTH: number }>(Constructor: T) {
-    return (memoryBuffer: ArrayBuffer, ptr: number): Detail => {
-      return new Constructor(new Uint8Array(memoryBuffer, ptr, Constructor.LENGTH), this.wasmSaxParser.memory) as Detail;
+  private createDetailConstructor<T extends { new(...args: unknown[]): {}; LENGTH: number }>(Constructor: T) {
+    return (memoryBuffer: ArrayBuffer, ptr: number): Reader<Detail> => {
+      return new Constructor(new Uint8Array(memoryBuffer, ptr, Constructor.LENGTH), this.wasmSaxParser.memory) as Reader<Detail>;
     };
   }
 
-  private eventToDetailConstructor = new Map<SaxEventType, (memoryBuffer: ArrayBuffer, ptr: number) => Detail>([
+  private eventToDetailConstructor = new Map<SaxEventType, (memoryBuffer: ArrayBuffer, ptr: number) => Reader<Detail>>([
     [SaxEventType.Attribute, this.createDetailConstructor(Attribute)],
     [SaxEventType.ProcessingInstruction, this.createDetailConstructor(ProcInst)],
     [SaxEventType.OpenTag, this.createDetailConstructor(Tag)],
@@ -630,7 +582,7 @@ export class SAXParser {
   public async *parse(reader: ReadableStreamDefaultReader<Uint8Array>): AsyncGenerator<[SaxEventType, Detail]> {
     let eventAggregator: [SaxEventType, Detail][] | null = [];
     this.eventHandler = function (event, detail) {
-      eventAggregator.push([event, detail]);
+      eventAggregator.push([event, detail.toJSON()]);
     };
 
     while (true) {
@@ -702,7 +654,7 @@ export class SAXParser {
       return;
     }
 
-    const { write, memory:{buffer} } = this.wasmSaxParser;
+    const { write, memory: { buffer } } = this.wasmSaxParser;
 
     // Allocations within the WASM process
     // invalidate reference to the memory buffer.
@@ -800,7 +752,7 @@ export class SAXParser {
       return;
     }
     const memoryBuffer = this.wasmSaxParser.memory.buffer;
-    let detail: Detail;
+    let detail: Reader<Detail>;
 
     const constructor = this.eventToDetailConstructor.get(event);
     if (constructor) {
@@ -813,16 +765,7 @@ export class SAXParser {
   };
 }
 
-export const readString = (data: Uint8Array, offset: number, length: number): string => {
-  // Node
-  if (typeof Buffer !== 'undefined') {
-    return Buffer.from(data.buffer, data.byteOffset + offset, length).toString();
-  }
-  // Web
-  return (
-    SAXParser.textDecoder || (SAXParser.textDecoder = new TextDecoder())
-  ).decode(data.subarray(offset, offset + length));
-};
+export const readString = (data: Uint8Array, offset: number, length: number): string => SAXParser.textDecoder.decode(data.subarray(offset, offset + length));
 
 export const readU32 = (uint8Array: Uint8Array, ptr: number): number =>
   (uint8Array[ptr + 3] << 24) |

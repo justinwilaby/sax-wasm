@@ -86,7 +86,7 @@ async function benchmarkSaxParser() {
 }
 
 async function benchmarkLtxParser() {
-  const parser = new LtxSaxParser({Parser: SaxesParser});
+  const parser = new LtxSaxParser({ Parser: SaxesParser });
   let t = process.hrtime();
 
   let offset = 0;

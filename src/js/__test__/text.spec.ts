@@ -1,7 +1,7 @@
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 import { deepStrictEqual } from  'assert';
-import { SaxEventType, SAXParser } from '../saxWasm';
+import { Detail, Reader, SaxEventType, SAXParser } from '../saxWasm';
 
 const saxWasm = readFileSync(resolve(__dirname, '../../../lib/sax-wasm.wasm'));
 describe('SaxWasm', () => {
@@ -16,9 +16,9 @@ describe('SaxWasm', () => {
     _data = [];
     _event = 0;
 
-    parser.eventHandler = function (event, data) {
+    parser.eventHandler = function (event: SaxEventType, data:Reader<Detail>) {
       _event = event;
-      _data.push(data.toBoxed());
+      _data.push(data.toJSON());
     };
     return parser.prepareWasm(saxWasm);
   });

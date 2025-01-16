@@ -1,4 +1,4 @@
-import { ProcInst, SaxEventType, SAXParser } from '../saxWasm';
+import { Detail, ProcInst, Reader, SaxEventType, SAXParser } from '../saxWasm';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 import { deepEqual, strictEqual } from 'assert';
@@ -13,9 +13,9 @@ describe('When parsing JSX, the SaxWasm', () => {
   beforeAll(async () => {
     parser = new SAXParser(SaxEventType.ProcessingInstruction);
 
-    parser.eventHandler = function (event, data) {
+    parser.eventHandler = function (event: SaxEventType, data:Reader<Detail>) {
       _event = event;
-      _data = data.toBoxed() as ProcInst;
+      _data = data.toJSON() as ProcInst;
     };
     return parser.prepareWasm(saxWasm);
   });

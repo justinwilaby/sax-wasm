@@ -1,4 +1,4 @@
-use core::mem;
+use std::mem;
 use std::ptr;
 use std::slice;
 

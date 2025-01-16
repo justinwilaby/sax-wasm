@@ -1,7 +1,7 @@
 import { readFileSync, createReadStream } from 'fs';
 import { resolve as pathResolve } from 'path';
 import {deepEqual, equal, notStrictEqual} from 'assert';
-import { Detail, SaxEventType, SAXParser } from '../saxWasm';
+import { Detail, Reader, SaxEventType, SAXParser } from '../saxWasm';
 import { Readable } from 'stream';
 
 const saxWasm = readFileSync(pathResolve(__dirname, '../../../lib/sax-wasm.wasm'));
@@ -13,8 +13,8 @@ describe('When parsing XML, the SaxWasm', () => {
     parser = new SAXParser(SaxEventType.CloseTag);
     _data = [];
 
-    parser.eventHandler = function (event, data) {
-      _data.push(data.toBoxed());
+    parser.eventHandler = function (event: SaxEventType, data:Reader<Detail>) {
+      _data.push(data.toJSON());
     };
     return parser.prepareWasm(saxWasm);
   });
@@ -57,13 +57,13 @@ describe('When parsing XML, the SaxWasm', () => {
     const readable = createReadStream(pathResolve(__dirname + '/xml.xml'), options);
     const webReadable = Readable.toWeb(readable);
     const eventsFromGenerator: [SaxEventType, Detail][] = [];
-    // for await (const [event, detail] of parser.parse(webReadable.getReader())) {
-    //   eventsFromGenerator.push([event, JSON.parse(JSON.stringify(detail))]);
-    // }
+    for await (const [event, detail] of parser.parse(webReadable.getReader())) {
+      eventsFromGenerator.push([event, detail]);
+    }
 
     const eventsFromEventHandler: [SaxEventType, Detail][] = [];
     parser.eventHandler = function (event, detail) {
-      eventsFromEventHandler.push([event, JSON.parse(JSON.stringify(detail))]);
+      eventsFromEventHandler.push([event, detail.toJSON()]);
     };
     await new Promise(resolve => {
       const readable = createReadStream(pathResolve(__dirname + '/xml.xml'), options);
@@ -72,6 +72,6 @@ describe('When parsing XML, the SaxWasm', () => {
       });
       readable.on('end', resolve);
     });
-    // deepEqual(eventsFromGenerator, eventsFromEventHandler);
+    deepEqual(eventsFromGenerator, eventsFromEventHandler);
   });
 });

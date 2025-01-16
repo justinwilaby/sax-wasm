@@ -26,21 +26,49 @@ export declare enum SaxEventType {
     CloseTag = 256,
     Cdata = 512
 }
+export type AttributeDetail = {
+    readonly type: 0 | 1;
+    readonly name: TextDetail;
+    readonly value: TextDetail;
+};
+export type TagDetail = {
+    readonly textNodes: TextDetail[];
+    readonly attributes: AttributeDetail[];
+    readonly openStart: PositionDetail;
+    readonly openEnd: PositionDetail;
+    readonly closeStart: PositionDetail;
+    readonly closeEnd: PositionDetail;
+    readonly name: string;
+    readonly selfClosing: boolean;
+};
+export type ProcInstDetail = {
+    readonly target: TextDetail;
+    readonly content: TextDetail;
+    readonly start: PositionDetail;
+    readonly end: PositionDetail;
+};
+export type TextDetail = {
+    readonly start: PositionDetail;
+    readonly end: PositionDetail;
+    readonly value: string;
+};
+export type PositionDetail = {
+    readonly line: number;
+    readonly character: number;
+};
 /**
  * Represents the detail of a SAX event.
  */
-export type Detail = Attribute | Text | Tag | ProcInst;
+export type Detail = AttributeDetail | TextDetail | TagDetail | ProcInstDetail;
 /**
  * Abstract class for decoding SAX event data.
  *
  * @template T - The type of detail to be read.
  */
-export declare abstract class Reader<T = Detail> {
+export declare abstract class Reader<T extends Detail = Detail> {
     protected data: Uint8Array;
     protected memory: WebAssembly.Memory;
-    protected cache: {
-        [prop: string]: T;
-    };
+    protected cache: Record<string, unknown>;
     protected dataView: Uint8Array;
     /**
      * Creates a new Reader instance.
@@ -51,30 +79,12 @@ export declare abstract class Reader<T = Detail> {
      */
     constructor(data: Uint8Array, memory: WebAssembly.Memory);
     /**
-     * Internally copies a portion of the WebAssembly
-     * memory that represents the reader source data to
-     * guarantee that the data is not garbage collected
-     * and all fields continue to be accessible after
-     * the WASM write process has completed.
-     *
-     * Calling this method is not necessary if all
-     * data is read inside the eventHandler callback
-     * or the parse generator loop. However, if you
-     * need to access the data outside of the callback
-     * or pass it to an async function, calling this
-     * method immediately is required.
-     *
-     * **Note** This method has a very small performance
-     * cost and should be used judiciously on large documents.
-     */
-    abstract toBoxed(): this;
-    /**
      * Converts the reader data to a JSON object.
      *
      * @returns A JSON object representing the reader data.
      */
     abstract toJSON(): {
-        [prop: string]: T;
+        [K in keyof T]: T[K];
     };
 }
 /**
@@ -82,7 +92,7 @@ export declare abstract class Reader<T = Detail> {
  * integers for entities that are encountered
  * in the document.
  */
-export declare class Position {
+export declare class Position implements PositionDetail {
     line: number;
     character: number;
     /**
@@ -111,21 +121,27 @@ export declare enum AttributeType {
  * 3. 'name' bytes - byte position 5-name_length (name_length bytes)
  * 4. 'value' bytes - byte position name_length-n (n bytes)
  */
-export declare class Attribute extends Reader<Text | AttributeType> {
+export declare class Attribute extends Reader<AttributeDetail> implements AttributeDetail {
     static LENGTH: 76;
     type: AttributeType;
     name: Text;
     value: Text;
     constructor(data: Uint8Array, memory: WebAssembly.Memory);
     /**
-     * @inheritdoc
-     */
-    toBoxed(): this;
-    /**
      * @inheritDoc
      */
     toJSON(): {
-        [prop: string]: Text | AttributeType;
+        name: {
+            start: PositionDetail;
+            end: PositionDetail;
+            value: string;
+        };
+        value: {
+            start: PositionDetail;
+            end: PositionDetail;
+            value: string;
+        };
+        type: AttributeType;
     };
     /**
      * Converts the attribute to a string representation.
@@ -160,34 +176,41 @@ export declare class Attribute extends Reader<Text | AttributeType> {
  * * `buffer` - The buffer containing the processing instruction data.
  * * `ptr` - The initial pointer position.
  */
-export declare class ProcInst extends Reader<Position | Text> {
+export declare class ProcInst extends Reader<ProcInstDetail> implements ProcInstDetail {
     static LENGTH: 88;
     target: Text;
     content: Text;
     constructor(data: Uint8Array, memory: WebAssembly.Memory);
     /**
-     * @inheritdoc
+     * Gets the start position of the processing instruction.
+     *
+     * @returns The start position of the processing instruction.
      */
-    toBoxed(): this;
+    get start(): PositionDetail;
     /**
      * Gets the start position of the processing instruction.
      *
      * @returns The start position of the processing instruction.
      */
-    get start(): Position;
-    /**
-     * Gets the start position of the processing instruction.
-     *
-     * @returns The start position of the processing instruction.
-     */
-    get end(): Position;
+    get end(): PositionDetail;
     /**
      * Converts the processing instruction to a JSON object.
      *
      * @returns A JSON object representing the processing instruction.
      */
     toJSON(): {
-        [p: string]: Position | Text;
+        start: PositionDetail;
+        end: PositionDetail;
+        target: {
+            start: PositionDetail;
+            end: PositionDetail;
+            value: string;
+        };
+        content: {
+            start: PositionDetail;
+            end: PositionDetail;
+            value: string;
+        };
     };
     /**
      * @inheritdoc
@@ -200,24 +223,20 @@ export declare class ProcInst extends Reader<Position | Text> {
  * This class decodes the text node data sent across the FFI boundary
  * into its respective fields: `start`, `end`, and `value`.
  */
-export declare class Text extends Reader<string | Position> {
+export declare class Text extends Reader<TextDetail> implements TextDetail {
     static LENGTH: 36;
     /**
      * Gets the start position of the text node.
      *
      * @returns The start position of the text node.
      */
-    get start(): Position;
+    get start(): PositionDetail;
     /**
      * Gets the end position of the text node.
      *
      * @returns The end position of the text node.
      */
-    get end(): Position;
-    /**
-     * @inheritdoc
-     */
-    toBoxed(): this;
+    get end(): PositionDetail;
     /**
      * Gets the value of the text node.
      *
@@ -230,7 +249,9 @@ export declare class Text extends Reader<string | Position> {
      * @returns A JSON object representing the text node.
      */
     toJSON(): {
-        [prop: string]: string | Position;
+        start: PositionDetail;
+        end: PositionDetail;
+        value: string;
     };
     /**
      * Converts the text node to a string representation.
@@ -246,36 +267,32 @@ export declare class Text extends Reader<string | Position> {
  * into its respective fields: `openStart`, `openEnd`, `closeStart`,
  * `closeEnd`, `selfClosing`, `name`, `attributes`, and `textNodes`.
  */
-export declare class Tag extends Reader<Attribute[] | Text[] | Position | string | number | boolean> {
+export declare class Tag extends Reader<TagDetail> implements TagDetail {
     static LENGTH: 82;
-    /**
-     * @inheritdoc
-     */
-    toBoxed(): this;
     /**
      * Gets the start position of the tag opening.
      *
      * @returns The start position of the tag opening.
      */
-    get openStart(): Position;
+    get openStart(): PositionDetail;
     /**
      * Gets the end position of the tag opening.
      *
      * @returns The end position of the tag opening.
      */
-    get openEnd(): Position;
+    get openEnd(): PositionDetail;
     /**
      * Gets the start position of the tag closing.
      *
      * @returns The start position of the tag closing.
      */
-    get closeStart(): Position;
+    get closeStart(): PositionDetail;
     /**
      * Gets the end position of the tag closing.
      *
      * @returns The end position of the tag closing.
      */
-    get closeEnd(): Position;
+    get closeEnd(): PositionDetail;
     /**
      * Gets the self-closing flag of the tag.
      *
@@ -308,7 +325,30 @@ export declare class Tag extends Reader<Attribute[] | Text[] | Position | string
      * @returns A JSON object representing the tag.
      */
     toJSON(): {
-        [p: string]: Attribute[] | Text[] | Position | string | number | boolean;
+        openStart: PositionDetail;
+        openEnd: PositionDetail;
+        closeStart: PositionDetail;
+        closeEnd: PositionDetail;
+        name: string;
+        attributes: {
+            name: {
+                start: PositionDetail;
+                end: PositionDetail;
+                value: string;
+            };
+            value: {
+                start: PositionDetail;
+                end: PositionDetail;
+                value: string;
+            };
+            type: AttributeType;
+        }[];
+        textNodes: {
+            start: PositionDetail;
+            end: PositionDetail;
+            value: string;
+        }[];
+        selfClosing: boolean;
     };
     get value(): string;
 }
@@ -327,7 +367,7 @@ export declare class SAXParser {
     static textDecoder: TextDecoder;
     events?: number;
     wasmSaxParser?: WasmSaxParser;
-    eventHandler?: (type: SaxEventType, detail: Detail) => void;
+    eventHandler?: (type: SaxEventType, detail: Reader<Detail>) => void;
     private createDetailConstructor;
     private eventToDetailConstructor;
     private writeBuffer?;
