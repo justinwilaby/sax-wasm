@@ -1,7 +1,7 @@
 # SAX (Simple API for XML) for WebAssembly
 
 ![Rust Build Status](https://github.com/justinwilaby/sax-wasm/actions/workflows/rust.yml/badge.svg)
-![TS build status](https://github.com/justinwilaby/sax-wasm/actions/workflows/ci.yml/badge.svg)
+[![TS Build Status](https://github.com/justinwilaby/sax-wasm/actions/workflows/ci.yaml/badge.svg)](https://github.com/justinwilaby/sax-wasm/actions/workflows/ci.yaml)
 
 *When you absolutely, positively have to have the fastest parser in the room, accept no substitutes.*
 
@@ -14,6 +14,94 @@ for speed and support for JSX syntax.
 
 Suitable for [LSP](https://langserver.org/) implementations, sax-wasm provides line numbers and character positions within the
 document for elements, attributes and text node which provides the raw building blocks for linting, transpilation and lexing.
+
+## Entity Start and End Positions
+
+The `sax-wasm` parser provides precise location information for each entity encountered during the parsing process. Here's how you can access and utilize this information:
+
+### Entity Types
+
+- **Elements**: Both opening and closing tags.
+- **Attributes**: Within elements.
+- **Text**: Text content, CDATA, Entities, etc.
+- **ProcInst**: Processing instructions.
+
+### Position Data
+
+For each entity, `sax-wasm` returns a `Position` object:
+
+- **Start and End Positions**: Objects with:
+  - `line`: The line number where the entity begins.
+  - `character`: The column or "character" number where the entity begins.
+
+The position data 100% works with `xml.substring(start, end)` or `xml.slice(start, end)` and takes into account 2-4 byte graphemes such as emojis, cyrillic or utf-16 encoded documents.
+
+#### Example Output
+
+When parsing `<div class="myDiv">This is my div</div>`, you might receive output like this:
+
+```js
+{
+  openStart: {
+    line: 0,
+    character: 0,
+  },
+  openEnd: {
+    line: 0,
+    character: 19,
+  },
+  closeStart: {
+    line: 0,
+    character: 33,
+  },
+  closeEnd: {
+    line: 0,
+    character: 39,
+  },
+  name: "div",
+  attributes: [
+    {
+      name: {
+        start: {
+          line: 0,
+          character: 5,
+        },
+        end: {
+          line: 0,
+          character: 10,
+        },
+        value: "class",
+      },
+      value: {
+        start: {
+          line: 0,
+          character: 12,
+        },
+        end: {
+          line: 0,
+          character: 17,
+        },
+        value: "myDiv",
+      },
+      type: 0,
+    },
+  ],
+  textNodes: [
+    {
+      start: {
+        line: 0,
+        character: 19,
+      },
+      end: {
+        line: 0,
+        character: 33,
+      },
+      value: "This is my div",
+    },
+  ],
+  selfClosing: false,
+}
+```
 
 ## Benchmarks (Node v20.18.1 / 2.7 GHz Quad-Core Intel Core i7)
 All parsers are tested using a large XML document (3 MB) containing a variety of elements and is streamed from memory to remove variations in disk access latency and focus on benchmarking just the parser alone. Other libraries test benchmarks using a very small XML fragment such as `<foo bar="baz">quux</foo>` which does not hit all code branches responsible for processing the document and heavily skews the results in their favor.

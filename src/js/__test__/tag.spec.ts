@@ -31,7 +31,7 @@ describe('SaxWasm', () => {
   });
 
   it('should report the SaxEventType.OpenTagStart', () => {
-    parser.write(Buffer.from('<div class="myDiv">This is my div</div>'));
+    parser.write(Buffer.from(`<div class="myDiv">This is my div</div>`));
     equal(_event & SaxEventType.OpenTagStart, 32);
     const [tag] = _data;
     equal(tag.name, 'div');
