@@ -125,4 +125,38 @@ describe('SaxWasm', () => {
     deepStrictEqual(_data[1].name.value, 'attribute2');
     deepStrictEqual(_data[1].value.value, 'value2');
   });
+
+  it('should correctly parse attributes when tabs are used as whitespace', () => {
+    parser.write(Buffer.from(`<root
+	xmlns="http://example.com/default"
+	xmlns:ns1="http://example.com/ns1"
+	xmlns:ns2="http://example.com/ns2">
+
+		<ns1:element1
+			attribute1="value1"
+			attribute2="value2">
+				<ns2:childElement
+					ns2:childAttribute="childValue">
+						Content of child element
+				</ns2:childElement>
+		</ns1:element1>
+
+		<element2
+			attribute3="value3"
+			ns1:attribute4="value4">
+				<subElement>Text content</subElement>
+		</element2>
+</root>`));
+    deepStrictEqual(_event, SaxEventType.Attribute);
+    deepStrictEqual(_data[0].name.value, 'xmlns');
+    deepStrictEqual(_data[0].value.value, 'http://example.com/default');
+    deepStrictEqual(_data[1].name.value, 'xmlns:ns1');
+    deepStrictEqual(_data[1].value.value, 'http://example.com/ns1');
+    deepStrictEqual(_data[2].name.value, 'xmlns:ns2');
+    deepStrictEqual(_data[2].value.value, 'http://example.com/ns2');
+    deepStrictEqual(_data[3].name.value, 'attribute1');
+    deepStrictEqual(_data[3].value.value, 'value1');
+    deepStrictEqual(_data[4].name.value, 'attribute2');
+    deepStrictEqual(_data[4].value.value, 'value2');
+  });
 });

@@ -160,7 +160,6 @@ impl GraphemeClusters<'_> {
 
             let next_byte = unsafe { *ptr.add(cursor) };
 
-            // Check if next_byte is in haystack using a loop instead of contains
             if haystack.contains(&next_byte) {
                 found = true;
                 matched_byte = next_byte;
