@@ -19,9 +19,9 @@ static TEXT_END: &[u8] = &[ b'<' , b'\n'];
 
 /// Characters that indicate the end of
 /// an attribute name
-static ATTRIBUTE_NAME_END: &[u8] = &[b'=' , b'>' , b' '];
+static ATTRIBUTE_NAME_END: &[u8] = &[b'=' , b'>' , b' ', b'\t'];
 
-static ATTRIBUTE_VALUE_END: &[u8] = &[b' ' , b'>' , b'/'];
+static ATTRIBUTE_VALUE_END: &[u8] = &[b' ', b'\t', b'>' , b'/'];
 
 /// Characters that indicate the end of
 /// a proc inst target
@@ -510,7 +510,7 @@ impl<'a> SAXParser<'a> {
         match byte {
             b'>' => self.process_open_tag(false, gc),
             b'/' => self.state = State::OpenTagSlash,
-            b' ' => self.state = State::Attrib,
+            b' '| b'\t' | b'\n' | b'\r' => self.state = State::Attrib,
             _ => {}
         }
     }
