@@ -7,7 +7,7 @@ const saxWasm = readFileSync(resolve(__dirname, '../../../lib/sax-wasm.wasm'));
 
 describe('SaxWasm', () => {
     let parser: SAXParser;
-    let _event: SaxEventType;
+    let _event: SaxEventType|undefined;
     let _data: (Attribute & Text & Tag)[];
 
     beforeAll(async () => {
@@ -60,11 +60,13 @@ describe('SaxWasm', () => {
       parser.write(Buffer.from(`<!--name="test 3 attr" some comment--> <!-- name="test 3 attr" some comment -->`));
       strictEqual(_data[0].value, 'name="test 3 attr" some comment');
       strictEqual(_data[1].value, ' name="test 3 attr" some comment ');
+      strictEqual(_event, SaxEventType.Comment);
     });
 
     it ('should allow for chars that look like comment endings but are not really endings', () => {
       parser.events = SaxEventType.Comment;
       parser.write(Buffer.from(`<!--name="test 3 attr" some comment -- > not an ending-->`));
       strictEqual(_data[0].value, 'name="test 3 attr" some comment -- > not an ending');
+      strictEqual(_event, SaxEventType.Comment);
     });
 });

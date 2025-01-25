@@ -34,6 +34,7 @@ describe('When parsing XML, the SaxWasm', () => {
     deepStrictEqual(JSON.parse(JSON.stringify(start)), { line: 0, character: 5 });
     deepStrictEqual(JSON.parse(JSON.stringify(end)), { line: 0, character: 84 });
     strictEqual(value, 'did you know "x < y" & "z > y"? so I [guess] that means that z > x ');
+    strictEqual(_event, SaxEventType.Cdata);
   });
 
   it('should report cdata (lower case) correctly', () => {
@@ -42,6 +43,7 @@ describe('When parsing XML, the SaxWasm', () => {
     deepStrictEqual(JSON.parse(JSON.stringify(start)), { line: 0, character: 5 });
     deepStrictEqual(JSON.parse(JSON.stringify(end)), { line: 0, character: 83 });
     strictEqual(value, ' did you know "x < y" & "z > y"? so I guess that means that z > x ');
+    strictEqual(_event, SaxEventType.Cdata);
   });
 
   it('should report cDaTa (mixed case) correctly', () => {
@@ -50,6 +52,7 @@ describe('When parsing XML, the SaxWasm', () => {
     deepStrictEqual(JSON.parse(JSON.stringify(start)), { line: 0, character: 5 });
     deepStrictEqual(JSON.parse(JSON.stringify(end)), { line: 0, character: 83 });
     strictEqual(value, ' did you know "x < y" & "z > y"? so I guess that means that z > x ');
+    strictEqual(_event, SaxEventType.Cdata);
   });
 
   it("should support empty cdata", () => {
@@ -66,5 +69,6 @@ describe('When parsing XML, the SaxWasm', () => {
     const [empty, something] = _data;
     strictEqual(empty.value, "");
     strictEqual(something.value, "something");
+    strictEqual(_event, SaxEventType.Cdata);
   });
 });

@@ -34,6 +34,7 @@ describe('When parsing XML, the SaxWasm', () => {
     deepEqual(start, { line: 0, character: 0 });
     deepEqual(end, { line: 0, character: 15 });
     strictEqual(value, 'html');
+    strictEqual(_event, SaxEventType.Doctype);
   });
 
   it('should report doctype (lower case) correctly', () => {
@@ -42,6 +43,7 @@ describe('When parsing XML, the SaxWasm', () => {
     deepEqual(start, { line: 0, character: 0 });
     deepEqual(end, { line: 0, character: 15 });
     strictEqual(value, 'html');
+    strictEqual(_event, SaxEventType.Doctype);
   });
 
   it('should report DocType (mixed case) correctly', () => {
@@ -50,5 +52,6 @@ describe('When parsing XML, the SaxWasm', () => {
     deepEqual(start, { line: 0, character: 0 });
     deepEqual(end, { line: 0, character: 15 });
     strictEqual(value, 'html');
+    strictEqual(_event, SaxEventType.Doctype);
   });
 });
