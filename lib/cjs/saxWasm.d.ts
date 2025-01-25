@@ -14,18 +14,20 @@
  * slight performance improvement which becomes more noticeable
  * on very large documents.
  */
-export declare enum SaxEventType {
-    Text = 1,
-    ProcessingInstruction = 2,
-    Declaration = 4,
-    Doctype = 8,
-    Comment = 16,
-    OpenTagStart = 32,
-    Attribute = 64,
-    OpenTag = 128,
-    CloseTag = 256,
-    Cdata = 512
-}
+export declare const SaxEventType: {
+    readonly Text: 1;
+    readonly ProcessingInstruction: 2;
+    readonly Declaration: 4;
+    readonly Doctype: 8;
+    readonly Comment: 16;
+    readonly OpenTagStart: 32;
+    readonly Attribute: 64;
+    readonly OpenTag: 128;
+    readonly CloseTag: 256;
+    readonly Cdata: 512;
+};
+export type SaxEventType = typeof SaxEventType[keyof typeof SaxEventType];
+export type SaxEvent = [typeof SaxEventType.Text, Text] | [typeof SaxEventType.ProcessingInstruction, ProcInst] | [typeof SaxEventType.Declaration, Text] | [typeof SaxEventType.Doctype, Text] | [typeof SaxEventType.Comment, Text] | [typeof SaxEventType.OpenTagStart, Tag] | [typeof SaxEventType.Attribute, Attribute] | [typeof SaxEventType.OpenTag, Tag] | [typeof SaxEventType.CloseTag, Tag] | [typeof SaxEventType.Cdata, Text];
 export type AttributeDetail = {
     readonly type: 0 | 1;
     readonly name: TextDetail;
@@ -367,7 +369,7 @@ export declare class SAXParser {
     static textDecoder: TextDecoder;
     events?: number;
     wasmSaxParser?: WasmSaxParser;
-    eventHandler?: (type: SaxEventType, detail: Reader<Detail>) => void;
+    eventHandler?: <T extends SaxEvent>(type: T[0], detail: T[1]) => void;
     private createDetailConstructor;
     private eventToDetailConstructor;
     private writeBuffer?;
@@ -420,7 +422,7 @@ export declare class SAXParser {
      * })();
      * ```
      */
-    parse(reader: ReadableStreamDefaultReader<Uint8Array>): AsyncGenerator<[SaxEventType, Reader<Detail>]>;
+    parse(reader: ReadableStreamDefaultReader<Uint8Array>): AsyncGenerator<SaxEvent>;
     /**
      * Writes a chunk of data to the parser.
      *
@@ -521,7 +523,7 @@ export declare class SAXParser {
      */
     prepareWasm(saxWasm: Response | Promise<Response>): Promise<boolean>;
     prepareWasm(saxWasm: Uint8Array): Promise<boolean>;
-    eventTrap: (event: number, ptr: number) => void;
+    eventTrap: (event: SaxEventType, ptr: number) => void;
 }
 export declare const readString: (data: Uint8Array, offset: number, length: number) => string;
 export declare const readU32: (uint8Array: Uint8Array, ptr: number) => number;
