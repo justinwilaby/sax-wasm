@@ -14,28 +14,32 @@
  * slight performance improvement which becomes more noticeable
  * on very large documents.
  */
-export enum SaxEventType {
-  // 1
-  Text = 0b1,
-  // 2
-  ProcessingInstruction = 0b10,
-  // 4
-  Declaration = 0b100,
-  // 8
-  Doctype = 0b1000,
-  // 16
-  Comment = 0b10000,
-  // 32
-  OpenTagStart = 0b100000,
-  // 64
-  Attribute = 0b1000000,
-  // 128
-  OpenTag = 0b10000000,
-  // 256
-  CloseTag = 0b100000000,
-  // 512
-  Cdata = 0b1000000000,
-}
+export const SaxEventType = {
+  Text: 0b1,
+  ProcessingInstruction: 0b10,
+  Declaration: 0b100,
+  Doctype: 0b1000,
+  Comment: 0b10000,
+  OpenTagStart: 0b100000,
+  Attribute: 0b1000000,
+  OpenTag: 0b10000000,
+  CloseTag: 0b100000000,
+  Cdata: 0b1000000000,
+} as const;
+
+export type SaxEventType = typeof SaxEventType[keyof typeof SaxEventType]
+
+export type SaxEvent = [typeof SaxEventType.Text, Text]
+  | [typeof SaxEventType.ProcessingInstruction, ProcInst]
+  | [typeof SaxEventType.Declaration, Text]
+  | [typeof SaxEventType.Doctype, Text]
+  | [typeof SaxEventType.Comment, Text]
+  | [typeof SaxEventType.OpenTagStart, Tag]
+  | [typeof SaxEventType.Attribute, Attribute]
+  | [typeof SaxEventType.OpenTag, Tag]
+  | [typeof SaxEventType.CloseTag, Tag]
+  | [typeof SaxEventType.Cdata, Text]
+
 export type AttributeDetail = {
   readonly type: 0 | 1;
   readonly name: TextDetail;
@@ -488,7 +492,7 @@ export class SAXParser {
   public events?: number;
   public wasmSaxParser?: WasmSaxParser;
 
-  public eventHandler?: (type: SaxEventType, detail: Reader<Detail>) => void;
+  public eventHandler?: <T extends SaxEvent>(type: T[0], detail: T[1]) => void;
 
   private createDetailConstructor<T extends { new(...args: unknown[]): {}; LENGTH: number }>(Constructor: T) {
     return (memoryBuffer: ArrayBuffer, ptr: number): Reader<Detail> => {
@@ -579,10 +583,10 @@ export class SAXParser {
    * })();
    * ```
    */
-  public async *parse(reader: ReadableStreamDefaultReader<Uint8Array>): AsyncGenerator<[SaxEventType, Reader<Detail>]> {
-    let eventAggregator: [SaxEventType, Reader<Detail>][] | null = [];
-    this.eventHandler = function (event, detail) {
-      eventAggregator.push([event, detail]);
+  public async *parse(reader: ReadableStreamDefaultReader<Uint8Array>): AsyncGenerator<SaxEvent> {
+    let eventAggregator: SaxEvent[] = [];
+    this.eventHandler = function <T extends SaxEvent> (event:T[0], detail:T[1]) {
+      eventAggregator.push([event, detail] as T);
     };
 
     while (true) {
@@ -747,16 +751,16 @@ export class SAXParser {
     throw new Error(`Failed to instantiate the parser.`);
   }
 
-  public eventTrap = (event: number, ptr: number): void => {
+  public eventTrap = (event: SaxEventType, ptr: number): void => {
     if (!this.wasmSaxParser || !this.eventHandler) {
       return;
     }
     const memoryBuffer = this.wasmSaxParser.memory.buffer;
-    let detail: Reader<Detail>;
+    let detail: Attribute | Text | Tag | ProcInst;
 
     const constructor = this.eventToDetailConstructor.get(event);
     if (constructor) {
-      detail = constructor(memoryBuffer, ptr);
+      detail = constructor(memoryBuffer, ptr) as Attribute | Text | Tag | ProcInst
     } else {
       throw new Error("No reader for this event type");
     }

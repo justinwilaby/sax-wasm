@@ -745,7 +745,7 @@ impl<'a> SAXParser<'a> {
             if self.events[Event::Doctype] && markup_decl.hydrate(self.source_ptr) {
                 markup_decl.value.truncate(markup_decl.value.len() - 1); // remove '>' or '['
 
-                self.event_handler.handle_event(Event::Cdata, Entity::Text(&markup_decl));
+                self.event_handler.handle_event(Event::Doctype, Entity::Text(&markup_decl));
                 self.dispatched.push(Dispatched::Text(markup_decl));
             }
             self.state = State::BeginWhitespace;
