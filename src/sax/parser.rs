@@ -1009,7 +1009,17 @@ impl<'a> SAXParser<'a> {
             self.event_handler.handle_event(Event::OpenTag, Entity::Tag(&tag_box));
             self.dispatched.push(Dispatched::Tag(tag_box));
         }
-        self.tags.push(tag);
+
+        if self.events[Event::CloseTag] && self_closing {
+            tag.hydrate(self.source_ptr);
+            let tag_box = Box::new(tag.clone());
+            self.event_handler.handle_event(Event::CloseTag, Entity::Tag(&tag_box));
+            self.dispatched.push(Dispatched::Tag(tag_box));
+        }
+
+        if !self_closing {
+            self.tags.push(tag);
+        }
 
         self.state = State::BeginWhitespace;
     }
@@ -1563,6 +1573,37 @@ the plugin
         assert_eq!(tags[0].attributes.len(), 1);
         assert_eq!(tags[1].attributes.len(), 1);
 
+        Ok(())
+    }
+    #[test]
+    fn test_self_closing_tag() -> Result<()> {
+        let event_handler = TextEventHandler::new();
+        let mut sax = SAXParser::new(&event_handler);
+        let mut events = [false; 10];
+        events[Event::CloseTag] = true;
+        sax.events = events;
+        let str = r#"
+        <Div>
+            <Div type="JS" viewName="myapp.view.Home" />
+            <Div type="JSON" viewName="myapp.view.Home" />
+            <Div type="HTML" viewName="myapp.view.Home" />
+            <Div type="Template" viewName="myapp.view.Home" />
+
+            <!-- This one will be correctly "closed" -->
+            <AnotherSelfClosingDiv type="Template" viewName="myapp.view.Home" />
+        </Div>"#;
+
+        sax.write(str.as_bytes());
+        sax.identity();
+
+        let tags = event_handler.tags.borrow();
+        assert_eq!(tags.len(), 6);
+        assert_eq!(tags[0].self_closing, true);
+        assert_eq!(tags[1].self_closing, true);
+        assert_eq!(tags[2].self_closing, true);
+        assert_eq!(tags[3].self_closing, true);
+        assert_eq!(tags[4].self_closing, true);
+        assert_eq!(tags[5].self_closing, false);
         Ok(())
     }
 }
