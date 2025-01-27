@@ -73,6 +73,25 @@ describe('SaxWasm', () => {
     deepEqual(g.selfClosing, false);
   });
 
+  it('should report selfClosing tags correctly when there is a space after the slash', () => {
+    parser.events = SaxEventType.CloseTag;
+
+    parser.write(Buffer.from(`<Div>
+	<Div type="JS" viewName="myapp.view.Home" />
+	<Div type="JSON" viewName="myapp.view.Home" />
+	<Div type="HTML" viewName="myapp.view.Home" />
+	<Div type="Template" viewName="myapp.view.Home" />
+
+	<AnotherSelfClosingDiv type="Template" viewName="myapp.view.Home" />
+</Div>`));
+    const [, div, div2, div3, div4, div5] = _data;
+    deepEqual(div.selfClosing, true);
+    deepEqual(div2.selfClosing, true);
+    deepEqual(div3.selfClosing, true);
+    deepEqual(div4.selfClosing, true);
+    deepEqual(div5.selfClosing, false);
+  });
+
   it('should handle the BOM', () => {
     parser.events = SaxEventType.OpenTag;
     parser.write(Buffer.from('\uFEFF<div></div>'));
