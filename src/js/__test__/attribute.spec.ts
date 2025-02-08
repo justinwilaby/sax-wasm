@@ -159,4 +159,35 @@ describe('SaxWasm', () => {
     deepStrictEqual(_data[4].name.value, 'attribute2');
     deepStrictEqual(_data[4].value.value, 'value2');
   });
+
+  it('should correctly parse attribute with single character as name (no value)', () => {
+    parser.write(Buffer.from(`<element attribute1='value1'a attribute3='value3'></element>`));
+    deepStrictEqual(_event, SaxEventType.Attribute);
+    deepStrictEqual(_data[0].name.value, 'attribute1');
+    deepStrictEqual(_data[0].value.value, 'value1');
+    deepStrictEqual(_data[1].name.value, 'a');
+    deepStrictEqual(_data[1].value.value, '');
+    deepStrictEqual(_data[2].name.value, 'attribute3');
+    deepStrictEqual(_data[2].value.value, 'value3');
+  });
+
+  it('should correctly parse attribute with single character as name (with value)', () => {
+    parser.write(Buffer.from(`<element attribute1='value1'a="value2" attribute3='value3'></element>`));
+    deepStrictEqual(_event, SaxEventType.Attribute);
+    deepStrictEqual(_data[0].name.value, 'attribute1');
+    deepStrictEqual(_data[0].value.value, 'value1');
+    deepStrictEqual(_data[1].name.value, 'a');
+    deepStrictEqual(_data[1].value.value, 'value2');
+    deepStrictEqual(_data[2].name.value, 'attribute3');
+    deepStrictEqual(_data[2].value.value, 'value3');
+  });
+
+  it('should correctly parse unquoted attribute with following attribute', () => {
+    parser.write(Buffer.from(`<element attribute1=value1 attribute2='value2'></element>`));
+    deepStrictEqual(_event, SaxEventType.Attribute);
+    deepStrictEqual(_data[0].name.value, 'attribute1');
+    deepStrictEqual(_data[0].value.value, 'value1');
+    deepStrictEqual(_data[1].name.value, 'attribute2');
+    deepStrictEqual(_data[1].value.value, 'value2');
+  });
 });
