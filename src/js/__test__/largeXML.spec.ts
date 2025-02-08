@@ -1,6 +1,6 @@
 import { readFileSync, createReadStream } from 'fs';
 import { resolve as pathResolve } from 'path';
-import {deepEqual, equal, notStrictEqual} from 'assert';
+import {deepEqual, equal, notStrictEqual, strictEqual} from 'assert';
 import { Detail, Reader, SaxEventType, SAXParser } from '../saxWasm';
 import { Readable } from 'stream';
 
@@ -51,6 +51,10 @@ describe('When parsing XML, the SaxWasm', () => {
       });
     });
     notStrictEqual(_data.length, 0);
+
+    const tagAt0x00020000 = _data.find(entry => entry.name.endsWith("0x00020000"));
+    strictEqual(tagAt0x00020000?.name, "issueAt0x00020000");
+
   });
 
   it ('events should be equivalent between the generator and event_handler', async () => {
