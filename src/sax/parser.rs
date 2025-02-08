@@ -19,7 +19,7 @@ static TEXT_END: &[u8] = &[ b'<' , b'\n'];
 
 /// Characters that indicate the end of
 /// an attribute name
-static ATTRIBUTE_NAME_END: &[u8] = &[b'=' , b'>' , b' ', b'\t'];
+static ATTRIBUTE_NAME_END: &[u8] = &[b'=' , b'>' , b' ', b'\t', b'\n'];
 
 static ATTRIBUTE_VALUE_END: &[u8] = &[b' ', b'\t', b'>' , b'/'];
 
@@ -493,10 +493,12 @@ impl<'a> SAXParser<'a> {
         let mut byte = current[0];
 
         if !TAG_NAME_END.contains(&byte) {
-            if let Some((span, _)) = gc.take_until_one_found(TAG_NAME_END, true) {
+            if let Some((span, found)) = gc.take_until_one_found(TAG_NAME_END, true) {
                 byte = span[span.len() - 1];
+                self.tag.header.1 = if found { gc.last_cursor_pos } else { gc.cursor };
+            } else {
+                self.tag.header.1 = gc.last_cursor_pos;
             }
-            self.tag.header.1 = gc.last_cursor_pos;
         }
 
         if self.events[Event::OpenTagStart] {
@@ -870,6 +872,7 @@ impl<'a> SAXParser<'a> {
                 self.attribute.name.start = [gc.line, gc.character.saturating_sub(1)];
                 self.attribute.name.header.0 = gc.last_cursor_pos;
                 self.state = State::AttribName;
+                self.attribute_name(gc, current);
             }
         }
     }
@@ -878,6 +881,7 @@ impl<'a> SAXParser<'a> {
         match current[0] {
             b'=' => {
                 self.attribute.name.end = [gc.line, gc.character.saturating_sub(1)];
+                self.attribute.name.header.1 = gc.cursor.saturating_sub(1);
                 self.state = State::AttribValue;
             }
             b'>' => {
@@ -938,8 +942,8 @@ impl<'a> SAXParser<'a> {
             self.attribute.attr_type = AttrType::JSX;
             self.brace_ct += 1;
         } else {
+            self.attribute.value.header.0 = gc.last_cursor_pos;
             self.state = State::AttribValueUnquoted;
-            gc.take_until_one_found(ATTRIBUTE_VALUE_END, false);
         }
     }
 
@@ -966,22 +970,30 @@ impl<'a> SAXParser<'a> {
         } else {
             self.attribute.name.header.0 = gc.last_cursor_pos;
             self.state = State::AttribName;
+            self.attribute_name(gc, current);
         }
     }
 
     #[cold]
     fn attribute_value_unquoted(&mut self, gc: &mut GraphemeClusters, current: &[u8]) {
-        let byte = current[0];
-        if byte != b'>' || byte < 33 {
+        let mut byte = current[0];
+        if byte < 33 {
             return;
         }
+        if let Some((span, found)) = gc.take_until_one_found(ATTRIBUTE_VALUE_END, true) {
+            byte = span[span.len() - 1];
+            self.attribute.value.header.1 = if found { gc.last_cursor_pos } else { gc.cursor };
+        } else {
+            self.attribute.value.header.1 = gc.last_cursor_pos;
+        }
         self.attribute.value.end = [gc.line, gc.character.saturating_sub(1)];
-        self.attribute.value.header.1 = gc.last_cursor_pos;
+
         self.process_attribute();
         if byte == b'>' {
             self.process_open_tag(false, gc);
         } else {
             self.state = State::Attrib;
+            self.attribute(gc, &[byte]);
         }
     }
 
@@ -1243,6 +1255,85 @@ mod tests {
         let attrs = event_handler.attributes.borrow();
         let texts = event_handler.texts.borrow();
         assert_eq!(attrs.len(), 3);
+        assert_eq!(texts.len(), 0);
+
+        Ok(())
+    }
+    #[test]
+    fn test_attribute_single_character_boolean() -> Result<()> {
+        let event_handler = TextEventHandler::new();
+        let mut sax = SAXParser::new(&event_handler);
+        let mut events = [false; 10];
+        events[Event::Attribute] = true;
+        events[Event::CloseTag] = true;
+        events[Event::Text] = true;
+        sax.events = events;
+        let str = r#"<element attribute1='value1'a attribute3='value3'></element>"#;
+
+        sax.write(str.as_bytes());
+        sax.identity();
+
+        let attrs = event_handler.attributes.borrow();
+        let texts = event_handler.texts.borrow();
+        assert_eq!(attrs.len(), 3);
+        assert_eq!(attrs[0].name.value, b"attribute1");
+        assert_eq!(attrs[0].value.value, b"value1");
+        assert_eq!(attrs[1].name.value, b"a");
+        assert_eq!(attrs[1].value.value, b"");
+        assert_eq!(attrs[2].name.value, b"attribute3");
+        assert_eq!(attrs[2].value.value, b"value3");
+        assert_eq!(texts.len(), 0);
+
+        Ok(())
+    }
+    #[test]
+    fn test_attribute_unquoted() -> Result<()> {
+        let event_handler = TextEventHandler::new();
+        let mut sax = SAXParser::new(&event_handler);
+        let mut events = [false; 10];
+        events[Event::Attribute] = true;
+        events[Event::CloseTag] = true;
+        events[Event::Text] = true;
+        sax.events = events;
+        let str = r#"<element attribute1=value1 attribute2='value2'></element>"#;
+
+        sax.write(str.as_bytes());
+        sax.identity();
+
+        let attrs = event_handler.attributes.borrow();
+        let texts = event_handler.texts.borrow();
+        assert_eq!(attrs.len(), 2);
+        assert_eq!(attrs[0].name.value, b"attribute1");
+        assert_eq!(attrs[0].value.value, b"value1");
+        assert_eq!(attrs[1].name.value, b"attribute2");
+        assert_eq!(attrs[1].value.value, b"value2");
+        assert_eq!(texts.len(), 0);
+
+        Ok(())
+    }
+    #[test]
+    fn test_attribute_single_character() -> Result<()> {
+        let event_handler = TextEventHandler::new();
+        let mut sax = SAXParser::new(&event_handler);
+        let mut events = [false; 10];
+        events[Event::Attribute] = true;
+        events[Event::CloseTag] = true;
+        events[Event::Text] = true;
+        sax.events = events;
+        let str = r#"<element attribute1='value1'a="value2" attribute3='value3'></element>"#;
+
+        sax.write(str.as_bytes());
+        sax.identity();
+
+        let attrs = event_handler.attributes.borrow();
+        let texts = event_handler.texts.borrow();
+        assert_eq!(attrs.len(), 3);
+        assert_eq!(attrs[0].name.value, b"attribute1");
+        assert_eq!(attrs[0].value.value, b"value1");
+        assert_eq!(attrs[1].name.value, b"a");
+        assert_eq!(attrs[1].value.value, b"value2");
+        assert_eq!(attrs[2].name.value, b"attribute3");
+        assert_eq!(attrs[2].value.value, b"value3");
         assert_eq!(texts.len(), 0);
 
         Ok(())
