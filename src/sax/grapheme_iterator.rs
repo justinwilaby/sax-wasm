@@ -18,10 +18,10 @@ use super::utils::grapheme_len;
 pub struct GraphemeClusters<'a> {
     bytes: &'a [u8],
     byte_len: usize,
-    pub line: u32,
-    pub last_line: u32,
-    pub character: u32,
-    pub last_character: u32,
+    pub line: u64,
+    pub last_line: u64,
+    pub character: u64,
+    pub last_character: u64,
     pub cursor: usize,
     pub last_cursor_pos: usize,
 }
@@ -150,13 +150,13 @@ impl GraphemeClusters<'_> {
         let mut cursor = self.cursor;
         let mut line = self.line;
         let mut character = self.character;
-        let byte_len = self.byte_len;
+        let max_index = self.byte_len;
         let mut matched_byte = b'0';
         let ptr = self.bytes.as_ptr();
         let mut found = false;
         let mut len = 0;
 
-        while cursor < byte_len {
+        while cursor < max_index {
 
             let next_byte = unsafe { *ptr.add(cursor) };
 
@@ -190,14 +190,15 @@ impl GraphemeClusters<'_> {
         // We've run out of bytes - deliver what we have
         // even though the ascii wasn't found but do not
         // include a broken surrogate
-        if cursor > byte_len {
-            cursor = byte_len - (cursor - byte_len);
+        if cursor > max_index {
+            cursor -= len;
         }
 
         // If the slice len is zero, return None
         if start == cursor {
             return None;
         }
+
         self.cursor = cursor;
         self.last_cursor_pos = cursor - len;
 
@@ -213,7 +214,7 @@ impl GraphemeClusters<'_> {
             return None;
         }
         let start = self.cursor;
-        let byte_len = self.byte_len;
+        let max_index = self.byte_len;
         let ptr = self.bytes.as_ptr();
         let mut cursor = self.cursor;
         let mut line = self.line;
@@ -221,7 +222,7 @@ impl GraphemeClusters<'_> {
         let mut found = false;
         let mut len = 0;
 
-        while cursor < byte_len {
+        while cursor < max_index {
             let next_byte = unsafe { *ptr.add(cursor) };
             len = grapheme_len(next_byte);
 
@@ -243,7 +244,7 @@ impl GraphemeClusters<'_> {
             cursor += len;
         }
 
-        if include_match_or_exhaust && cursor < byte_len {
+        if include_match_or_exhaust && cursor < max_index {
             if match_byte == b'\n' {
                 line += 1;
                 character = 0;
@@ -256,9 +257,10 @@ impl GraphemeClusters<'_> {
         // We've run out of bytes - deliver what we have
         // even though the ascii wasn't found but do not
         // include a broken surrogate
-        if cursor > byte_len {
-            cursor = byte_len - (cursor - byte_len);
+        if cursor > max_index {
+            cursor -= len;
         }
+
         self.cursor = cursor;
         self.last_cursor_pos = cursor - len;
         self.last_line = std::mem::replace(&mut self.line, line);
@@ -272,9 +274,9 @@ impl GraphemeClusters<'_> {
         let mut line = self.line;
         let mut character = self.character;
         let mut done = false;
-        let byte_len = self.byte_len;
+        let max_index = self.byte_len;
         let ptr = self.bytes.as_ptr();
-        while cursor < byte_len {
+        while cursor < max_index {
             let next_byte = unsafe { *ptr.add(cursor) };
             if next_byte > 32 {
                 done = true;

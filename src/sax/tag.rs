@@ -7,15 +7,15 @@ pub struct Tag {
     pub attributes: Vec<Attribute>,
     pub text_nodes: Vec<Text>,
     pub self_closing: bool,
-    pub open_start: [u32; 2],
-    pub open_end: [u32; 2],
-    pub close_start: [u32; 2],
-    pub close_end: [u32; 2],
+    pub open_start: [u64; 2],
+    pub open_end: [u64; 2],
+    pub close_start: [u64; 2],
+    pub close_end: [u64; 2],
     pub header: (usize, usize),
 }
 
 impl Tag {
-    pub fn new(open_start: [u32; 2]) -> Tag {
+    pub fn new(open_start: [u64; 2]) -> Tag {
         Tag {
             header: (0, 0),
             name: Vec::new(),
@@ -78,12 +78,12 @@ impl Tag {
 pub struct Text {
     pub header: (usize, usize),
     pub value: Vec<u8>,
-    pub start: [u32; 2],
-    pub end: [u32; 2],
+    pub start: [u64; 2],
+    pub end: [u64; 2],
 }
 
 impl Text {
-    pub fn new(start: [u32; 2]) -> Text {
+    pub fn new(start: [u64; 2]) -> Text {
         return Text {
             start,
             value: Vec::new(),
@@ -150,8 +150,8 @@ impl Attribute {
 #[repr(C)]
 #[derive(Clone)]
 pub struct ProcInst {
-    pub start: [u32; 2],
-    pub end: [u32; 2],
+    pub start: [u64; 2],
+    pub end: [u64; 2],
     pub target: Text,
     pub content: Text,
 }

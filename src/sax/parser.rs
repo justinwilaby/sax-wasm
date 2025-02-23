@@ -91,7 +91,7 @@ pub struct SAXParser<'a> {
     fragment: Vec<u8>,
 
     // Position Tracking
-    end_pos: [u32; 2],
+    end_pos: [u64; 2],
     source_ptr: *const u8,
     end_offset: usize,
 }
@@ -567,7 +567,7 @@ impl<'a> SAXParser<'a> {
         }
     }
 
-    fn flush_text(&mut self, line: u32, character: u32, offset: usize) {
+    fn flush_text(&mut self, line: u64, character: u64, offset: usize) {
         if self.text.is_none() {
             return;
         }
@@ -1100,7 +1100,7 @@ impl<'a> SAXParser<'a> {
         gc.take_until_one_found(&[b'{', b'}'], false);
     }
 
-    fn new_text(&mut self, line: u32, character: u32, offset: usize) {
+    fn new_text(&mut self, line: u64, character: u64, offset: usize) {
         if self.text.is_none() && (self.events[Event::Text] || self.events[Event::CloseTag]) {
             let mut text = Text::new([line, character]);
             text.header.0 = offset;
