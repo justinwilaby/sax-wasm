@@ -68,10 +68,11 @@ export type Detail = AttributeDetail | TextDetail | TagDetail | ProcInstDetail;
  * @template T - The type of detail to be read.
  */
 export declare abstract class Reader<T extends Detail = Detail> {
+    #private;
     protected data: Uint8Array;
     protected memory: WebAssembly.Memory;
     protected cache: Record<string, unknown>;
-    protected dataView: Uint8Array;
+    get dataView(): Uint8Array;
     /**
      * Creates a new Reader instance.
      *
@@ -124,7 +125,7 @@ export declare enum AttributeType {
  * 4. 'value' bytes - byte position name_length-n (n bytes)
  */
 export declare class Attribute extends Reader<AttributeDetail> implements AttributeDetail {
-    static LENGTH: 76;
+    static LENGTH: 120;
     type: AttributeType;
     name: Text;
     value: Text;
@@ -179,7 +180,7 @@ export declare class Attribute extends Reader<AttributeDetail> implements Attrib
  * * `ptr` - The initial pointer position.
  */
 export declare class ProcInst extends Reader<ProcInstDetail> implements ProcInstDetail {
-    static LENGTH: 88;
+    static LENGTH: 144;
     target: Text;
     content: Text;
     constructor(data: Uint8Array, memory: WebAssembly.Memory);
@@ -226,7 +227,7 @@ export declare class ProcInst extends Reader<ProcInstDetail> implements ProcInst
  * into its respective fields: `start`, `end`, and `value`.
  */
 export declare class Text extends Reader<TextDetail> implements TextDetail {
-    static LENGTH: 36;
+    static LENGTH: 56;
     /**
      * Gets the start position of the text node.
      *
@@ -270,7 +271,7 @@ export declare class Text extends Reader<TextDetail> implements TextDetail {
  * `closeEnd`, `selfClosing`, `name`, `attributes`, and `textNodes`.
  */
 export declare class Tag extends Reader<TagDetail> implements TagDetail {
-    static LENGTH: 82;
+    static LENGTH: 104;
     /**
      * Gets the start position of the tag opening.
      *

@@ -87,8 +87,10 @@ export type Detail = AttributeDetail | TextDetail | TagDetail | ProcInstDetail;
  */
 export abstract class Reader<T extends Detail = Detail> {
   protected cache = {} as Record<string, unknown>;
-  protected dataView: Uint8Array
-
+  #dataView: Uint8Array;
+  get dataView(): Uint8Array {
+    return this.#dataView ??= new Uint8Array(this.memory.buffer);
+  }
   /**
    * Creates a new Reader instance.
    *
@@ -97,7 +99,6 @@ export abstract class Reader<T extends Detail = Detail> {
    * @param memory - The WebAssembly memory instance.
    */
   constructor(protected data: Uint8Array, protected memory: WebAssembly.Memory) {
-    this.dataView = new Uint8Array(memory.buffer);
   }
 
   /**
@@ -149,7 +150,7 @@ export enum AttributeType {
  * 4. 'value' bytes - byte position name_length-n (n bytes)
  */
 export class Attribute extends Reader<AttributeDetail> implements AttributeDetail {
-  public static LENGTH = 76 as const;
+  public static LENGTH = 120 as const;
 
   public type: AttributeType;
   public name: Text;
@@ -159,7 +160,7 @@ export class Attribute extends Reader<AttributeDetail> implements AttributeDetai
     super(data, memory);
     this.name = new Text(new Uint8Array(data.buffer, data.byteOffset, Text.LENGTH), memory);
     this.value = new Text(new Uint8Array(data.buffer, data.byteOffset + Text.LENGTH, Text.LENGTH), memory);
-    this.type = data[72];
+    this.type = data[112];
   }
 
   /**
@@ -210,7 +211,7 @@ export class Attribute extends Reader<AttributeDetail> implements AttributeDetai
  * * `ptr` - The initial pointer position.
  */
 export class ProcInst extends Reader<ProcInstDetail> implements ProcInstDetail {
-  public static LENGTH = 88 as const;
+  public static LENGTH = 144 as const;
 
   public target: Text;
   public content: Text;
@@ -218,8 +219,8 @@ export class ProcInst extends Reader<ProcInstDetail> implements ProcInstDetail {
   constructor(data: Uint8Array, memory: WebAssembly.Memory) {
     super(data, memory);
 
-    this.target = new Text(new Uint8Array(data.buffer, data.byteOffset + 16, Text.LENGTH), memory);
-    this.content = new Text(new Uint8Array(data.buffer, data.byteOffset + 16 + Text.LENGTH, Text.LENGTH), memory);
+    this.target = new Text(new Uint8Array(data.buffer, data.byteOffset + 32, Text.LENGTH), memory);
+    this.content = new Text(new Uint8Array(data.buffer, data.byteOffset + 32 + Text.LENGTH, Text.LENGTH), memory);
   }
 
   /**
@@ -230,7 +231,7 @@ export class ProcInst extends Reader<ProcInstDetail> implements ProcInstDetail {
   public get start(): PositionDetail {
     return (
       (this.cache.start as PositionDetail) ||
-      (this.cache.start = readPosition(this.data, 80))
+      (this.cache.start = readPosition(this.data, 128))
     );
   }
 
@@ -242,7 +243,7 @@ export class ProcInst extends Reader<ProcInstDetail> implements ProcInstDetail {
   public get end(): PositionDetail {
     return (
       (this.cache.end as PositionDetail) ||
-      (this.cache.end = readPosition(this.data, 8))
+      (this.cache.end = readPosition(this.data, 16))
     );
   }
 
@@ -272,14 +273,14 @@ export class ProcInst extends Reader<ProcInstDetail> implements ProcInstDetail {
  * into its respective fields: `start`, `end`, and `value`.
  */
 export class Text extends Reader<TextDetail> implements TextDetail {
-  public static LENGTH = 36 as const;
+  public static LENGTH = 56 as const;
   /**
    * Gets the start position of the text node.
    *
    * @returns The start position of the text node.
    */
   public get start(): PositionDetail {
-    return this.cache.start as PositionDetail || (this.cache.start = readPosition(this.data, 20));
+    return this.cache.start as PositionDetail || (this.cache.start = readPosition(this.data, 24));
   }
 
   /**
@@ -288,7 +289,7 @@ export class Text extends Reader<TextDetail> implements TextDetail {
    * @returns The end position of the text node.
    */
   public get end(): PositionDetail {
-    return this.cache.end as PositionDetail || (this.cache.end = readPosition(this.data, 28));
+    return this.cache.end as PositionDetail || (this.cache.end = readPosition(this.data, 40));
   }
 
   /**
@@ -333,7 +334,7 @@ export class Text extends Reader<TextDetail> implements TextDetail {
  * `closeEnd`, `selfClosing`, `name`, `attributes`, and `textNodes`.
  */
 export class Tag extends Reader<TagDetail> implements TagDetail {
-  public static LENGTH = 82 as const;
+  public static LENGTH = 104 as const;
 
   /**
    * Gets the start position of the tag opening.
@@ -354,7 +355,7 @@ export class Tag extends Reader<TagDetail> implements TagDetail {
   public get openEnd(): PositionDetail {
     return (
       (this.cache.openEnd as PositionDetail) ||
-      (this.cache.openEnd = readPosition(this.data, 48))
+      (this.cache.openEnd = readPosition(this.data, 56))
     );
   }
   /**
@@ -365,7 +366,7 @@ export class Tag extends Reader<TagDetail> implements TagDetail {
   public get closeStart(): PositionDetail {
     return (
       (this.cache.closeStart as PositionDetail) ||
-      (this.cache.closeStart = readPosition(this.data, 56))
+      (this.cache.closeStart = readPosition(this.data, 72))
     );
   }
 
@@ -377,7 +378,7 @@ export class Tag extends Reader<TagDetail> implements TagDetail {
   public get closeEnd(): PositionDetail {
     return (
       (this.cache.closeEnd as PositionDetail) ||
-      (this.cache.closeEnd = readPosition(this.data, 64))
+      (this.cache.closeEnd = readPosition(this.data, 88))
     );
   }
 
@@ -496,7 +497,7 @@ export class SAXParser {
 
   private createDetailConstructor<T extends { new(...args: unknown[]): {}; LENGTH: number }>(Constructor: T) {
     return (memoryBuffer: ArrayBuffer, ptr: number): Reader<Detail> => {
-      return new Constructor(new Uint8Array(memoryBuffer, ptr, Constructor.LENGTH), this.wasmSaxParser.memory) as Reader<Detail>;
+      return new Constructor(new Uint8Array(memoryBuffer, ptr, Constructor.LENGTH).slice(), this.wasmSaxParser.memory) as Reader<Detail>;
     };
   }
 
@@ -777,8 +778,33 @@ export const readU32 = (uint8Array: Uint8Array, ptr: number): number =>
   (uint8Array[ptr + 1] << 8) |
   uint8Array[ptr];
 
+  /**
+   * Reads a u64 as a javascript number. This
+   * will limit precision to 2⁵³ - 1 or 53 bits
+   * or Number.MAX_SAFE_INTEGER or an XML document
+   * that's 8,388,608 GB in size.
+   *
+   * When working with strings in JS, 64 bit
+   * bigints don't make sense because string
+   * length limits will be encountered before
+   * reaching these values.
+   *
+   * @param uint8Array The data to read the u64 from
+   * @param ptr The offset to start at
+   * @returns number
+   */
+  const readU64 = (uint8Array: Uint8Array, ptr = 0): number =>
+    (uint8Array[ptr + 7] << 56) |
+    (uint8Array[ptr + 6] << 48) |
+    (uint8Array[ptr + 5] << 40) |
+    (uint8Array[ptr + 4] << 32) |
+    (uint8Array[ptr + 3] << 24) |
+    (uint8Array[ptr + 2] << 16) |
+    (uint8Array[ptr + 1] << 8) |
+    uint8Array[ptr];
+
 export const readPosition = (uint8Array: Uint8Array, ptr = 0): Position => {
-  const line = readU32(uint8Array, ptr);
-  const character = readU32(uint8Array, ptr + 4);
+  const line = readU64(uint8Array, ptr);
+  const character = readU64(uint8Array, ptr + 8);
   return new Position(line, character);
 };

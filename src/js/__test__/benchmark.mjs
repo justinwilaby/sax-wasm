@@ -18,7 +18,10 @@ const chunkLen = 64 * 1024;
 async function benchmarkSaxWasmParser() {
   const saxWasm = readFileSync(resolve(new URL('../../../lib/sax-wasm.wasm', import.meta.url).pathname));
 
-  const parser = new SAXParser();
+  const parser = new SAXParser(SaxEventType.OpenTag);
+  parser.eventHandler = (event, detail) => {
+    const  j = detail.toJSON();
+  };
   await parser.prepareWasm(saxWasm);
 
   let t = process.hrtime();
