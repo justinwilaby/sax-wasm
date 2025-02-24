@@ -1,9 +1,9 @@
-import { createReadStream, readFileSync } from 'fs';
+import { readFileSync } from 'fs';
 import { URL } from 'url';
 import { resolve } from 'path';
 import { Buffer } from 'buffer';
 
-import { SAXParser, SaxEventType } from '../../../lib/esm/index.js';
+import { SAXParser } from '../../../lib/esm/index.js';
 
 import nodeXml from 'node-xml';
 import expat from 'node-expat';
@@ -18,10 +18,7 @@ const chunkLen = 64 * 1024;
 async function benchmarkSaxWasmParser() {
   const saxWasm = readFileSync(resolve(new URL('../../../lib/sax-wasm.wasm', import.meta.url).pathname));
 
-  const parser = new SAXParser(SaxEventType.OpenTag);
-  parser.eventHandler = (event, detail) => {
-    const  j = detail.toJSON();
-  };
+  const parser = new SAXParser();
   await parser.prepareWasm(saxWasm);
 
   let t = process.hrtime();
@@ -37,7 +34,6 @@ async function benchmarkSaxWasmParser() {
 
 async function benchmarkNodeXmlParser() {
   const parser = new nodeXml.SaxParser(() => void 0);
-  const readable = createReadStream(resolve(new URL('./xml.xml', import.meta.url).pathname));
   let t = process.hrtime();
   let offset = 0;
   while (offset < xml.length) {
@@ -76,7 +72,6 @@ async function benchmarkSaxesParser() {
 
 async function benchmarkSaxParser() {
   const parser = sax.createStream();
-  const readable = createReadStream(resolve(new URL('./xml.xml', import.meta.url).pathname));
   let t = process.hrtime();
 
   let offset = 0;

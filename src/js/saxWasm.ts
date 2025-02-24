@@ -672,8 +672,8 @@ export class SAXParser {
     if (this.writeBuffer?.buffer !== buffer) {
       this.writeBuffer = new Uint8Array(buffer);
     }
-    this.writeBuffer.set(chunk, 0);
-    write(0, chunk.byteLength);
+    this.writeBuffer.set(chunk, 4);
+    write(4, chunk.byteLength);
   }
 
   /**
