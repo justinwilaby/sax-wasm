@@ -1480,7 +1480,7 @@ the plugin
         let event_handler = TextEventHandler::new();
         let mut sax = SAXParser::new(&event_handler);
         sax.events = [true; 10];
-        let f = File::open("src/js/__test__/large-file-triggers-bug.xml")?;
+        let f = File::open("src/js/__test__/xml.xml")?;
         let mut reader = BufReader::new(f);
         const BUFFER_LEN: usize = 64 * 1024;
         loop {
