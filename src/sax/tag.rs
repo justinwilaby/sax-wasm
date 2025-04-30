@@ -59,12 +59,15 @@ impl Tag {
 
     fn get_name(&mut self, ptr: *const u8) -> &Vec<u8> {
         let (start, end) = self.header;
-        if start >= end {
+        if start > end {
             return &self.name;
         }
         let len = end - start;
         if len > 0 {
             let slice = unsafe { slice::from_raw_parts(ptr.add(start), len) };
+            self.name.extend_from_slice(slice);
+        } else if start > 0 && start == end {
+            let slice = unsafe { slice::from_raw_parts(ptr.add(start), 1) };
             self.name.extend_from_slice(slice);
         }
         self.header.0 = 0;
@@ -94,11 +97,14 @@ impl Text {
 
     pub fn get_value_slice(&mut self, ptr: *const u8) -> &[u8] {
         let (start, end) = self.header;
-        if start < end {
-            let len = end - start;
-            if len > 0 {
-                return unsafe { slice::from_raw_parts(ptr.add(start), len) };
-            }
+        if start > end {
+            return &[];
+        }
+        let len = end - start;
+        if len > 0 {
+            return unsafe { slice::from_raw_parts(ptr.add(start), len) };
+        } else if start > 0 && start == end {
+            return unsafe { slice::from_raw_parts(ptr.add(start), 1) };
         }
 
         if !self.value.is_empty() {
@@ -215,11 +221,14 @@ impl Accumulator {
         let mut sl = &[] as &[u8];
 
         let (start, end) = self.header;
-        if start < end {
-            let len = end - start;
-            if len > 0 {
-                sl = unsafe { slice::from_raw_parts(ptr.add(start), len) }
-            }
+        if start > end {
+            return sl;
+        }
+        let len = end - start;
+        if len > 0 {
+            sl = unsafe { slice::from_raw_parts(ptr.add(start), len) }
+        } else if start > 0 && start == end {
+            sl = unsafe { slice::from_raw_parts(ptr.add(start), 1) }
         }
 
         let v = &mut self.value;
@@ -245,5 +254,7 @@ impl Accumulator {
             let sl = unsafe { slice::from_raw_parts(ptr.add(start), len) };
             self.value.extend_from_slice(sl);
         }
+        self.header.0 = 0;
+        self.header.1 = 0;
     }
 }
