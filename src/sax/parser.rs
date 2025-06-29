@@ -1697,4 +1697,180 @@ the plugin
         assert_eq!(tags[5].self_closing, false);
         Ok(())
     }
+    #[test]
+    fn test_cdata_broken_opening_1() -> Result<()> {
+        let event_handler = TextEventHandler::new();
+        let mut sax = SAXParser::new(&event_handler);
+        let mut events = [false; 10];
+        events[Event::Cdata] = true;
+        sax.events = events;
+
+        // Break oopening sequence across slice boundary
+        let first_part = b"<foo><![CDATA[";
+        let second_part = b"some content here]]></foo>";
+
+        sax.write(first_part);
+        sax.write(second_part);
+        sax.identity();
+
+        let cdatas = event_handler.texts.borrow();
+        assert_eq!(cdatas.len(), 1, "Bug case: Expected exactly one CDATA section");
+        assert_eq!(cdatas[0].value, b"some content here", "Bug case: CDATA content should be properly captured");
+
+        Ok(())
+    }
+    #[test]
+    fn test_cdata_broken_opening_2() -> Result<()> {
+        let event_handler = TextEventHandler::new();
+        let mut sax = SAXParser::new(&event_handler);
+        let mut events = [false; 10];
+        events[Event::Cdata] = true;
+        sax.events = events;
+
+        // Break opening sequence across slice boundary
+        let first_part = b"<foo><![";
+        let second_part = b"CDATA[some content here]]></foo>";
+
+        sax.write(first_part);
+        sax.write(second_part);
+        sax.identity();
+
+        let cdatas = event_handler.texts.borrow();
+        assert_eq!(cdatas.len(), 1, "Bug case: Expected exactly one CDATA section");
+        assert_eq!(cdatas[0].value, b"some content here", "Bug case: CDATA content should be properly captured");
+
+        Ok(())
+    }
+    #[test]
+    fn test_cdata_broken_closing_1() -> Result<()> {
+        let event_handler = TextEventHandler::new();
+        let mut sax = SAXParser::new(&event_handler);
+        let mut events = [false; 10];
+        events[Event::Cdata] = true;
+        sax.events = events;
+
+        // Break closing sequence across slice boundary
+        let first_part = b"<foo><![CDATA[some content here]";
+        let second_part = b"]></foo>";
+
+        sax.write(first_part);
+        sax.write(second_part);
+        sax.identity();
+
+        let cdatas = event_handler.texts.borrow();
+        assert_eq!(cdatas.len(), 1, "Bug case: Expected exactly one CDATA section");
+        assert_eq!(cdatas[0].value, b"some content here", "Bug case: CDATA content should be properly captured");
+
+        Ok(())
+    }
+    #[test]
+    fn test_cdata_broken_closing_2() -> Result<()> {
+        let event_handler = TextEventHandler::new();
+        let mut sax = SAXParser::new(&event_handler);
+        let mut events = [false; 10];
+        events[Event::Cdata] = true;
+        sax.events = events;
+
+        // Break closing sequence across slice boundary
+        let first_part = b"<foo><![CDATA[some content here";
+        let second_part = b"]]></foo>";
+
+        sax.write(first_part);
+        sax.write(second_part);
+        sax.identity();
+
+        let cdatas = event_handler.texts.borrow();
+        assert_eq!(cdatas.len(), 1, "Bug case: Expected exactly one CDATA section");
+        assert_eq!(cdatas[0].value, b"some content here", "Bug case: CDATA content should be properly captured");
+
+        Ok(())
+    }
+    #[test]
+    fn test_comment_broken_opening_1() -> Result<()> {
+        let event_handler = TextEventHandler::new();
+        let mut sax = SAXParser::new(&event_handler);
+        let mut events = [false; 10];
+        events[Event::Comment] = true;
+        sax.events = events;
+
+        // break opening sequence across slice boundary
+        let first_part = b"<!";
+        let second_part = b"--some comment here-->";
+
+        sax.write(first_part);
+        sax.write(second_part);
+        sax.identity();
+
+        let comments = event_handler.texts.borrow();
+        assert_eq!(comments.len(), 1, "Bug case: Expected exactly one comment");
+        assert_eq!(comments[0].value, b"some comment here", "Bug case: Comment content should be properly captured");
+
+        Ok(())
+    }
+    #[test]
+    fn test_comment_broken_opening_2() -> Result<()> {
+        let event_handler = TextEventHandler::new();
+        let mut sax = SAXParser::new(&event_handler);
+        let mut events = [false; 10];
+        events[Event::Comment] = true;
+        sax.events = events;
+
+        // break opening sequence across slice boundary
+        let first_part = b"<!--";
+        let second_part = b"some comment here-->";
+
+        sax.write(first_part);
+        sax.write(second_part);
+        sax.identity();
+
+        let comments = event_handler.texts.borrow();
+        assert_eq!(comments.len(), 1, "Bug case: Expected exactly one comment");
+        assert_eq!(comments[0].value, b"some comment here", "Bug case: Comment content should be properly captured");
+
+        Ok(())
+    }
+    #[test]
+    fn test_comment_broken_closing_1() -> Result<()> {
+        let event_handler = TextEventHandler::new();
+        let mut sax = SAXParser::new(&event_handler);
+        let mut events = [false; 10];
+        events[Event::Comment] = true;
+        sax.events = events;
+
+        // break opening sequence across slice boundary
+        let first_part = b"<!--some comment here-";
+        let second_part = b"->";
+
+        sax.write(first_part);
+        sax.write(second_part);
+        sax.identity();
+
+        let comments = event_handler.texts.borrow();
+        assert_eq!(comments.len(), 1, "Bug case: Expected exactly one comment");
+        assert_eq!(comments[0].value, b"some comment here", "Bug case: Comment content should be properly captured");
+
+        Ok(())
+    }
+    #[test]
+    fn test_comment_broken_closing_2() -> Result<()> {
+        let event_handler = TextEventHandler::new();
+        let mut sax = SAXParser::new(&event_handler);
+        let mut events = [false; 10];
+        events[Event::Comment] = true;
+        sax.events = events;
+
+        // break opening sequence across slice boundary
+        let first_part = b"<!--some comment here";
+        let second_part = b"-->";
+
+        sax.write(first_part);
+        sax.write(second_part);
+        sax.identity();
+
+        let comments = event_handler.texts.borrow();
+        assert_eq!(comments.len(), 1, "Bug case: Expected exactly one comment");
+        assert_eq!(comments[0].value, b"some comment here", "Bug case: Comment content should be properly captured");
+
+        Ok(())
+    }
 }
