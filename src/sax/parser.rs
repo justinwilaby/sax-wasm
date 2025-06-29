@@ -428,6 +428,7 @@ impl<'a> SAXParser<'a> {
             _ if is_name_start_char(current) == true => {
                 should_flush_text = false;
                 self.tag.header.0 = gc.last_cursor_pos;
+                self.tag.header.1 = gc.cursor;
 
                 self.state = State::OpenTag;
                 // since calling open_tag advances
@@ -444,6 +445,7 @@ impl<'a> SAXParser<'a> {
 
                 let mut markup_decl = Text::new([gc.line, gc.last_character]);
                 markup_decl.header.0 =  gc.last_cursor_pos.saturating_sub(1);
+                markup_decl.header.1 =  gc.cursor;
                 self.markup_decl = Some(markup_decl);
             }
 
@@ -1513,6 +1515,28 @@ the plugin
         assert_eq!(texts.len(), 1);
         let text_value = String::from_utf8(texts[0].value.clone()).unwrap();
         assert_eq!(text_value, String::from_utf8(Vec::from(bytes)).unwrap());
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_cdata_with_write_boundary() -> Result<()> {
+        let event_handler = TextEventHandler::new();
+        let mut sax = SAXParser::new(&event_handler);
+        let mut events = [false; 10];
+        events[Event::Cdata] = true;
+        sax.events = events;
+        let str = "<div><![CDATA[something]]>";
+        let bytes = str.as_bytes();
+        sax.write(&bytes[..11]);
+
+        sax.write(&bytes[11..]);
+        sax.identity();
+
+        let texts = event_handler.texts.borrow();
+        assert_eq!(texts.len(), 1);
+        let text_value = String::from_utf8(texts[0].value.clone()).unwrap();
+        assert_eq!(text_value, String::from_utf8(Vec::from("something".as_bytes())).unwrap());
 
         Ok(())
     }
