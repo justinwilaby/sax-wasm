@@ -31,16 +31,16 @@ impl Tag {
     }
 
     pub fn get_name_slice(&mut self, ptr: *const u8) -> &[u8] {
+        if !self.name.is_empty() {
+            return self.get_name(ptr);
+        }
+
         let (start, end) = self.header;
         if start < end {
             let len = end - start;
             if len > 0 {
                 return unsafe { slice::from_raw_parts(ptr.add(start), len) };
             }
-        }
-
-        if !self.name.is_empty() {
-            return self.get_name(ptr);
         }
 
         &[]
@@ -125,14 +125,17 @@ impl Text {
         let (start, end) = self.header;
         self.header.0 = 0;
         self.header.1 = 0;
-        if start >= end {
+        if start > end {
             return self.value.len() > 0;
         }
+        let mut sl = &[] as &[u8];
         let len = end - start;
         if len > 0 {
-            let slice = unsafe { slice::from_raw_parts(ptr.add(start), len) };
-            self.value.extend_from_slice(slice);
+            sl = unsafe { slice::from_raw_parts(ptr.add(start), len) };
+        } else if start > 0 && start == end {
+            sl = unsafe { slice::from_raw_parts(ptr.add(start), 1) };
         }
+        self.value.extend_from_slice(sl);
         true
     }
 }
@@ -216,11 +219,6 @@ impl Accumulator {
             header: (0, 0),
             value: Vec::new(),
         };
-    }
-
-    pub fn clear(&mut self) {
-        self.header = (0, 0);
-        self.value.clear();
     }
 
     pub fn get_value_slice(&mut self, ptr: *const u8) -> &[u8] {

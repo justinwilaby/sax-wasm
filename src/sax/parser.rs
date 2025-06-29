@@ -13,27 +13,27 @@ static BOM: [u8; 3] = [0xef, 0xbb, 0xbf];
 
 /// Characters that indicate the end of a tag name
 /// in order of likelihood.
-static TAG_NAME_END: &[u8] = &[b'>' , b'/' , b' ' , b'\n', b'\t' , b'\r'];
+static TAG_NAME_END: &[u8] = &[b'>', b'/', b' ', b'\n', b'\t', b'\r'];
 
-static TEXT_END: &[u8] = &[ b'<' , b'\n'];
+static TEXT_END: &[u8] = &[b'<', b'\n'];
 
 /// Characters that indicate the end of
 /// an attribute name
-static ATTRIBUTE_NAME_END: &[u8] = &[b'=' , b'>' , b' ', b'\t', b'\n'];
+static ATTRIBUTE_NAME_END: &[u8] = &[b'=', b'>', b' ', b'\t', b'\n'];
 
-static ATTRIBUTE_VALUE_END: &[u8] = &[b' ', b'\t', b'>' , b'/'];
+static ATTRIBUTE_VALUE_END: &[u8] = &[b' ', b'\t', b'>', b'/'];
 
 /// Characters that indicate the end of
 /// a proc inst target
-static PROC_INST_TARGET_END: &[u8] = &[b'>' , b' ' , b'\n' , b'\t' , b'\r'];
+static PROC_INST_TARGET_END: &[u8] = &[b'>', b' ', b'\n', b'\t', b'\r'];
 
 /// Characters that indicate the end of a
 /// entity or entity type.
-static ENTITY_CAPTURE_END: &[u8] = &[b'>' , b'-' , b' ', b'['];
+static ENTITY_CAPTURE_END: &[u8] = &[b'>', b'-', b' ', b'['];
 
-static DOCTYPE_VALUE_END: &[u8] = &[b' ' , b'\n' , b'\t' , b'\r' , b'>'];
+static DOCTYPE_VALUE_END: &[u8] = &[b' ', b'\n', b'\t', b'\r', b'>'];
 
-static DOCTYPE_END: &[u8] = &[b'!' , b'>'];
+static DOCTYPE_END: &[u8] = &[b'!', b'>'];
 
 // Trait for implementing an event handler struct
 // to pass to the parser for receiving events
@@ -169,7 +169,7 @@ impl<'a> SAXParser<'a> {
             proc_inst: None,
             tag: Tag::new([0, 0]),
             close_tag: Accumulator::new(),
-            fragment:Vec::new(),
+            fragment: Vec::new(),
 
             // Position Tracking
             end_pos: [0, 0],
@@ -253,7 +253,7 @@ impl<'a> SAXParser<'a> {
         self.end_pos = [gc.line, gc.character];
         self.end_offset = gc.cursor;
 
-        if let Some(fragment) =  gc.get_remaining_bytes() {
+        if let Some(fragment) = gc.get_remaining_bytes() {
             self.fragment.extend_from_slice(fragment);
         }
 
@@ -329,12 +329,30 @@ impl<'a> SAXParser<'a> {
     pub fn identity(&mut self) {
         // flush text at the EOF
         self.flush_text(self.end_pos[0], self.end_pos[1], 0);
+        // Reset Configuration and State
         self.state = State::Begin;
-        self.attribute = Attribute::new();
         self.brace_ct = 0;
+        self.quote = 0;
+
+        // Reset Event Handling
+        self.dispatched.clear();
+
+        // Reset Parsing Buffers
+        self.text = None;
+        self.tags.clear();
+        self.markup_decl = None;
+        self.markup_entity = None;
+
+        self.attribute = Attribute::new();
+        self.proc_inst = None;
+        self.tag = Tag::new([0, 0]);
+        self.close_tag = Accumulator::new();
+        self.fragment.clear();
+
+        // Reset Position Tracking
         self.end_pos = [0, 0];
         self.end_offset = 0;
-        self.dispatched.clear();
+        self.source_ptr = ptr::null();
     }
 
     /// Processes a grapheme cluster.
@@ -389,7 +407,6 @@ impl<'a> SAXParser<'a> {
     fn skip_whitespace(&mut self, gc: &mut GraphemeClusters, current: &[u8]) {
         let byte = current[0];
         if byte > 32 || gc.skip_whitespace() {
-
             if let Some(text) = &mut self.text {
                 text.value.clear();
                 text.start = [gc.line, gc.character];
@@ -427,8 +444,7 @@ impl<'a> SAXParser<'a> {
         match current[0] {
             _ if is_name_start_char(current) == true => {
                 should_flush_text = false;
-                self.tag.header.0 = gc.last_cursor_pos;
-                self.tag.header.1 = gc.cursor;
+                self.tag.header = (gc.last_cursor_pos, gc.cursor);
 
                 self.state = State::OpenTag;
                 // since calling open_tag advances
@@ -438,14 +454,16 @@ impl<'a> SAXParser<'a> {
                 // being added to the wrong tag
                 self.flush_text(gc.line, character, offset);
                 self.open_tag(gc, current);
-            },
+            }
 
             b'!' => {
                 self.state = State::MarkupDecl;
 
                 let mut markup_decl = Text::new([gc.line, gc.last_character]);
-                markup_decl.header.0 =  gc.last_cursor_pos.saturating_sub(1);
-                markup_decl.header.1 =  gc.cursor;
+
+                markup_decl.header = (gc.cursor.saturating_sub(1), gc.cursor);
+                markup_decl.value.extend_from_slice(&[b'<']);
+
                 self.markup_decl = Some(markup_decl);
             }
 
@@ -462,6 +480,7 @@ impl<'a> SAXParser<'a> {
                 let mut proc_inst = ProcInst::new();
                 proc_inst.start = [gc.line, gc.character.saturating_sub(2)];
                 proc_inst.target.start = [gc.line, gc.character];
+                proc_inst.target.header = (gc.last_cursor_pos.saturating_sub(1), gc.cursor);
                 self.proc_inst = Some(proc_inst);
             }
 
@@ -493,11 +512,14 @@ impl<'a> SAXParser<'a> {
     fn open_tag(&mut self, gc: &mut GraphemeClusters, current: &[u8]) {
         self.tag.open_start = [gc.line, gc.character.saturating_sub(2)];
         let mut byte = current[0];
-
         if !TAG_NAME_END.contains(&byte) {
             if let Some((span, found)) = gc.take_until_one_found(TAG_NAME_END, true) {
                 byte = span[span.len() - 1];
-                self.tag.header.1 = if found { gc.last_cursor_pos } else { gc.cursor };
+                self.tag.header.1 = if found {
+                    gc.last_cursor_pos
+                } else {
+                    gc.cursor
+                };
             } else {
                 self.tag.header.1 = gc.last_cursor_pos;
             }
@@ -514,7 +536,7 @@ impl<'a> SAXParser<'a> {
         match byte {
             b'>' => self.process_open_tag(false, gc),
             b'/' => self.state = State::OpenTagSlash,
-            b' '| b'\t' | b'\n' | b'\r' => self.state = State::Attrib,
+            b' ' | b'\t' | b'\n' | b'\r' => self.state = State::Attrib,
             _ => {}
         }
     }
@@ -542,7 +564,9 @@ impl<'a> SAXParser<'a> {
             // We've hit a close tag - process it
             b'>' => self.process_close_tag(gc),
             // skip and catch the next iteration
-            b' ' => {gc.skip_whitespace();},
+            b' ' => {
+                gc.skip_whitespace();
+            }
             _ => {}
         }
     }
@@ -592,7 +616,6 @@ impl<'a> SAXParser<'a> {
             self.event_handler.handle_event(Event::Text, Entity::Text(&text));
             self.dispatched.push(Dispatched::Text(text));
         }
-
     }
 
     fn markup_decl(&mut self, gc: &mut GraphemeClusters, current: &[u8]) {
@@ -610,7 +633,7 @@ impl<'a> SAXParser<'a> {
         if sl_len >= 4 && &md_slice[..4] == b"<!--" {
             markup_decl.start = [gc.line, gc.character.saturating_sub(4)];
             markup_decl.value.clear();
-            markup_decl.header.0 = gc.cursor;
+            markup_decl.header = (gc.cursor, 0);
             self.state = State::Comment;
             return;
         }
@@ -619,7 +642,7 @@ impl<'a> SAXParser<'a> {
             markup_decl.start = [gc.line, gc.character.saturating_sub(9)];
             // skip over the <![CDATA[
             markup_decl.value.clear();
-            markup_decl.header.0 = gc.cursor;
+            markup_decl.header = (gc.cursor, 0);
             self.state = State::Cdata;
             return;
         }
@@ -629,7 +652,7 @@ impl<'a> SAXParser<'a> {
             // skip over the <!DOCTYPE and any whitespace after it
             gc.skip_whitespace();
             markup_decl.value.clear();
-            markup_decl.header.0 = gc.cursor;
+            markup_decl.header = (gc.cursor, 0);
             self.state = State::Doctype;
             return;
         }
@@ -643,7 +666,7 @@ impl<'a> SAXParser<'a> {
             let mut markup_entity = Text::new([gc.line, gc.character.saturating_sub(2)]);
             // skip over the <! and any whitespace afterwards
             gc.skip_whitespace();
-            markup_entity.header.0 = gc.cursor;
+            markup_entity.header = (gc.cursor, 0);
 
             self.markup_entity = Some(markup_entity);
             self.state = State::Entity;
@@ -811,7 +834,7 @@ impl<'a> SAXParser<'a> {
                 // <?process-div           \n   instruction?>
                 gc.skip_whitespace();
                 proc_inst.content.start = [gc.line, gc.character];
-                proc_inst.content.header.0 = gc.cursor;
+                proc_inst.content.header = (gc.cursor, 0);
                 self.state = State::ProcInstValue;
             }
             _ => {}
@@ -840,8 +863,9 @@ impl<'a> SAXParser<'a> {
     fn process_proc_inst(&mut self, gc: &mut GraphemeClusters) {
         self.state = State::BeginWhitespace;
         let mut proc_inst = Box::new(self.proc_inst.take().unwrap());
+        proc_inst.hydrate(self.source_ptr);
 
-        if self.events[Event::ProcessingInstruction] && proc_inst.hydrate(self.source_ptr) {
+        if self.events[Event::ProcessingInstruction] {
             proc_inst.end = [gc.line, gc.character];
             proc_inst.content.end = [gc.line, gc.character.saturating_sub(2)];
 
@@ -868,8 +892,12 @@ impl<'a> SAXParser<'a> {
         }
 
         match byte {
-            b'>' => {self.process_open_tag(false, gc);},
-            b'/' => {self.state = State::OpenTagSlash;},
+            b'>' => {
+                self.process_open_tag(false, gc);
+            }
+            b'/' => {
+                self.state = State::OpenTagSlash;
+            }
             _ => {
                 self.attribute.name.start = [gc.line, gc.character.saturating_sub(1)];
                 self.attribute.name.header.0 = gc.last_cursor_pos;
@@ -952,13 +980,14 @@ impl<'a> SAXParser<'a> {
     fn attribute_value_quoted(&mut self, gc: &mut GraphemeClusters, current: &[u8]) {
         if current[0] == self.quote {
             self.attribute.value.end = [gc.line, gc.character.saturating_sub(1)];
-            self.attribute.value.header.1 = gc.last_cursor_pos;
+            self.attribute.value.header.1 = gc.cursor.saturating_sub(1);
             self.process_attribute();
             self.quote = 0;
             self.state = State::AttribValueClosed;
             return;
         }
         gc.take_until(self.quote, false);
+        self.attribute.value.header.1 = gc.cursor
     }
 
     fn attribute_value_closed(&mut self, gc: &mut GraphemeClusters, current: &[u8]) {
@@ -984,7 +1013,11 @@ impl<'a> SAXParser<'a> {
         }
         if let Some((span, found)) = gc.take_until_one_found(ATTRIBUTE_VALUE_END, true) {
             byte = span[span.len() - 1];
-            self.attribute.value.header.1 = if found { gc.last_cursor_pos } else { gc.cursor };
+            self.attribute.value.header.1 = if found {
+                gc.last_cursor_pos
+            } else {
+                gc.cursor
+            };
         } else {
             self.attribute.value.header.1 = gc.last_cursor_pos;
         }
@@ -1040,8 +1073,8 @@ impl<'a> SAXParser<'a> {
 
     fn process_close_tag(&mut self, gc: &mut GraphemeClusters) {
         self.state = State::BeginWhitespace;
-
-        let close_tag_name = self.close_tag.get_value_slice(self.source_ptr);
+        let mut close_tag = mem::replace(&mut self.close_tag, Accumulator::new());
+        let close_tag_name = close_tag.get_value_slice(self.source_ptr);
 
         let mut found = false;
         let mut tag_index = 0;
@@ -1058,14 +1091,18 @@ impl<'a> SAXParser<'a> {
         }
 
         // Rare encounter of an </orphan> tag
-        let close_tag_name_len = close_tag_name.len();
-        self.close_tag.clear();
         if !found {
-            let text= &mut self.text.get_or_insert(Text::new([0, 0]));
-            text.header.0 = gc.cursor.saturating_sub(close_tag_name_len + 3);
-            text.start = self.tag.close_start;
+            let text = self.text.get_or_insert(Text::new([0, 0]));
 
-            self.flush_text(gc.line, gc.character, gc.cursor);
+            let mut value = Vec::from("</");
+            value.extend_from_slice(close_tag_name);
+            value.extend_from_slice(&[b'>']);
+
+            text.value = value;
+            text.start = self.tag.close_start;
+            text.header = (0, 0);
+
+            self.flush_text(gc.line, gc.character, 0);
             self.state = State::BeginWhitespace;
             return;
         }
@@ -1077,7 +1114,7 @@ impl<'a> SAXParser<'a> {
 
         let mut i = self.tags.len();
         while i > tag_index {
-            let mut tag = Box::new(unsafe { self.tags.pop().unwrap_unchecked()});
+            let mut tag = Box::new(unsafe { self.tags.pop().unwrap_unchecked() });
             tag.hydrate(self.source_ptr);
             self.event_handler.handle_event(Event::CloseTag, Entity::Tag(&tag));
             self.dispatched.push(Dispatched::Tag(tag));
@@ -1105,7 +1142,7 @@ impl<'a> SAXParser<'a> {
     fn new_text(&mut self, line: u64, character: u64, offset: usize) {
         if self.text.is_none() && (self.events[Event::Text] || self.events[Event::CloseTag]) {
             let mut text = Text::new([line, character]);
-            text.header.0 = offset;
+            text.header = (offset, offset);
             self.text = Some(text);
         }
 
@@ -1402,6 +1439,62 @@ mod tests {
     }
 
     #[test]
+    fn test_tag_write_boundary() -> Result<()> {
+        let str = r#"<div><a href="http://github.com">GitHub</a></orphan></div>"#;
+        let bytes = str.as_bytes();
+
+        for i in 0..bytes.len() {
+            let event_handler = TextEventHandler::new();
+            let mut sax = SAXParser::new(&event_handler);
+            let mut events = [false; 10];
+            events[Event::CloseTag] = true;
+            events[Event::Text] = true;
+            sax.events = events;
+
+            sax.write(&bytes[..i]);
+            sax.write(&bytes[i..]);
+
+            sax.identity();
+
+            let tags = event_handler.tags.borrow();
+            let texts = event_handler.texts.borrow();
+            assert_eq!(tags.len(), 2, "At iteration i={}, expected exactly 2 tags, got {}", i, tags.len());
+            assert_eq!(texts.len(), 2, "At iteration i={}, expected exactly 2 text elements, got {}", i, texts.len());
+
+            // orphaned close tag should be treated as text
+            assert_eq!(&texts[0].value, b"GitHub", "At iteration i={}, first text value should be 'GitHub', got {:?}", i, texts[0].value);
+            assert_eq!(
+                &texts[0].start,
+                &[0, 33],
+                "At iteration i={}, first text start position should be [0, 33], got {:?}",
+                i,
+                texts[0].start
+            );
+            assert_eq!(&texts[0].end, &[0, 39], "At iteration i={}, first text end position should be [0, 39], got {:?}", i, texts[0].end);
+            assert_eq!(
+                &texts[1].value, b"</orphan>",
+                "At iteration i={}, second text value should be '</orphan>', got {:?}",
+                i, texts[1].value
+            );
+
+            assert_eq!(tags[0].name, b"a", "At iteration i={}, first tag name should be 'a', got {:?}", i, tags[0].name);
+            assert_eq!(
+                tags[0].close_start[1], 39,
+                "At iteration i={}, first tag close start position should be 39, got {}",
+                i, tags[0].close_start[1]
+            );
+
+            assert_eq!(tags[1].name, b"div", "At iteration i={}, second tag name should be 'div', got {:?}", i, tags[1].name);
+            assert_eq!(
+                tags[1].close_start[1], 52,
+                "At iteration i={}, second tag close start position should be 52, got {}",
+                i, tags[1].close_start[1]
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
     fn test_whitespace() -> Result<()> {
         let event_handler = TextEventHandler::new();
         let mut sax = SAXParser::new(&event_handler);
@@ -1453,13 +1546,10 @@ the plugin
         Ok(())
     }
     #[test]
-    fn test_comment_2() -> Result<()> {
-        let event_handler = TextEventHandler::new();
-        let mut sax = SAXParser::new(&event_handler);
+    fn test_comment_write_boundary_2() -> Result<()> {
         let mut events = [false; 10];
         events[Event::ProcessingInstruction] = true;
         events[Event::Comment] = true;
-        sax.events = events;
         let str = "<!--lit-part cI7PGs8mxHY=-->
       <p><!--lit-part-->hello<!--/lit-part--></p>
       <!--lit-part BRUAAAUVAAA=--><?><!--/lit-part-->
@@ -1467,13 +1557,25 @@ the plugin
       <p>more</p>
     <!--/lit-part-->";
 
-        sax.write(str.as_bytes());
-        sax.identity();
+        let bytes = str.as_bytes();
+        for i in 0..bytes.len() {
+            let event_handler = TextEventHandler::new();
+            let mut sax = SAXParser::new(&event_handler);
+            sax.events = events;
 
-        let comments = event_handler.texts.borrow();
-        assert_eq!(comments.len(), 8);
-        let text_value = String::from_utf8(comments[0].value.clone()).unwrap();
-        assert_eq!(text_value, "lit-part cI7PGs8mxHY=");
+            sax.write(Vec::from(&bytes[..i]).as_slice());
+            sax.write(&bytes[i..]);
+            sax.identity();
+
+            let comments = event_handler.texts.borrow();
+            assert_eq!(comments.len(), 8, "At iteration i={}, expected exactly 8 comments, got {}", i, comments.len());
+            let text_value = String::from_utf8(comments[0].value.clone()).unwrap();
+            assert_eq!(
+                text_value, "lit-part cI7PGs8mxHY=",
+                "At iteration i={}, first comment content should be 'lit-part cI7PGs8mxHY=', got {:?}",
+                i, text_value
+            );
+        }
 
         Ok(())
     }
@@ -1520,24 +1622,31 @@ the plugin
     }
 
     #[test]
-    fn test_cdata_with_write_boundary() -> Result<()> {
-        let event_handler = TextEventHandler::new();
-        let mut sax = SAXParser::new(&event_handler);
-        let mut events = [false; 10];
-        events[Event::Cdata] = true;
-        sax.events = events;
+    fn test_cdata_write_boundary() -> Result<()> {
         let str = "<div><![CDATA[something]]>";
         let bytes = str.as_bytes();
-        sax.write(&bytes[..11]);
+        for i in 0..bytes.len() {
+            let event_handler = TextEventHandler::new();
+            let mut sax = SAXParser::new(&event_handler);
+            let mut events = [false; 10];
+            events[Event::Cdata] = true;
+            sax.events = events;
 
-        sax.write(&bytes[11..]);
-        sax.identity();
+            sax.write(Vec::from(&bytes[..i]).as_slice());
+            sax.write(&bytes[i..]);
+            sax.identity();
 
-        let texts = event_handler.texts.borrow();
-        assert_eq!(texts.len(), 1);
-        let text_value = String::from_utf8(texts[0].value.clone()).unwrap();
-        assert_eq!(text_value, String::from_utf8(Vec::from("something".as_bytes())).unwrap());
-
+            let texts = event_handler.texts.borrow();
+            assert_eq!(texts.len(), 1, "At iteration i={}, expected exactly one text element, got {}", i, texts.len());
+            let text_value = String::from_utf8(texts[0].value.clone()).unwrap();
+            assert_eq!(
+                text_value,
+                String::from_utf8(Vec::from("something".as_bytes())).unwrap(),
+                "At iteration i={}, CDATA content should be 'something', got {:?}",
+                i,
+                text_value
+            );
+        }
         Ok(())
     }
 
@@ -1721,180 +1830,58 @@ the plugin
         assert_eq!(tags[5].self_closing, false);
         Ok(())
     }
+
     #[test]
-    fn test_cdata_broken_opening_1() -> Result<()> {
-        let event_handler = TextEventHandler::new();
-        let mut sax = SAXParser::new(&event_handler);
-        let mut events = [false; 10];
-        events[Event::Cdata] = true;
-        sax.events = events;
+    fn test_comment_write_boundary() -> Result<()> {
+        let str = r#"<!--some comment here-->"#;
+        let bytes = str.as_bytes();
 
-        // Break oopening sequence across slice boundary
-        let first_part = b"<foo><![CDATA[";
-        let second_part = b"some content here]]></foo>";
+        for i in 0..bytes.len() {
+            let event_handler = TextEventHandler::new();
+            let mut sax = SAXParser::new(&event_handler);
+            let mut events = [false; 10];
+            events[Event::Comment] = true;
+            sax.events = events;
 
-        sax.write(first_part);
-        sax.write(second_part);
-        sax.identity();
+            let bytes = str.as_bytes();
+            sax.write(Vec::from(&bytes[..i]).as_slice());
+            sax.write(&bytes[i..]);
 
-        let cdatas = event_handler.texts.borrow();
-        assert_eq!(cdatas.len(), 1, "Bug case: Expected exactly one CDATA section");
-        assert_eq!(cdatas[0].value, b"some content here", "Bug case: CDATA content should be properly captured");
+            sax.identity();
 
+            let comments = event_handler.texts.borrow();
+            assert_eq!(comments.len(), 1, "At iteration i={}, expected exactly one comment, got {}", i, comments.len());
+            assert_eq!(
+                comments[0].value, b"some comment here",
+                "At iteration i={}, comment content should be 'some comment here', got {:?}",
+                i, comments[0].value
+            );
+        }
         Ok(())
     }
+
     #[test]
-    fn test_cdata_broken_opening_2() -> Result<()> {
-        let event_handler = TextEventHandler::new();
-        let mut sax = SAXParser::new(&event_handler);
-        let mut events = [false; 10];
-        events[Event::Cdata] = true;
-        sax.events = events;
+    fn test_attribute_value_write_boundary() -> Result<()> {
+        let str = r#"<text top="100.00" />"#;
+        let bytes = str.as_bytes();
 
-        // Break opening sequence across slice boundary
-        let first_part = b"<foo><![";
-        let second_part = b"CDATA[some content here]]></foo>";
+        for i in 0..bytes.len() {
+            let event_handler = TextEventHandler::new();
+            let mut sax = SAXParser::new(&event_handler);
+            let mut events = [false; 10];
+            events[Event::Attribute] = true;
+            sax.events = events;
 
-        sax.write(first_part);
-        sax.write(second_part);
-        sax.identity();
+            sax.write(&bytes[..i]);
 
-        let cdatas = event_handler.texts.borrow();
-        assert_eq!(cdatas.len(), 1, "Bug case: Expected exactly one CDATA section");
-        assert_eq!(cdatas[0].value, b"some content here", "Bug case: CDATA content should be properly captured");
+            sax.write(&bytes[i..]);
+            sax.identity();
 
-        Ok(())
-    }
-    #[test]
-    fn test_cdata_broken_closing_1() -> Result<()> {
-        let event_handler = TextEventHandler::new();
-        let mut sax = SAXParser::new(&event_handler);
-        let mut events = [false; 10];
-        events[Event::Cdata] = true;
-        sax.events = events;
-
-        // Break closing sequence across slice boundary
-        let first_part = b"<foo><![CDATA[some content here]";
-        let second_part = b"]></foo>";
-
-        sax.write(first_part);
-        sax.write(second_part);
-        sax.identity();
-
-        let cdatas = event_handler.texts.borrow();
-        assert_eq!(cdatas.len(), 1, "Bug case: Expected exactly one CDATA section");
-        assert_eq!(cdatas[0].value, b"some content here", "Bug case: CDATA content should be properly captured");
-
-        Ok(())
-    }
-    #[test]
-    fn test_cdata_broken_closing_2() -> Result<()> {
-        let event_handler = TextEventHandler::new();
-        let mut sax = SAXParser::new(&event_handler);
-        let mut events = [false; 10];
-        events[Event::Cdata] = true;
-        sax.events = events;
-
-        // Break closing sequence across slice boundary
-        let first_part = b"<foo><![CDATA[some content here";
-        let second_part = b"]]></foo>";
-
-        sax.write(first_part);
-        sax.write(second_part);
-        sax.identity();
-
-        let cdatas = event_handler.texts.borrow();
-        assert_eq!(cdatas.len(), 1, "Bug case: Expected exactly one CDATA section");
-        assert_eq!(cdatas[0].value, b"some content here", "Bug case: CDATA content should be properly captured");
-
-        Ok(())
-    }
-    #[test]
-    fn test_comment_broken_opening_1() -> Result<()> {
-        let event_handler = TextEventHandler::new();
-        let mut sax = SAXParser::new(&event_handler);
-        let mut events = [false; 10];
-        events[Event::Comment] = true;
-        sax.events = events;
-
-        // break opening sequence across slice boundary
-        let first_part = b"<!";
-        let second_part = b"--some comment here-->";
-
-        sax.write(first_part);
-        sax.write(second_part);
-        sax.identity();
-
-        let comments = event_handler.texts.borrow();
-        assert_eq!(comments.len(), 1, "Bug case: Expected exactly one comment");
-        assert_eq!(comments[0].value, b"some comment here", "Bug case: Comment content should be properly captured");
-
-        Ok(())
-    }
-    #[test]
-    fn test_comment_broken_opening_2() -> Result<()> {
-        let event_handler = TextEventHandler::new();
-        let mut sax = SAXParser::new(&event_handler);
-        let mut events = [false; 10];
-        events[Event::Comment] = true;
-        sax.events = events;
-
-        // break opening sequence across slice boundary
-        let first_part = b"<!--";
-        let second_part = b"some comment here-->";
-
-        sax.write(first_part);
-        sax.write(second_part);
-        sax.identity();
-
-        let comments = event_handler.texts.borrow();
-        assert_eq!(comments.len(), 1, "Bug case: Expected exactly one comment");
-        assert_eq!(comments[0].value, b"some comment here", "Bug case: Comment content should be properly captured");
-
-        Ok(())
-    }
-    #[test]
-    fn test_comment_broken_closing_1() -> Result<()> {
-        let event_handler = TextEventHandler::new();
-        let mut sax = SAXParser::new(&event_handler);
-        let mut events = [false; 10];
-        events[Event::Comment] = true;
-        sax.events = events;
-
-        // break opening sequence across slice boundary
-        let first_part = b"<!--some comment here-";
-        let second_part = b"->";
-
-        sax.write(first_part);
-        sax.write(second_part);
-        sax.identity();
-
-        let comments = event_handler.texts.borrow();
-        assert_eq!(comments.len(), 1, "Bug case: Expected exactly one comment");
-        assert_eq!(comments[0].value, b"some comment here", "Bug case: Comment content should be properly captured");
-
-        Ok(())
-    }
-    #[test]
-    fn test_comment_broken_closing_2() -> Result<()> {
-        let event_handler = TextEventHandler::new();
-        let mut sax = SAXParser::new(&event_handler);
-        let mut events = [false; 10];
-        events[Event::Comment] = true;
-        sax.events = events;
-
-        // break opening sequence across slice boundary
-        let first_part = b"<!--some comment here";
-        let second_part = b"-->";
-
-        sax.write(first_part);
-        sax.write(second_part);
-        sax.identity();
-
-        let comments = event_handler.texts.borrow();
-        assert_eq!(comments.len(), 1, "Bug case: Expected exactly one comment");
-        assert_eq!(comments[0].value, b"some comment here", "Bug case: Comment content should be properly captured");
-
+            let attrs = event_handler.attributes.borrow();
+            assert_eq!(attrs.len(), 1, "At iteration i={}, Expected exactly one attribute, got {:?}", i, attrs.len());
+            assert_eq!(attrs[0].value.value, b"100.00", "At iteration i={}, Expected attribute value to be 100.00, got {:?}", i, attrs[0].value.value);
+            assert_eq!(attrs[0].name.value, b"top", "At iteration i={}, Expected attribute name to be 100.00, got {:?}", i, attrs[0].name.value);
+        }
         Ok(())
     }
 }

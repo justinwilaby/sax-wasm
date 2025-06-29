@@ -47,11 +47,10 @@ describe('SaxWasm', () => {
             'plugin',
             'name',
             'name',
-            'undefined',
             'name',
             'keywords'
         ];
-        deepStrictEqual(_data.length, 7);
+        deepStrictEqual(_data.length, 6);
         _data.forEach((data, index) => deepStrictEqual('' + (data.name?.value || data.name), names[index]));
     });
 
