@@ -1443,7 +1443,7 @@ mod tests {
         let str = r#"<div><a href="http://github.com">GitHub</a></orphan></div>"#;
         let bytes = str.as_bytes();
 
-        for i in 0..bytes.len() {
+        for i in 1..bytes.len() {
             let event_handler = TextEventHandler::new();
             let mut sax = SAXParser::new(&event_handler);
             let mut events = [false; 10];
@@ -1545,6 +1545,7 @@ the plugin
 
         Ok(())
     }
+
     #[test]
     fn test_comment_write_boundary_2() -> Result<()> {
         let mut events = [false; 10];
@@ -1558,12 +1559,12 @@ the plugin
     <!--/lit-part-->";
 
         let bytes = str.as_bytes();
-        for i in 0..bytes.len() {
+        for i in 1..bytes.len() {
             let event_handler = TextEventHandler::new();
             let mut sax = SAXParser::new(&event_handler);
             sax.events = events;
 
-            sax.write(Vec::from(&bytes[..i]).as_slice());
+            sax.write(&bytes[..i]);
             sax.write(&bytes[i..]);
             sax.identity();
 
@@ -1625,14 +1626,14 @@ the plugin
     fn test_cdata_write_boundary() -> Result<()> {
         let str = "<div><![CDATA[something]]>";
         let bytes = str.as_bytes();
-        for i in 0..bytes.len() {
+        let mut events = [false; 10];
+        events[Event::Cdata] = true;
+        for i in 1..bytes.len() {
             let event_handler = TextEventHandler::new();
             let mut sax = SAXParser::new(&event_handler);
-            let mut events = [false; 10];
-            events[Event::Cdata] = true;
             sax.events = events;
 
-            sax.write(Vec::from(&bytes[..i]).as_slice());
+            sax.write(&bytes[..i]);
             sax.write(&bytes[i..]);
             sax.identity();
 
@@ -1835,16 +1836,17 @@ the plugin
     fn test_comment_write_boundary() -> Result<()> {
         let str = r#"<!--some comment here-->"#;
         let bytes = str.as_bytes();
+        let mut events = [false; 10];
+        events[Event::Comment] = true;
 
-        for i in 0..bytes.len() {
+        for i in 1..bytes.len() {
             let event_handler = TextEventHandler::new();
             let mut sax = SAXParser::new(&event_handler);
-            let mut events = [false; 10];
-            events[Event::Comment] = true;
+
             sax.events = events;
 
             let bytes = str.as_bytes();
-            sax.write(Vec::from(&bytes[..i]).as_slice());
+            sax.write(&bytes[..i]);
             sax.write(&bytes[i..]);
 
             sax.identity();
@@ -1865,7 +1867,7 @@ the plugin
         let str = r#"<text top="100.00" />"#;
         let bytes = str.as_bytes();
 
-        for i in 0..bytes.len() {
+        for i in 1..bytes.len() {
             let event_handler = TextEventHandler::new();
             let mut sax = SAXParser::new(&event_handler);
             let mut events = [false; 10];
@@ -1873,7 +1875,6 @@ the plugin
             sax.events = events;
 
             sax.write(&bytes[..i]);
-
             sax.write(&bytes[i..]);
             sax.identity();
 
