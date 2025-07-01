@@ -31,16 +31,16 @@ impl Tag {
     }
 
     pub fn get_name_slice(&mut self, ptr: *const u8) -> &[u8] {
+        if !self.name.is_empty() {
+            return self.get_name(ptr);
+        }
+
         let (start, end) = self.header;
         if start < end {
             let len = end - start;
             if len > 0 {
                 return unsafe { slice::from_raw_parts(ptr.add(start), len) };
             }
-        }
-
-        if !self.name.is_empty() {
-            return self.get_name(ptr);
         }
 
         &[]
@@ -97,36 +97,45 @@ impl Text {
 
     pub fn get_value_slice(&mut self, ptr: *const u8) -> &[u8] {
         let (start, end) = self.header;
+        let mut sl = &[] as &[u8];
         if start > end {
             return &[];
         }
         let len = end - start;
         if len > 0 {
-            return unsafe { slice::from_raw_parts(ptr.add(start), len) };
+            sl = unsafe { slice::from_raw_parts(ptr.add(start), len) };
         } else if start > 0 && start == end {
-            return unsafe { slice::from_raw_parts(ptr.add(start), 1) };
+            sl = unsafe { slice::from_raw_parts(ptr.add(start), 1) };
         }
 
-        if !self.value.is_empty() {
-            self.hydrate(ptr);
-            return self.value.as_slice();
+        let v = &mut self.value.clone();
+        if !v.is_empty() {
+            v.extend_from_slice(sl);
+            let len = v.len();
+            let v_slice = v.as_slice();
+            let v_ptr = v_slice.as_ptr();
+
+            sl = unsafe { slice::from_raw_parts(v_ptr, len) };
         }
 
-        &[]
+        sl
     }
 
     pub fn hydrate(&mut self, ptr: *const u8) -> bool {
         let (start, end) = self.header;
-        if start >= end {
-            return self.value.len() > 0;
-        }
-        let len = end - start;
-        if len > 0 {
-            let slice = unsafe { slice::from_raw_parts(ptr.add(start), len) };
-            self.value.extend_from_slice(slice);
-        }
         self.header.0 = 0;
         self.header.1 = 0;
+        if start > end {
+            return self.value.len() > 0;
+        }
+        let mut sl = &[] as &[u8];
+        let len = end - start;
+        if len > 0 {
+            sl = unsafe { slice::from_raw_parts(ptr.add(start), len) };
+        } else if start > 0 && start == end {
+            sl = unsafe { slice::from_raw_parts(ptr.add(start), 1) };
+        }
+        self.value.extend_from_slice(sl);
         true
     }
 }
@@ -212,11 +221,6 @@ impl Accumulator {
         };
     }
 
-    pub fn clear(&mut self) {
-        self.header = (0, 0);
-        self.value.clear();
-    }
-
     pub fn get_value_slice(&mut self, ptr: *const u8) -> &[u8] {
         let mut sl = &[] as &[u8];
 
@@ -246,6 +250,8 @@ impl Accumulator {
 
     pub fn hydrate(&mut self, ptr: *const u8) {
         let (start, end) = self.header;
+        self.header.0 = 0;
+        self.header.1 = 0;
         if start >= end {
             return;
         }
@@ -254,7 +260,5 @@ impl Accumulator {
             let sl = unsafe { slice::from_raw_parts(ptr.add(start), len) };
             self.value.extend_from_slice(sl);
         }
-        self.header.0 = 0;
-        self.header.1 = 0;
     }
 }

@@ -17,7 +17,7 @@ use super::utils::grapheme_len;
 /// * `cursor` - The current position in the byte slice.
 pub struct GraphemeClusters<'a> {
     bytes: &'a [u8],
-    byte_len: usize,
+    pub byte_len: usize,
     pub line: u64,
     pub last_line: u64,
     pub character: u64,
@@ -52,9 +52,9 @@ impl GraphemeClusters<'_> {
             cursor: 0,
             last_cursor_pos: 0,
             line: 0,
-            last_line:0,
+            last_line: 0,
             character: 0,
-            last_character:0,
+            last_character: 0,
         }
     }
 
@@ -157,7 +157,6 @@ impl GraphemeClusters<'_> {
         let mut len = 0;
 
         while cursor < max_index {
-
             let next_byte = unsafe { *ptr.add(cursor) };
 
             if haystack.contains(&next_byte) {
@@ -171,7 +170,11 @@ impl GraphemeClusters<'_> {
                 line += 1;
                 character = 0;
             } else {
-                character += if len != 4 { 1 } else { 2 };
+                character += if len != 4 {
+                    1
+                } else {
+                    2
+                };
             }
             cursor += len;
         }
