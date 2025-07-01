@@ -87,7 +87,7 @@ pub struct SAXParser<'a> {
     proc_inst: Option<ProcInst>,
     attribute: Attribute,
     tag: Tag,
-    close_tag: Accumulator,
+    close_tag: Text,
     fragment: Vec<u8>,
 
     // Position Tracking
@@ -168,7 +168,7 @@ impl<'a> SAXParser<'a> {
             attribute: Attribute::new(),
             proc_inst: None,
             tag: Tag::new([0, 0]),
-            close_tag: Accumulator::new(),
+            close_tag: Text::new([0,0]),
             fragment: Vec::new(),
 
             // Position Tracking
@@ -346,7 +346,7 @@ impl<'a> SAXParser<'a> {
         self.attribute = Attribute::new();
         self.proc_inst = None;
         self.tag = Tag::new([0, 0]);
-        self.close_tag = Accumulator::new();
+        self.close_tag = Text::new([0,0]);
         self.fragment.clear();
 
         // Reset Position Tracking
@@ -627,7 +627,7 @@ impl<'a> SAXParser<'a> {
         let markup_decl = self.markup_decl.as_mut().unwrap();
         markup_decl.header.1 = gc.cursor;
 
-        let md_slice = markup_decl.get_value_slice(self.source_ptr);
+        let md_slice = markup_decl.get_value_slice(self.source_ptr, gc.byte_len);
         let sl_len = md_slice.len();
 
         if sl_len >= 4 && &md_slice[..4] == b"<!--" {
@@ -672,6 +672,8 @@ impl<'a> SAXParser<'a> {
             self.state = State::Entity;
             self.markup_decl = None;
             return;
+        } else {
+            markup_decl.header = (gc.cursor, 0);
         }
     }
 
@@ -685,7 +687,7 @@ impl<'a> SAXParser<'a> {
 
         markup_decl.header.1 = gc.cursor;
 
-        let markup_slice = markup_decl.get_value_slice(self.source_ptr);
+        let markup_slice = markup_decl.get_value_slice(self.source_ptr, gc.byte_len);
         let len = markup_slice.len();
 
         // We're looking for exactly '-->'
@@ -699,6 +701,8 @@ impl<'a> SAXParser<'a> {
             }
             self.markup_decl = None;
             self.state = State::BeginWhitespace;
+        } else {
+            markup_decl.header = (gc.cursor, 0);
         }
     }
 
@@ -710,7 +714,7 @@ impl<'a> SAXParser<'a> {
         let markup_decl = self.markup_decl.as_mut().unwrap();
         markup_decl.header.1 = gc.cursor;
 
-        let markup_slice = markup_decl.get_value_slice(self.source_ptr);
+        let markup_slice = markup_decl.get_value_slice(self.source_ptr, gc.byte_len);
         let len = markup_slice.len();
         // We're looking for exactly ']]>'
         if len > 2 && &markup_slice[(len - 3)..] == b"]]>" {
@@ -722,6 +726,8 @@ impl<'a> SAXParser<'a> {
                 self.dispatched.push(Dispatched::Text(markup_decl));
             }
             self.state = State::BeginWhitespace;
+        } else {
+            markup_decl.header = (gc.cursor, 0);
         }
     }
 
@@ -1073,8 +1079,8 @@ impl<'a> SAXParser<'a> {
 
     fn process_close_tag(&mut self, gc: &mut GraphemeClusters) {
         self.state = State::BeginWhitespace;
-        let mut close_tag = mem::replace(&mut self.close_tag, Accumulator::new());
-        let close_tag_name = close_tag.get_value_slice(self.source_ptr);
+        let mut close_tag = mem::replace(&mut self.close_tag, Text::new([0,0]));
+        let close_tag_name = close_tag.get_value_slice(self.source_ptr, gc.byte_len);
 
         let mut found = false;
         let mut tag_index = 0;
@@ -1443,7 +1449,7 @@ mod tests {
         let str = r#"<div><a href="http://github.com">GitHub</a></orphan></div>"#;
         let bytes = str.as_bytes();
 
-        for i in 0..bytes.len() {
+        for i in 1..bytes.len() {
             let event_handler = TextEventHandler::new();
             let mut sax = SAXParser::new(&event_handler);
             let mut events = [false; 10];
@@ -1545,25 +1551,25 @@ the plugin
 
         Ok(())
     }
+
     #[test]
     fn test_comment_write_boundary_2() -> Result<()> {
         let mut events = [false; 10];
-        events[Event::ProcessingInstruction] = true;
         events[Event::Comment] = true;
-        let str = "<!--lit-part cI7PGs8mxHY=-->
-      <p><!--lit-part-->hello<!--/lit-part--></p>
-      <!--lit-part BRUAAAUVAAA=--><?><!--/lit-part-->
-      <!--lit-part--><!--/lit-part-->
-      <p>more</p>
-    <!--/lit-part-->";
+        let str = r#"<!--lit-part cI7PGs8mxHY=-->
+        <p><!--lit-part-->hello<!--/lit-part--></p>
+        <!--lit-part BRUAAAUVAAA=--><?><!--/lit-part-->
+        <!--lit-part--><!--/lit-part-->
+        <p>more</p>
+        <!--/lit-part-->"#;
 
         let bytes = str.as_bytes();
-        for i in 0..bytes.len() {
+        for i in 1..bytes.len() {
             let event_handler = TextEventHandler::new();
             let mut sax = SAXParser::new(&event_handler);
             sax.events = events;
 
-            sax.write(Vec::from(&bytes[..i]).as_slice());
+            sax.write(&bytes[..i]);
             sax.write(&bytes[i..]);
             sax.identity();
 
@@ -1625,14 +1631,14 @@ the plugin
     fn test_cdata_write_boundary() -> Result<()> {
         let str = "<div><![CDATA[something]]>";
         let bytes = str.as_bytes();
-        for i in 0..bytes.len() {
+        let mut events = [false; 10];
+        events[Event::Cdata] = true;
+        for i in 1..bytes.len() {
             let event_handler = TextEventHandler::new();
             let mut sax = SAXParser::new(&event_handler);
-            let mut events = [false; 10];
-            events[Event::Cdata] = true;
             sax.events = events;
 
-            sax.write(Vec::from(&bytes[..i]).as_slice());
+            sax.write(&bytes[..i]);
             sax.write(&bytes[i..]);
             sax.identity();
 
@@ -1835,16 +1841,17 @@ the plugin
     fn test_comment_write_boundary() -> Result<()> {
         let str = r#"<!--some comment here-->"#;
         let bytes = str.as_bytes();
+        let mut events = [false; 10];
+        events[Event::Comment] = true;
 
-        for i in 0..bytes.len() {
+        for i in 1..bytes.len() {
             let event_handler = TextEventHandler::new();
             let mut sax = SAXParser::new(&event_handler);
-            let mut events = [false; 10];
-            events[Event::Comment] = true;
+
             sax.events = events;
 
             let bytes = str.as_bytes();
-            sax.write(Vec::from(&bytes[..i]).as_slice());
+            sax.write(&bytes[..i]);
             sax.write(&bytes[i..]);
 
             sax.identity();
@@ -1865,7 +1872,7 @@ the plugin
         let str = r#"<text top="100.00" />"#;
         let bytes = str.as_bytes();
 
-        for i in 0..bytes.len() {
+        for i in 1..bytes.len() {
             let event_handler = TextEventHandler::new();
             let mut sax = SAXParser::new(&event_handler);
             let mut events = [false; 10];
@@ -1873,7 +1880,6 @@ the plugin
             sax.events = events;
 
             sax.write(&bytes[..i]);
-
             sax.write(&bytes[i..]);
             sax.identity();
 

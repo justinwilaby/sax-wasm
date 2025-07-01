@@ -95,30 +95,23 @@ impl Text {
         };
     }
 
-    pub fn get_value_slice(&mut self, ptr: *const u8) -> &[u8] {
-        let (start, end) = self.header;
+    pub fn get_value_slice(&mut self, ptr: *const u8, ptr_len: usize) -> &[u8] {
         let mut sl = &[] as &[u8];
-        if start > end {
-            return &[];
+
+        let (start, end) = self.header;
+        if start > end || end > ptr_len {
+            return &self.value.as_slice();
         }
         let len = end - start;
         if len > 0 {
-            sl = unsafe { slice::from_raw_parts(ptr.add(start), len) };
+            sl = unsafe { slice::from_raw_parts(ptr.add(start), len) }
         } else if start > 0 && start == end {
-            sl = unsafe { slice::from_raw_parts(ptr.add(start), 1) };
+            sl = unsafe { slice::from_raw_parts(ptr.add(start), 1) }
         }
 
-        let v = &mut self.value.clone();
-        if !v.is_empty() {
-            v.extend_from_slice(sl);
-            let len = v.len();
-            let v_slice = v.as_slice();
-            let v_ptr = v_slice.as_ptr();
-
-            sl = unsafe { slice::from_raw_parts(v_ptr, len) };
-        }
-
-        sl
+        self.value.extend_from_slice(sl);
+        self.header = (0, 0);
+        return &self.value.as_slice();
     }
 
     pub fn hydrate(&mut self, ptr: *const u8) -> bool {
@@ -226,7 +219,7 @@ impl Accumulator {
 
         let (start, end) = self.header;
         if start > end {
-            return sl;
+            return &self.value.as_slice();
         }
         let len = end - start;
         if len > 0 {
