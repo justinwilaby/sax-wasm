@@ -47,12 +47,12 @@ describe('SaxWasm', () => {
             'plugin',
             'name',
             'name',
-            'undefined',
+            'name="test 3 attr" some comment',
             'name',
             'keywords'
         ];
         deepStrictEqual(_data.length, 7);
-        _data.forEach((data, index) => deepStrictEqual('' + (data.name?.value || data.name), names[index]));
+        _data.forEach((data, index) => deepStrictEqual('' + (data.name?.value || data.name || data.value), names[index]));
     });
 
     it('should contain the complete comment', () => {

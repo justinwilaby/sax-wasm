@@ -22,7 +22,7 @@
     "test": "jest",
     "coverage": "nyc -r text -r json-summary jest",
     "build:wasm": "cargo build --target wasm32-unknown-unknown --release && npm run wasm-opt",
-    "wasm-opt": "wasm-opt -O4 target/wasm32-unknown-unknown/release/sax_wasm.wasm -o lib/sax-wasm.wasm",
+    "wasm-opt": "wasm-opt -O4 target/wasm32-unknown-unknown/release/sax_wasm.wasm -o lib/sax-wasm.wasm --enable-bulk-memory",
     "build": "(npm run build:esm && npm run build:cjs) && npm run build:wasm && tsc --emitDeclarationOnly",
     "build:dev": "(npm run build:esm -- --sourceMap && npm run build:cjs -- --sourceMap ) && npm run build:wasm && tsc --emitDeclarationOnly",
     "build:esm": "tsc --module esnext --outDir lib/esm --target esnext",

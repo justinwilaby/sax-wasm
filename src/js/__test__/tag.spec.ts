@@ -139,4 +139,124 @@ describe('SaxWasm', () => {
       const {start, end} = _data[2].attributes[0].value;
       strictEqual(doc.slice(start.character, end.character), './123/123');
   });
+
+  it('should handle tag write boundaries correctly', async () => {
+    // Rust: test_tag_write_boundary
+    const str = '<div><a href="http://github.com">GitHub</a></orphan></div>';
+    const bytes = Buffer.from(str);
+    for (let i = 1; i < bytes.length; i++) {
+      parser = new SAXParser();
+      parser.events = SaxEventType.CloseTag | SaxEventType.Text;
+      _data = [];
+      parser.eventHandler = function (event: SaxEventType, data: Reader<Detail>) {
+        _data.push(data.toJSON() as any);
+      };
+      await parser.prepareWasm(saxWasm);
+      parser.write(bytes.subarray(0, i));
+      parser.write(bytes.subarray(i));
+      parser.end();
+      const tags = _data.filter((d) => d.name);
+      const texts = _data.filter((d) => d.value);
+      deepEqual(tags.length, 2, `At iteration i=${i}, expected exactly 2 tags, got ${tags.length}`);
+      deepEqual(texts.length, 2, `At iteration i=${i}, expected exactly 2 text elements, got ${texts.length}`);
+      deepEqual(texts[0].value, 'GitHub', `At iteration i=${i}, first text value should be 'GitHub', got ${texts[0].value}`);
+      deepEqual(texts[1].value, '</orphan>', `At iteration i=${i}, second text value should be '</orphan>', got ${texts[1].value}`);
+      deepEqual(tags[0].name, 'a', `At iteration i=${i}, first tag name should be 'a', got ${tags[0].name}`);
+      deepEqual(tags[1].name, 'div', `At iteration i=${i}, second tag name should be 'div', got ${tags[1].name}`);
+    }
+  });
+
+  it('should handle comment write boundaries correctly', async () => {
+    // Rust: test_comment_write_boundary
+    const str = '<!--some comment here-->';
+    const bytes = Buffer.from(str);
+    for (let i = 1; i < bytes.length; i++) {
+      parser = new SAXParser();
+      parser.events = SaxEventType.Comment;
+      _data = [];
+      parser.eventHandler = function (event: SaxEventType, data: Reader<Detail>) {
+        _data.push(data.toJSON() as any);
+      };
+      await parser.prepareWasm(saxWasm);
+      parser.write(bytes.subarray(0, i));
+      parser.write(bytes.subarray(i));
+      parser.end();
+      const comments = _data.filter((d) => d.value);
+      deepEqual(comments.length, 1, `At iteration i=${i}, expected exactly one comment, got ${comments.length}`);
+      deepEqual(comments[0].value, 'some comment here', `At iteration i=${i}, comment content should be 'some comment here', got ${comments[0].value}`);
+    }
+  });
+
+  it('should handle attribute value write boundaries correctly', async () => {
+    // Rust: test_attribute_value_write_boundary
+    const str = '<text top="100.00" />';
+    const bytes = Buffer.from(str);
+    for (let i = 1; i < bytes.length; i++) {
+      parser = new SAXParser();
+      parser.events = SaxEventType.Attribute;
+      _data = [];
+      parser.eventHandler = function (event: SaxEventType, data: Reader<Detail>) {
+        _data.push(data.toJSON() as any);
+      };
+      await parser.prepareWasm(saxWasm);
+      parser.write(bytes.subarray(0, i));
+      parser.write(bytes.subarray(i));
+      parser.end();
+      const attrs = _data.filter((d: any) => d.name && d.value && typeof d.value === 'object' && typeof d.value.value === 'string');
+      deepEqual(attrs.length, 1, `At iteration i=${i}, Expected exactly one attribute, got ${attrs.length}`);
+      deepEqual((attrs[0].value as any).value, '100.00', `At iteration i=${i}, Expected attribute value to be 100.00, got ${(attrs[0].value as any).value}`);
+      deepEqual((attrs[0].name as any).value, 'top', `At iteration i=${i}, Expected attribute name to be top, got ${(attrs[0].name as any).value}`);
+    }
+  });
+
+  it('should handle cdata write boundaries correctly', async () => {
+    // Rust: test_cdata_write_boundary
+    const str = '<div><![CDATA[something]]>';
+    const bytes = Buffer.from(str);
+    for (let i = 1; i < bytes.length; i++) {
+      parser = new SAXParser();
+      parser.events = SaxEventType.Cdata;
+      _data = [];
+      parser.eventHandler = function (event: SaxEventType, data: Reader<Detail>) {
+        _data.push(data.toJSON() as any);
+      };
+      await parser.prepareWasm(saxWasm);
+      parser.write(bytes.subarray(0, i));
+      parser.write(bytes.subarray(i));
+      parser.end();
+      const texts = _data.filter((d) => d.value);
+      deepEqual(texts.length, 1, `At iteration i=${i}, expected exactly one text element, got ${texts.length}`);
+      deepEqual(texts[0].value, 'something', `At iteration i=${i}, CDATA content should be 'something', got ${texts[0].value}`);
+    }
+  });
+
+  it('should handle comment write boundary 2 correctly', async () => {
+    const str = `<!--lit-part cI7PGs8mxHY=-->
+        <p><!--lit-part-->hello<!--/lit-part--></p>
+        <!--lit-part BRUAAAUVAAA=--><?><!--/lit-part-->
+        <!--lit-part--><!--/lit-part-->
+        <p>more</p>
+        <!--/lit-part-->`;
+
+    const bytes = Buffer.from(str);
+    for (let i = 1; i < bytes.byteLength; i++) {
+      _data = [];
+
+      parser = new SAXParser();
+      await parser.prepareWasm(saxWasm);
+      parser.events = SaxEventType.Comment;
+      parser.eventHandler = function (event: SaxEventType, data: Reader<Detail>) {
+        _data.push(data.toJSON() as any);
+      };
+
+      parser.write(bytes)
+      // parser.write(bytes.subarray(0, i));
+      // parser.write(bytes.subarray(i));
+      parser.end();
+      const char = String.fromCharCode(bytes[i]);
+      const comments = _data.filter((d) => d.value);
+      deepEqual(comments.length, 8, `At iteration i=${i}, expected exactly 8 comments, got ${comments.length}`);
+      deepEqual(comments[0].value, 'lit-part cI7PGs8mxHY=', `At iteration i=${i}, first comment content should be 'lit-part cI7PGs8mxHY=', got ${comments[0].value}`);
+    }
+  });
 });
