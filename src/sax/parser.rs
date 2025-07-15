@@ -986,7 +986,8 @@ impl<'a> SAXParser<'a> {
     fn attribute_value_quoted(&mut self, gc: &mut GraphemeClusters, current: &[u8]) {
         if current[0] == self.quote {
             self.attribute.value.end = [gc.line, gc.character.saturating_sub(1)];
-            self.attribute.value.header.1 = gc.cursor.saturating_sub(1);
+            let header_1 = gc.cursor.saturating_sub(1);
+            self.attribute.value.header.1 = if header_1 == self.attribute.value.header.0 {header_1.saturating_sub(1)} else {header_1};
             self.process_attribute();
             self.quote = 0;
             self.state = State::AttribValueClosed;
@@ -1292,15 +1293,19 @@ mod tests {
         events[Event::CloseTag] = true;
         events[Event::Text] = true;
         sax.events = events;
-        let str = r#"<component data-id="user_1234"key="23" disabled />"#;
+        let str = r#"<body class=""></body> <component data-id="user_1234"key="23" disabled />"#;
 
         sax.write(str.as_bytes());
         sax.identity();
 
         let attrs = event_handler.attributes.borrow();
         let texts = event_handler.texts.borrow();
-        assert_eq!(attrs.len(), 3);
-        assert_eq!(texts.len(), 0);
+        let attr = &attrs[0];
+        let text = &texts[0];
+        assert_eq!(attr.value.value, b"");
+        assert_eq!(text.value, b" ");
+        assert_eq!(attrs.len(), 4);
+        assert_eq!(texts.len(), 1);
 
         Ok(())
     }
@@ -1446,7 +1451,7 @@ mod tests {
 
     #[test]
     fn test_tag_write_boundary() -> Result<()> {
-        let str = r#"<div><a href="http://github.com">GitHub</a></orphan></div>"#;
+        let str = r#"<div empty=""><a href="http://github.com">GitHub</a></orphan></div>"#;
         let bytes = str.as_bytes();
 
         for i in 1..bytes.len() {
@@ -1455,6 +1460,7 @@ mod tests {
             let mut events = [false; 10];
             events[Event::CloseTag] = true;
             events[Event::Text] = true;
+            events[Event::Attribute] = true;
             sax.events = events;
 
             sax.write(&bytes[..i]);
@@ -1464,38 +1470,32 @@ mod tests {
 
             let tags = event_handler.tags.borrow();
             let texts = event_handler.texts.borrow();
+            // Check tags
             assert_eq!(tags.len(), 2, "At iteration i={}, expected exactly 2 tags, got {}", i, tags.len());
-            assert_eq!(texts.len(), 2, "At iteration i={}, expected exactly 2 text elements, got {}", i, texts.len());
-
-            // orphaned close tag should be treated as text
-            assert_eq!(&texts[0].value, b"GitHub", "At iteration i={}, first text value should be 'GitHub', got {:?}", i, texts[0].value);
-            assert_eq!(
-                &texts[0].start,
-                &[0, 33],
-                "At iteration i={}, first text start position should be [0, 33], got {:?}",
-                i,
-                texts[0].start
-            );
-            assert_eq!(&texts[0].end, &[0, 39], "At iteration i={}, first text end position should be [0, 39], got {:?}", i, texts[0].end);
-            assert_eq!(
-                &texts[1].value, b"</orphan>",
-                "At iteration i={}, second text value should be '</orphan>', got {:?}",
-                i, texts[1].value
-            );
-
             assert_eq!(tags[0].name, b"a", "At iteration i={}, first tag name should be 'a', got {:?}", i, tags[0].name);
-            assert_eq!(
-                tags[0].close_start[1], 39,
-                "At iteration i={}, first tag close start position should be 39, got {}",
-                i, tags[0].close_start[1]
-            );
-
             assert_eq!(tags[1].name, b"div", "At iteration i={}, second tag name should be 'div', got {:?}", i, tags[1].name);
-            assert_eq!(
-                tags[1].close_start[1], 52,
-                "At iteration i={}, second tag close start position should be 52, got {}",
-                i, tags[1].close_start[1]
-            );
+            assert_eq!(tags[0].close_start[1], 48, "At iteration i={}, first tag close start position should be 39, got {}", i, tags[0].close_start[1]);
+            assert_eq!(tags[1].close_start[1], 61, "At iteration i={}, second tag close start position should be 52, got {}", i, tags[1].close_start[1]);
+            // Check tag attributes
+            assert_eq!(tags[0].attributes.len(), 1, "At iteration i={}, <a> tag should have 1 attribute, got {}", i, tags[0].attributes.len());
+            assert_eq!(tags[0].attributes[0].name.value, b"href", "At iteration i={}, <a> tag attribute name should be 'href', got {:?}", i, tags[0].attributes[0].name.value);
+            assert_eq!(tags[0].attributes[0].value.value, b"http://github.com", "At iteration i={}, <a> tag attribute value should be 'http://github.com', got {:?}", i, tags[0].attributes[0].value.value);
+            assert_eq!(tags[1].attributes.len(), 1, "At iteration i={}, <div> tag should have 1 attribute, got {}", i, tags[1].attributes.len());
+            assert_eq!(tags[1].attributes[0].name.value, b"empty", "At iteration i={}, <div> tag attribute name should be 'empty', got {:?}", i, tags[1].attributes[0].name.value);
+            assert_eq!(tags[1].attributes[0].value.value, b"", "At iteration i={}, <div> tag attribute value should be empty, got {:?}", i, tags[1].attributes[0].value.value);
+            // Check texts
+            assert_eq!(texts.len(), 2, "At iteration i={}, expected exactly 2 text elements, got {}", i, texts.len());
+            assert_eq!(&texts[0].value, b"GitHub", "At iteration i={}, first text value should be 'GitHub', got {:?}", i, texts[0].value);
+            assert_eq!(&texts[0].start, &[0, 42], "At iteration i={}, first text start position should be [0, 33], got {:?}", i, texts[0].start);
+            assert_eq!(&texts[0].end, &[0, 48], "At iteration i={}, first text end position should be [0, 39], got {:?}", i, texts[0].end);
+            assert_eq!(&texts[1].value, b"</orphan>", "At iteration i={}, second text value should be '</orphan>', got {:?}", i, texts[1].value);
+            // Check attributes
+            let attrs = event_handler.attributes.borrow();
+            assert_eq!(attrs.len(), 2, "At iteration i={}, expected exactly 2 attributes, got {}", i, attrs.len());
+            assert_eq!(attrs[0].name.value, b"empty", "At iteration i={}, first attribute name should be 'empty', got {:?}", i, attrs[0].name.value);
+            assert_eq!(attrs[0].value.value, b"", "At iteration i={}, first attribute value should be empty, got {:?}", i, attrs[0].value.value);
+            assert_eq!(attrs[1].name.value, b"href", "At iteration i={}, second attribute name should be 'href', got {:?}", i, attrs[1].name.value);
+            assert_eq!(attrs[1].value.value, b"http://github.com", "At iteration i={}, second attribute value should be 'http://github.com', got {:?}", i, attrs[1].value.value);
         }
         Ok(())
     }
