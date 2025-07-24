@@ -21,7 +21,7 @@ static TEXT_END: &[u8] = &[b'<', b'\n'];
 /// an attribute name
 static ATTRIBUTE_NAME_END: &[u8] = &[b'=', b'>', b' ', b'\t', b'\n'];
 
-static ATTRIBUTE_VALUE_END: &[u8] = &[b' ', b'\t', b'>', b'/'];
+static ATTRIBUTE_VALUE_END: &[u8] = &[b' ', b'\t', b'\n', b'>'];
 
 /// Characters that indicate the end of
 /// a proc inst target
@@ -1029,10 +1029,21 @@ impl<'a> SAXParser<'a> {
             self.attribute.value.header.1 = gc.last_cursor_pos;
         }
         self.attribute.value.end = [gc.line, gc.character.saturating_sub(1)];
+        let mut self_closing = false;
+        // we've encountered a > and need to determine if this self closing tag
+        if byte == b'>' && self.attribute.value.hydrate(self.source_ptr) {
+            let val_slice = self.attribute.value.get_value_slice(self.source_ptr, gc.byte_len);
+            let sl_len = val_slice.len();
+            if sl_len > 1 && &val_slice[(sl_len - 1)..] == b"/" {
+                self.attribute.value.value.truncate(sl_len - 1); // remove '/'
+                self.attribute.value.end = [gc.line, gc.character.saturating_sub(2)];
+                self_closing = true;
+            }
+        }
 
         self.process_attribute();
         if byte == b'>' {
-            self.process_open_tag(false, gc);
+            self.process_open_tag(self_closing, gc);
         } else {
             self.state = State::Attrib;
             self.attribute(gc, &[byte]);
@@ -1820,20 +1831,22 @@ the plugin
             <Div type="Template" viewName="myapp.view.Home" />
 
             <!-- This one will be correctly "closed" -->
-            <AnotherSelfClosingDiv type="Template" viewName="myapp.view.Home" />
+            <AnotherSelfClosingDiv type="Template" viewName={myapp.view.Home}/>
+            <Div type="Template" viewName=myapp.view.Home/>
         </Div>"#;
 
         sax.write(str.as_bytes());
         sax.identity();
 
         let tags = event_handler.tags.borrow();
-        assert_eq!(tags.len(), 6);
+        assert_eq!(tags.len(), 7);
         assert_eq!(tags[0].self_closing, true);
         assert_eq!(tags[1].self_closing, true);
         assert_eq!(tags[2].self_closing, true);
         assert_eq!(tags[3].self_closing, true);
         assert_eq!(tags[4].self_closing, true);
-        assert_eq!(tags[5].self_closing, false);
+        assert_eq!(tags[5].self_closing, true);
+        assert_eq!(tags[6].self_closing, false);
         Ok(())
     }
 
@@ -1888,6 +1901,35 @@ the plugin
             assert_eq!(attrs[0].value.value, b"100.00", "At iteration i={}, Expected attribute value to be 100.00, got {:?}", i, attrs[0].value.value);
             assert_eq!(attrs[0].name.value, b"top", "At iteration i={}, Expected attribute name to be 100.00, got {:?}", i, attrs[0].name.value);
         }
+        Ok(())
+    }
+
+    #[test]
+    fn test_script_tag_unquoted_attribute() -> Result<()> {
+        let event_handler = TextEventHandler::new();
+        let mut sax = SAXParser::new(&event_handler);
+        let mut events = [false; 10];
+        events[Event::Attribute] = true;
+        events[Event::CloseTag] = true;
+        sax.events = events;
+        let str = "<script type=text/javascript>\n\n</script>";
+        sax.write(str.as_bytes());
+        sax.identity();
+
+        let tags = event_handler.tags.borrow();
+        let attrs = event_handler.attributes.borrow();
+
+        // There should be one <script> tag
+        assert_eq!(tags.len(), 1, "Expected exactly 1 tag, got {}", tags.len());
+        assert_eq!(tags[0].name, b"script", "Tag name should be 'script', got {:?}", tags[0].name);
+        // The <script> tag should have one attribute: type=text/javascript
+        assert_eq!(tags[0].attributes.len(), 1, "<script> tag should have 1 attribute, got {}", tags[0].attributes.len());
+        assert_eq!(tags[0].attributes[0].name.value, b"type", "Attribute name should be 'type', got {:?}", tags[0].attributes[0].name.value);
+        assert_eq!(tags[0].attributes[0].value.value, b"text/javascript", "Attribute value should be 'text/javascript', got {:?}", tags[0].attributes[0].value.value);
+        // There should be one attribute event
+        assert_eq!(attrs.len(), 1, "Expected exactly 1 attribute event, got {}", attrs.len());
+        assert_eq!(attrs[0].name.value, b"type", "Attribute event name should be 'type', got {:?}", attrs[0].name.value);
+        assert_eq!(attrs[0].value.value, b"text/javascript", "Attribute event value should be 'text/javascript', got {:?}", attrs[0].value.value);
         Ok(())
     }
 }
