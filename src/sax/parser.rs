@@ -1008,6 +1008,7 @@ impl<'a> SAXParser<'a> {
         } else {
             self.attribute.name.header.0 = gc.last_cursor_pos;
             self.state = State::AttribName;
+            self.attribute.name.start = [gc.line, gc.character.saturating_sub(1)];
             self.attribute_name(gc, current);
         }
     }
@@ -1930,6 +1931,34 @@ the plugin
         assert_eq!(attrs.len(), 1, "Expected exactly 1 attribute event, got {}", attrs.len());
         assert_eq!(attrs[0].name.value, b"type", "Attribute event name should be 'type', got {:?}", attrs[0].name.value);
         assert_eq!(attrs[0].value.value, b"text/javascript", "Attribute event value should be 'text/javascript', got {:?}", attrs[0].value.value);
+        Ok(())
+    }
+
+    #[test]
+    fn test_attribute_no_whitespace_between() -> Result<()> {
+        let event_handler = TextEventHandler::new();
+        let mut sax = SAXParser::new(&event_handler);
+        let mut events = [false; 10];
+        events[Event::Attribute] = true;
+        events[Event::CloseTag] = true;
+        sax.events = events;
+        let str = r#"<div id="myId"name="myName"></div>"#;
+        sax.write(str.as_bytes());
+        sax.identity();
+
+        let attrs = event_handler.attributes.borrow();
+        assert_eq!(attrs.len(), 2, "Expected exactly 2 attributes, got {}", attrs.len());
+
+        // First attribute: id="myId"
+        assert_eq!(attrs[0].name.value, b"id", "First attribute name should be 'id', got {:?}", attrs[0].name.value);
+        assert_eq!(attrs[0].value.value, b"myId", "First attribute value should be 'myId', got {:?}", attrs[0].value.value);
+        assert_eq!(attrs[0].name.start, [0, 5], "First attribute start position should be [0, 5], got {:?}", attrs[0].name.start);
+
+        // Second attribute: name="myName"
+        assert_eq!(attrs[1].name.value, b"name", "Second attribute name should be 'name', got {:?}", attrs[1].name.value);
+        assert_eq!(attrs[1].value.value, b"myName", "Second attribute value should be 'myName', got {:?}", attrs[1].value.value);
+        assert_eq!(attrs[1].name.start, [0, 14], "Second attribute start position should be [0, 14], got {:?}", attrs[1].name.start);
+
         Ok(())
     }
 }
