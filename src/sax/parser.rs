@@ -979,6 +979,8 @@ impl<'a> SAXParser<'a> {
             self.brace_ct += 1;
         } else {
             self.attribute.value.header.0 = gc.last_cursor_pos;
+            // subtract 1 to account for the lack of a quote
+            self.attribute.value.start = [gc.line, gc.character.saturating_sub(1)];
             self.state = State::AttribValueUnquoted;
         }
     }
@@ -1297,6 +1299,31 @@ mod tests {
         }
     }
     #[test]
+    fn test_attribute_position() -> Result<()> {
+        let event_handler = TextEventHandler::new();
+        let mut sax = SAXParser::new(&event_handler);
+        let mut events = [false; 10];
+        events[Event::Attribute] = true;
+        events[Event::CloseTag] = true;
+        events[Event::Text] = true;
+        sax.events = events;
+
+        let str = r#"<div yourrock=1></div>"#;
+
+        sax.write(str.as_bytes());
+        sax.identity();
+
+        let attrs = event_handler.attributes.borrow();
+        let attr = &attrs[0];
+        assert_eq!(attr.name.value, b"yourrock");
+        assert_eq!(attr.value.value, b"1");
+        assert_eq!(attr.name.start, [0, 5]);
+        assert_eq!(attr.name.end, [0, 13]);
+        assert_eq!(attr.value.start, [0, 14]);
+        assert_eq!(attr.value.end, [0, 15]);
+        Ok(())
+    }
+    #[test]
     fn test_attribute() -> Result<()> {
         let event_handler = TextEventHandler::new();
         let mut sax = SAXParser::new(&event_handler);
@@ -1305,7 +1332,7 @@ mod tests {
         events[Event::CloseTag] = true;
         events[Event::Text] = true;
         sax.events = events;
-        let str = r#"<body class=""></body> <component data-id="user_1234"key="23" disabled />"#;
+        let str = r#"<body class="" id=myId></body> <component data-id="user_1234"key="23" disabled />"#;
 
         sax.write(str.as_bytes());
         sax.identity();
@@ -1316,8 +1343,43 @@ mod tests {
         let text = &texts[0];
         assert_eq!(attr.value.value, b"");
         assert_eq!(text.value, b" ");
-        assert_eq!(attrs.len(), 4);
+        assert_eq!(attrs.len(), 5);
         assert_eq!(texts.len(), 1);
+
+        // Test attribute name and value start and end positions
+        // First attribute: class=""
+        assert_eq!(attr.name.value, b"class");
+        assert_eq!(attr.name.start, [0, 6]);
+        assert_eq!(attr.name.end, [0, 11]);
+        assert_eq!(attr.value.start, [0, 13]);
+        assert_eq!(attr.value.end, [0, 13]);
+
+        // Test second attribute: id=myId
+        let attr2 = &attrs[1];
+        assert_eq!(attr2.name.value, b"id");
+        assert_eq!(attr2.name.start, [0, 15]);
+        assert_eq!(attr2.name.end, [0, 17]);
+        assert_eq!(attr2.value.value, b"myId");
+        assert_eq!(attr2.value.start, [0, 18]);
+        assert_eq!(attr2.value.end, [0, 22]);
+
+        // Test third attribute: data-id="user_1234"
+        let attr3 = &attrs[2];
+        assert_eq!(attr3.name.value, b"data-id");
+        assert_eq!(attr3.name.start, [0, 42]);
+        assert_eq!(attr3.name.end, [0, 49]);
+        assert_eq!(attr3.value.value, b"user_1234");
+        assert_eq!(attr3.value.start, [0, 51]);
+        assert_eq!(attr3.value.end, [0, 60]);
+
+        // Test fourth attribute: key="23"
+        let attr4 = &attrs[3];
+        assert_eq!(attr4.name.value, b"key");
+        assert_eq!(attr4.name.start, [0, 61]);
+        assert_eq!(attr4.name.end, [0, 64]);
+        assert_eq!(attr4.value.value, b"23");
+        assert_eq!(attr4.value.start, [0, 66]);
+        assert_eq!(attr4.value.end, [0, 68]);
 
         Ok(())
     }

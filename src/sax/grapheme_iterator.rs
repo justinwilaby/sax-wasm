@@ -145,6 +145,12 @@ impl GraphemeClusters<'_> {
         if self.cursor == self.byte_len {
             return None;
         }
+        let ptr = self.bytes.as_ptr();
+        let idx = self.cursor.saturating_sub(1);
+        let current_byte = unsafe { *self.bytes.get_unchecked(idx) };
+        if haystack.contains(&current_byte) {
+            return Some((unsafe { &*ptr::slice_from_raw_parts(ptr.add(idx), 1) }, true));
+        }
 
         let start = self.cursor;
         let mut cursor = self.cursor;
@@ -152,7 +158,6 @@ impl GraphemeClusters<'_> {
         let mut character = self.character;
         let max_index = self.byte_len;
         let mut matched_byte = b'0';
-        let ptr = self.bytes.as_ptr();
         let mut found = false;
         let mut len = 0;
 
