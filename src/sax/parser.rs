@@ -982,6 +982,7 @@ impl<'a> SAXParser<'a> {
             // subtract 1 to account for the lack of a quote
             self.attribute.value.start = [gc.line, gc.character.saturating_sub(1)];
             self.state = State::AttribValueUnquoted;
+            self.attribute_value_unquoted(gc, current);
         }
     }
 
@@ -1019,37 +1020,29 @@ impl<'a> SAXParser<'a> {
     fn attribute_value_unquoted(&mut self, gc: &mut GraphemeClusters, current: &[u8]) {
         let mut byte = current[0];
         if byte < 33 {
+            gc.skip_whitespace();
             return;
         }
-        if let Some((span, found)) = gc.take_until_one_found(ATTRIBUTE_VALUE_END, true) {
-            byte = span[span.len() - 1];
-            self.attribute.value.header.1 = if found {
-                gc.last_cursor_pos
-            } else {
-                gc.cursor
-            };
-        } else {
-            self.attribute.value.header.1 = gc.last_cursor_pos;
-        }
-        self.attribute.value.end = [gc.line, gc.character.saturating_sub(1)];
-        let mut self_closing = false;
-        // we've encountered a > and need to determine if this self closing tag
-        if byte == b'>' && self.attribute.value.hydrate(self.source_ptr) {
-            let val_slice = self.attribute.value.get_value_slice(self.source_ptr, gc.byte_len);
-            let sl_len = val_slice.len();
-            if sl_len > 1 && &val_slice[(sl_len - 1)..] == b"/" {
-                self.attribute.value.value.truncate(sl_len - 1); // remove '/'
-                self.attribute.value.end = [gc.line, gc.character.saturating_sub(2)];
-                self_closing = true;
+        if !ATTRIBUTE_NAME_END.contains(&byte) {
+            let mut attr_end = false;
+
+            if let Some((span, found)) = gc.take_until_one_found(ATTRIBUTE_VALUE_END, false) {
+                byte = span[span.len() - 1];
+                attr_end = found;
+            }
+            self.attribute.value.header.1 = gc.cursor;
+            self.attribute.value.end = [gc.line, gc.character];
+
+            if !attr_end && current[0] != byte {
+                return;
             }
         }
 
         self.process_attribute();
-        if byte == b'>' {
-            self.process_open_tag(self_closing, gc);
-        } else {
-            self.state = State::Attrib;
-            self.attribute(gc, &[byte]);
+        match byte {
+            b'/' => self.state = State::OpenTagSlash,
+            b'>' => self.process_open_tag(false, gc),
+            _ => self.state = State::Attrib,
         }
     }
 
@@ -1300,6 +1293,80 @@ mod tests {
     }
     #[test]
     fn test_attribute_position() -> Result<()> {
+        let event_handler = TextEventHandler::new();
+        let mut sax = SAXParser::new(&event_handler);
+        let mut events = [false; 10];
+        events[Event::Attribute] = true;
+        events[Event::CloseTag] = true;
+        sax.events = events;
+
+        let str = r#"
+        <div x=1
+            y=3>
+        </div>"#;
+
+        sax.write(str.as_bytes());
+        sax.identity();
+
+        let attrs = event_handler.attributes.borrow();
+        let attr = &attrs[0];
+        assert_eq!(attr.name.value, b"x");
+        assert_eq!(attr.name.start, [1, 13]);
+        assert_eq!(attr.name.end, [1, 14]);
+
+        assert_eq!(attr.value.value, b"1");
+        assert_eq!(attr.value.start, [1, 15]);
+        assert_eq!(attr.value.end, [1, 16]);
+
+        let attr1 = &attrs[1];
+        assert_eq!(attr1.name.value, b"y");
+        assert_eq!(attr1.name.start, [2, 12]);
+        assert_eq!(attr1.name.end, [2, 13]);
+
+        assert_eq!(attr1.value.value, b"3");
+        assert_eq!(attr1.value.start, [2, 14]);
+        assert_eq!(attr1.value.end, [2, 15]);
+        Ok(())
+    }
+    #[test]
+    fn test_attribute_position_1() -> Result<()> {
+        let event_handler = TextEventHandler::new();
+        let mut sax = SAXParser::new(&event_handler);
+        let mut events = [false; 10];
+        events[Event::Attribute] = true;
+        events[Event::CloseTag] = true;
+        sax.events = events;
+
+        let str = r#"
+        <div id=myId
+            name=myName>
+        </div>"#;
+
+        sax.write(str.as_bytes());
+        sax.identity();
+
+        let attrs = event_handler.attributes.borrow();
+        let attr = &attrs[0];
+        assert_eq!(attr.name.value, b"id");
+        assert_eq!(attr.name.start, [1, 13]);
+        assert_eq!(attr.name.end, [1, 15]);
+
+        assert_eq!(attr.value.value, b"myId");
+        assert_eq!(attr.value.start, [1, 16]);
+        assert_eq!(attr.value.end, [1, 20]);
+
+        let attr1 = &attrs[1];
+        assert_eq!(attr1.name.value, b"name");
+        assert_eq!(attr1.name.start, [2, 12]);
+        assert_eq!(attr1.name.end, [2, 16]);
+
+        assert_eq!(attr1.value.value, b"myName");
+        assert_eq!(attr1.value.start, [2, 17]);
+        assert_eq!(attr1.value.end, [2, 23]);
+        Ok(())
+    }
+    #[test]
+    fn test_attribute_position_2() -> Result<()> {
         let event_handler = TextEventHandler::new();
         let mut sax = SAXParser::new(&event_handler);
         let mut events = [false; 10];
