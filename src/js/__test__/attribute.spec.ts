@@ -1,7 +1,7 @@
-import { Attribute, Detail, Reader, SaxEventType, SAXParser } from '../saxWasm'
+import { Attribute, AttributeType, Detail, Reader, SaxEventType, SAXParser } from '../saxWasm'
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
-import { deepStrictEqual } from 'assert';
+import { deepStrictEqual, equal } from 'assert';
 
 const saxWasm = readFileSync(resolve(__dirname, '../../../lib/sax-wasm.wasm'));
 
@@ -48,6 +48,8 @@ describe('SaxWasm', () => {
     deepStrictEqual(_data.length, 1);
     deepStrictEqual(_data[0].name.value, 'class');
     deepStrictEqual(_data[0].value.value, '');
+    deepStrictEqual(_data[0].byteOffsets, {start: 6, end: 14});
+    equal(_data[0].type, AttributeType.DoubleQuoted);
   });
 
   it('should not include whitespace in the attribute\'s nameEnd value', () => {
@@ -57,14 +59,17 @@ describe('SaxWasm', () => {
     deepStrictEqual(_data[0].name.value, 'version');
     deepStrictEqual(_data[0].value.value, '1.0.0');
     deepStrictEqual(_data[0].name.end.character, 11);
+    deepStrictEqual(_data[0].byteOffsets, {start: 51, end: 76});
   })
 
   it('should recognize attribute names', () => {
-    parser.write(Buffer.from('<body class="main"></body>'));
+    parser.write(Buffer.from(`<body class='main' id=1234></body>`));
     deepStrictEqual(_event, SaxEventType.Attribute);
-    deepStrictEqual(_data.length, 1);
+    deepStrictEqual(_data.length, 2);
     deepStrictEqual(_data[0].name.value, 'class');
     deepStrictEqual(_data[0].value.value, 'main');
+    equal(_data[0].type, AttributeType.SingleQuoted);
+    equal(_data[1].type, AttributeType.NoQuotes);
   });
 
   it('should recognize attribute names when no spaces separate them', () => {
@@ -142,7 +147,7 @@ describe('SaxWasm', () => {
   it('should serialize to json as deepStrictEqualed', () => {
     parser.write(Buffer.from('<div class="testing"></div>'));
     deepStrictEqual(_data.length, 1);
-    deepStrictEqual(JSON.stringify(_data[0]), '{"name":{"start":{"line":0,"character":5},"end":{"line":0,"character":10},"value":"class"},"value":{"start":{"line":0,"character":12},"end":{"line":0,"character":19},"value":"testing"},"type":0}');
+    deepStrictEqual(JSON.stringify(_data[0]), '{"name":{"start":{"line":0,"character":5},"end":{"line":0,"character":10},"value":"class","byteOffsets":{"start":0,"end":10}},"value":{"start":{"line":0,"character":12},"end":{"line":0,"character":19},"value":"testing","byteOffsets":{"start":12,"end":20}},"type":8,"byteOffsets":{"start":5,"end":20}}');
   });
 
   it('should correctly parse attribute values enclosed in single quotes', () => {

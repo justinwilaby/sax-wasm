@@ -13,13 +13,13 @@ describe('SaxWasm', () => {
   beforeEach(async () => {
     parser = new SAXParser();
     parser.events = SaxEventType.OpenTagStart |
-        SaxEventType.OpenTag |
-        SaxEventType.CloseTag;
+      SaxEventType.OpenTag |
+      SaxEventType.CloseTag;
 
     _data = [];
     _event = 0;
 
-    parser.eventHandler = function (event: SaxEventType, data:Reader<Detail>) {
+    parser.eventHandler = function (event: SaxEventType, data: Reader<Detail>) {
       _event |= event as number;
       _data.push(data.toJSON() as Tag);
     };
@@ -31,12 +31,13 @@ describe('SaxWasm', () => {
   });
 
   it('should report the SaxEventType.OpenTagStart', () => {
-    parser.write(Buffer.from(`<div class="myDiv">This is my div</div>`));
+    parser.write(Buffer.from(` <div class="myDiv">This is my div</div>`));
     equal(_event & SaxEventType.OpenTagStart, 32);
     const [tag] = _data;
     equal(tag.name, 'div');
     equal(tag.attributes.length, 0);
-    deepEqual(tag.openStart, { line: 0, character: 0 });
+    deepEqual(tag.byteOffsets, { start: 1, end: 0 });
+    deepEqual(tag.openStart, { line: 0, character: 1 });
   });
 
   it('should report the SaxEventType.OpenTag', () => {
@@ -47,6 +48,7 @@ describe('SaxWasm', () => {
     equal(tag.attributes.length, 1);
     deepEqual(tag.openStart, { line: 0, character: 0 });
     deepEqual(tag.openEnd, { line: 0, character: 19 });
+    deepEqual(tag.byteOffsets, { start: 0, end: 19 });
   });
 
   it('should report the SaxEventType.CloseTag', () => {
@@ -134,10 +136,10 @@ describe('SaxWasm', () => {
   });
 
   it('should recognize the emojis as expected', () => {
-      const doc = '📚<div href="./123/123">hey there</div>';
-      parser.write(Buffer.from(doc));
-      const {start, end} = _data[2].attributes[0].value;
-      strictEqual(doc.slice(start.character, end.character), './123/123');
+    const doc = '📚<div href="./123/123">hey there</div>';
+    parser.write(Buffer.from(doc));
+    const { start, end } = _data[2].attributes[0].value;
+    strictEqual(doc.slice(start.character, end.character), './123/123');
   });
 
   it('should handle tag write boundaries correctly', async () => {

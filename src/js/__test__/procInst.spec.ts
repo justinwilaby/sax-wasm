@@ -5,7 +5,7 @@ import { deepEqual, strictEqual } from 'assert';
 
 const saxWasm = readFileSync(resolve(__dirname, '../../../lib/sax-wasm.wasm'));
 
-describe('When parsing JSX, the SaxWasm', () => {
+describe('When parsing processing instructions, the SaxWasm', () => {
   let parser: SAXParser;
   let _event: SaxEventType;
   let _data: ProcInst | undefined;
@@ -41,7 +41,7 @@ describe('When parsing JSX, the SaxWasm', () => {
 
   });
 
-  it('should parse the "unexpected question mark instead of tag name" as a processing instruction', () => {
+  it('should parse the unexpected question mark instead of tag name as a processing instruction', () => {
     const doc = `<!--lit-part cI7PGs8mxHY=-->
       <p><!--lit-part-->hello<!--/lit-part--></p>
       <!--lit-part BRUAAAUVAAA=--><?><!--/lit-part-->
@@ -51,7 +51,7 @@ describe('When parsing JSX, the SaxWasm', () => {
     parser.write(Buffer.from(doc));
     strictEqual(_event, SaxEventType.ProcessingInstruction);
 
-    deepEqual(_data?.start, {line: 2, character: 35});
+    deepEqual(_data?.start, {line: 2, character: 34});
     deepEqual(_data?.end, {line: 2, character: 37});
   })
 });

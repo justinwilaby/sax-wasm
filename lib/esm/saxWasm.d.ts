@@ -28,10 +28,21 @@ export declare const SaxEventType: {
 };
 export type SaxEventType = typeof SaxEventType[keyof typeof SaxEventType];
 export type SaxEvent = [typeof SaxEventType.Text, Text] | [typeof SaxEventType.ProcessingInstruction, ProcInst] | [typeof SaxEventType.Declaration, Text] | [typeof SaxEventType.Doctype, Text] | [typeof SaxEventType.Comment, Text] | [typeof SaxEventType.OpenTagStart, Tag] | [typeof SaxEventType.Attribute, Attribute] | [typeof SaxEventType.OpenTag, Tag] | [typeof SaxEventType.CloseTag, Tag] | [typeof SaxEventType.Cdata, Text];
+/**
+ * Represents the different types of attributes.
+ */
+export declare enum AttributeType {
+    Normal = 0,
+    JSX = 1,
+    NoQuotes = 2,
+    SingleQuoted = 4,
+    DoubleQuoted = 8
+}
 export type AttributeDetail = {
-    readonly type: 0 | 1;
+    readonly type: AttributeType;
     readonly name: TextDetail;
     readonly value: TextDetail;
+    readonly byteOffsets: ByteOffsets;
 };
 export type TagDetail = {
     readonly textNodes: TextDetail[];
@@ -42,21 +53,28 @@ export type TagDetail = {
     readonly closeEnd: PositionDetail;
     readonly name: string;
     readonly selfClosing: boolean;
+    readonly byteOffsets: ByteOffsets;
 };
 export type ProcInstDetail = {
     readonly target: TextDetail;
     readonly content: TextDetail;
     readonly start: PositionDetail;
     readonly end: PositionDetail;
+    readonly byteOffsets: ByteOffsets;
 };
 export type TextDetail = {
     readonly start: PositionDetail;
     readonly end: PositionDetail;
     readonly value: string;
+    readonly byteOffsets: ByteOffsets;
 };
 export type PositionDetail = {
     readonly line: number;
     readonly character: number;
+};
+export type ByteOffsets = {
+    start: number;
+    end: number;
 };
 /**
  * Represents the detail of a SAX event.
@@ -107,13 +125,6 @@ export declare class Position implements PositionDetail {
     constructor(line: number, character: number);
 }
 /**
- * Represents the different types of attributes.
- */
-export declare enum AttributeType {
-    Normal = 0,
-    JSX = 1
-}
-/**
  * Represents an attribute in the XML data.
  *
  * This class decodes the Attribute data sent across
@@ -125,11 +136,16 @@ export declare enum AttributeType {
  * 4. 'value' bytes - byte position name_length-n (n bytes)
  */
 export declare class Attribute extends Reader<AttributeDetail> implements AttributeDetail {
-    static LENGTH: 120;
+    static LENGTH: 168;
     type: AttributeType;
     name: Text;
     value: Text;
     constructor(data: Uint8Array, memory: WebAssembly.Memory);
+    /**
+    * Gets the byte offsets representing the
+    * start and end byte in the data
+    */
+    get byteOffsets(): ByteOffsets;
     /**
      * @inheritDoc
      */
@@ -138,13 +154,16 @@ export declare class Attribute extends Reader<AttributeDetail> implements Attrib
             start: PositionDetail;
             end: PositionDetail;
             value: string;
+            byteOffsets: ByteOffsets;
         };
         value: {
             start: PositionDetail;
             end: PositionDetail;
             value: string;
+            byteOffsets: ByteOffsets;
         };
         type: AttributeType;
+        byteOffsets: ByteOffsets;
     };
     /**
      * Converts the attribute to a string representation.
@@ -180,7 +199,7 @@ export declare class Attribute extends Reader<AttributeDetail> implements Attrib
  * * `ptr` - The initial pointer position.
  */
 export declare class ProcInst extends Reader<ProcInstDetail> implements ProcInstDetail {
-    static LENGTH: 144;
+    static LENGTH: 186;
     target: Text;
     content: Text;
     constructor(data: Uint8Array, memory: WebAssembly.Memory);
@@ -197,6 +216,11 @@ export declare class ProcInst extends Reader<ProcInstDetail> implements ProcInst
      */
     get end(): PositionDetail;
     /**
+     * Gets the byte offsets representing the
+     * start and end byte in the data
+     */
+    get byteOffsets(): ByteOffsets;
+    /**
      * Converts the processing instruction to a JSON object.
      *
      * @returns A JSON object representing the processing instruction.
@@ -208,12 +232,15 @@ export declare class ProcInst extends Reader<ProcInstDetail> implements ProcInst
             start: PositionDetail;
             end: PositionDetail;
             value: string;
+            byteOffsets: ByteOffsets;
         };
         content: {
             start: PositionDetail;
             end: PositionDetail;
             value: string;
+            byteOffsets: ByteOffsets;
         };
+        byteOffsets: ByteOffsets;
     };
     /**
      * @inheritdoc
@@ -227,7 +254,7 @@ export declare class ProcInst extends Reader<ProcInstDetail> implements ProcInst
  * into its respective fields: `start`, `end`, and `value`.
  */
 export declare class Text extends Reader<TextDetail> implements TextDetail {
-    static LENGTH: 56;
+    static LENGTH: 72;
     /**
      * Gets the start position of the text node.
      *
@@ -247,6 +274,11 @@ export declare class Text extends Reader<TextDetail> implements TextDetail {
      */
     get value(): string;
     /**
+    * Gets the byte offsets representing the
+    * start and end byte in the data
+    */
+    get byteOffsets(): ByteOffsets;
+    /**
      * Converts the text node to a JSON object.
      *
      * @returns A JSON object representing the text node.
@@ -255,6 +287,7 @@ export declare class Text extends Reader<TextDetail> implements TextDetail {
         start: PositionDetail;
         end: PositionDetail;
         value: string;
+        byteOffsets: ByteOffsets;
     };
     /**
      * Converts the text node to a string representation.
@@ -271,7 +304,7 @@ export declare class Text extends Reader<TextDetail> implements TextDetail {
  * `closeEnd`, `selfClosing`, `name`, `attributes`, and `textNodes`.
  */
 export declare class Tag extends Reader<TagDetail> implements TagDetail {
-    static LENGTH: 104;
+    static LENGTH: 128;
     /**
      * Gets the start position of the tag opening.
      *
@@ -323,6 +356,11 @@ export declare class Tag extends Reader<TagDetail> implements TagDetail {
      */
     get textNodes(): Text[];
     /**
+    * Gets the byte offsets representing the
+    * start and end byte in the data
+    */
+    get byteOffsets(): ByteOffsets;
+    /**
      * Converts the tag to a JSON object.
      *
      * @returns A JSON object representing the tag.
@@ -338,20 +376,25 @@ export declare class Tag extends Reader<TagDetail> implements TagDetail {
                 start: PositionDetail;
                 end: PositionDetail;
                 value: string;
+                byteOffsets: ByteOffsets;
             };
             value: {
                 start: PositionDetail;
                 end: PositionDetail;
                 value: string;
+                byteOffsets: ByteOffsets;
             };
             type: AttributeType;
+            byteOffsets: ByteOffsets;
         }[];
         textNodes: {
             start: PositionDetail;
             end: PositionDetail;
             value: string;
+            byteOffsets: ByteOffsets;
         }[];
         selfClosing: boolean;
+        byteOffsets: ByteOffsets;
     };
     get value(): string;
 }
