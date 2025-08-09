@@ -94,6 +94,7 @@ pub struct SAXParser<'a> {
     end_pos: [u64; 2],
     source_ptr: *const u8,
     end_offset: usize,
+    chunk_offset: u64,
 }
 
 impl<'a> SAXParser<'a> {
@@ -175,6 +176,7 @@ impl<'a> SAXParser<'a> {
             end_pos: [0, 0],
             end_offset: 0,
             source_ptr: ptr::null(),
+            chunk_offset: 0,
         }
     }
 
@@ -258,6 +260,7 @@ impl<'a> SAXParser<'a> {
         }
 
         self.hydrate();
+        self.chunk_offset += source.len() as u64;
     }
 
     fn hydrate(&mut self) {
@@ -353,6 +356,7 @@ impl<'a> SAXParser<'a> {
         self.end_pos = [0, 0];
         self.end_offset = 0;
         self.source_ptr = ptr::null();
+        self.chunk_offset = 0;
     }
 
     /// Processes a grapheme cluster.
@@ -460,6 +464,7 @@ impl<'a> SAXParser<'a> {
                 self.state = State::MarkupDecl;
 
                 let mut markup_decl = Text::new([gc.line, gc.last_character]);
+                markup_decl.byte_range.0 = (self.chunk_offset + gc.cursor as u64).saturating_sub(2);
 
                 markup_decl.header = (gc.cursor.saturating_sub(1), gc.cursor);
                 markup_decl.value.extend_from_slice(&[b'<']);
@@ -481,6 +486,7 @@ impl<'a> SAXParser<'a> {
                 proc_inst.start = [gc.line, gc.character.saturating_sub(2)];
                 proc_inst.target.start = [gc.line, gc.character];
                 proc_inst.target.header = (gc.last_cursor_pos.saturating_sub(1), gc.cursor);
+                proc_inst.byte_range.0 = (self.chunk_offset + gc.cursor as u64).saturating_sub(2);
                 self.proc_inst = Some(proc_inst);
             }
 
@@ -511,6 +517,7 @@ impl<'a> SAXParser<'a> {
 
     fn open_tag(&mut self, gc: &mut GraphemeClusters, current: &[u8]) {
         self.tag.open_start = [gc.line, gc.character.saturating_sub(2)];
+        self.tag.byte_range.0 = (self.chunk_offset + gc.cursor as u64).saturating_sub(2);
         let mut byte = current[0];
         if !TAG_NAME_END.contains(&byte) {
             if let Some((span, found)) = gc.take_until_one_found(TAG_NAME_END, true) {
@@ -588,7 +595,8 @@ impl<'a> SAXParser<'a> {
         } else {
             gc.take_until_one_found(TEXT_END, false);
             if let Some(text) = &mut self.text {
-                text.header.1 = gc.cursor
+                text.header.1 = gc.cursor;
+                text.byte_range.1 = self.chunk_offset + gc.cursor as u64;
             }
         }
     }
@@ -605,6 +613,7 @@ impl<'a> SAXParser<'a> {
         if text.header.0 == text.header.1 && text.value.is_empty() {
             return;
         }
+        text.byte_range.1 = self.chunk_offset + offset as u64;
 
         let len = self.tags.len();
         // Store these only if we're interested in CloseTag events
@@ -626,6 +635,7 @@ impl<'a> SAXParser<'a> {
 
         let markup_decl = self.markup_decl.as_mut().unwrap();
         markup_decl.header.1 = gc.cursor;
+        markup_decl.byte_range.1 = self.chunk_offset + gc.cursor as u64;
 
         let md_slice = markup_decl.get_value_slice(self.source_ptr, gc.byte_len);
         let sl_len = md_slice.len();
@@ -634,12 +644,14 @@ impl<'a> SAXParser<'a> {
             markup_decl.start = [gc.line, gc.character.saturating_sub(4)];
             markup_decl.value.clear();
             markup_decl.header = (gc.cursor, 0);
+            markup_decl.byte_range.1 = (self.chunk_offset + gc.cursor as u64).saturating_sub(4);
             self.state = State::Comment;
             return;
         }
 
         if sl_len >= 9 && ascii_compare(&md_slice[..9], b"<![CDATA[") {
             markup_decl.start = [gc.line, gc.character.saturating_sub(9)];
+            markup_decl.byte_range.1 = (self.chunk_offset + gc.cursor as u64).saturating_sub(9);
             // skip over the <![CDATA[
             markup_decl.value.clear();
             markup_decl.header = (gc.cursor, 0);
@@ -649,6 +661,7 @@ impl<'a> SAXParser<'a> {
 
         if sl_len >= 9 && ascii_compare(&md_slice[..9], b"<!DOCTYPE") {
             markup_decl.start = [gc.line, gc.character.saturating_sub(9)];
+            markup_decl.byte_range.1 = (self.chunk_offset + gc.cursor as u64).saturating_sub(9);
             // skip over the <!DOCTYPE and any whitespace after it
             gc.skip_whitespace();
             markup_decl.value.clear();
@@ -664,6 +677,7 @@ impl<'a> SAXParser<'a> {
         };
         if bytes_to_check != b"<!-" && bytes_to_check != b"<![" && !ascii_compare(b"<!D", bytes_to_check) {
             let mut markup_entity = Text::new([gc.line, gc.character.saturating_sub(2)]);
+            markup_entity.byte_range.1 = (self.chunk_offset + gc.cursor as u64).saturating_sub(2);
             // skip over the <! and any whitespace afterwards
             gc.skip_whitespace();
             markup_entity.header = (gc.cursor, 0);
@@ -686,6 +700,7 @@ impl<'a> SAXParser<'a> {
         }
 
         markup_decl.header.1 = gc.cursor;
+        markup_decl.byte_range.1 = self.chunk_offset + gc.cursor as u64;
 
         let markup_slice = markup_decl.get_value_slice(self.source_ptr, gc.byte_len);
         let len = markup_slice.len();
@@ -713,6 +728,7 @@ impl<'a> SAXParser<'a> {
 
         let markup_decl = self.markup_decl.as_mut().unwrap();
         markup_decl.header.1 = gc.cursor;
+        markup_decl.byte_range.1 = self.chunk_offset + gc.cursor as u64;
 
         let markup_slice = markup_decl.get_value_slice(self.source_ptr, gc.byte_len);
         let len = markup_slice.len();
@@ -754,6 +770,7 @@ impl<'a> SAXParser<'a> {
             }
             let markup_decl = self.markup_decl.as_mut().unwrap();
             markup_decl.header.1 = gc.cursor;
+            markup_decl.byte_range.1 = self.chunk_offset + gc.cursor as u64;
         }
 
         if !DOCTYPE_END.contains(&byte) {
@@ -767,6 +784,7 @@ impl<'a> SAXParser<'a> {
             self.state = State::Entity;
             let mut markup_entity = Text::new([gc.line, gc.character]);
             markup_entity.header.0 = gc.cursor;
+            markup_entity.byte_range.0 = self.chunk_offset + gc.cursor as u64;
 
             self.markup_entity = Some(markup_entity);
             return;
@@ -796,7 +814,9 @@ impl<'a> SAXParser<'a> {
 
         if byte == b'>' {
             let mut markup_entity = Box::new(self.markup_entity.take().unwrap());
-            markup_entity.header.1 = gc.cursor - 1;
+            markup_entity.header.1 = gc.cursor.saturating_sub(1);
+            markup_entity.byte_range.1 = (self.chunk_offset + gc.cursor as u64).saturating_sub(1);
+
             markup_entity.end = [gc.line, gc.character.saturating_sub(1)];
 
             if self.events[Event::Declaration] && markup_entity.hydrate(self.source_ptr) {
@@ -827,6 +847,7 @@ impl<'a> SAXParser<'a> {
 
         let proc_inst = self.proc_inst.as_mut().unwrap();
         proc_inst.target.header.1 = gc.cursor;
+        proc_inst.target.byte_range.1 = self.chunk_offset + gc.cursor as u64;
 
         match byte {
             b'>' => {
@@ -834,7 +855,7 @@ impl<'a> SAXParser<'a> {
             }
 
             b if b < 33 => {
-                proc_inst.target.header.1 = gc.cursor - 1;
+                proc_inst.target.header.1 = gc.cursor.saturating_sub(1);
                 proc_inst.target.end = [gc.line, gc.character.saturating_sub(1)];
                 // we could have something like this before the content starts:
                 // <?process-div           \n   instruction?>
@@ -858,6 +879,7 @@ impl<'a> SAXParser<'a> {
         }
 
         proc_inst.content.header.1 = gc.cursor;
+        proc_inst.content.byte_range.1 = self.chunk_offset + gc.cursor as u64;
 
         if byte != b'>' {
             return;
@@ -874,6 +896,7 @@ impl<'a> SAXParser<'a> {
         if self.events[Event::ProcessingInstruction] {
             proc_inst.end = [gc.line, gc.character];
             proc_inst.content.end = [gc.line, gc.character.saturating_sub(2)];
+            proc_inst.byte_range.1 = self.chunk_offset + gc.cursor as u64;
 
             proc_inst.target.value.drain(..2); // remove '<?'
             proc_inst.content.value.truncate(proc_inst.content.value.len().saturating_sub(2)); // remove '?>'
@@ -896,7 +919,7 @@ impl<'a> SAXParser<'a> {
         if byte < 33 {
             return;
         }
-
+        self.attribute.byte_range.0 = (self.chunk_offset + gc.cursor as u64).saturating_sub(1);
         match byte {
             b'>' => {
                 self.process_open_tag(false, gc);
@@ -907,6 +930,7 @@ impl<'a> SAXParser<'a> {
             _ => {
                 self.attribute.name.start = [gc.line, gc.character.saturating_sub(1)];
                 self.attribute.name.header.0 = gc.last_cursor_pos;
+                self.attribute.name.byte_range.1 = self.chunk_offset + gc.cursor as u64;
                 self.state = State::AttribName;
                 self.attribute_name(gc, current);
             }
@@ -918,10 +942,11 @@ impl<'a> SAXParser<'a> {
             b'=' => {
                 self.attribute.name.end = [gc.line, gc.character.saturating_sub(1)];
                 self.attribute.name.header.1 = gc.cursor.saturating_sub(1);
+                self.attribute.name.byte_range.1 = (self.chunk_offset + gc.cursor as u64).saturating_sub(1);
                 self.state = State::AttribValue;
             }
             b'>' => {
-                self.process_attribute();
+                self.process_attribute(gc);
                 self.process_open_tag(false, gc);
             }
             // whitespace
@@ -932,6 +957,7 @@ impl<'a> SAXParser<'a> {
                 gc.take_until_one_found(ATTRIBUTE_NAME_END, false);
                 self.attribute.name.end = [gc.line, gc.character];
                 self.attribute.name.header.1 = gc.cursor;
+                self.attribute.name.byte_range.1 = self.chunk_offset + gc.cursor as u64;
             }
         }
     }
@@ -942,20 +968,23 @@ impl<'a> SAXParser<'a> {
         if byte < 33 {
             return;
         }
+
+        if byte != b'=' {
+            self.process_attribute(gc);
+        }
+
         match byte {
             b'=' => self.state = State::AttribValue,
             b'/' => {
-                self.process_attribute();
                 self.state = State::OpenTagSlash;
             }
             b'>' => {
-                self.process_attribute();
                 self.process_open_tag(false, gc);
             }
             _ => {
-                self.process_attribute(); // new Attribute struct created
                 self.attribute.name.value = Vec::from(current);
                 self.attribute.name.header.0 = gc.cursor;
+                self.attribute.name.byte_range.0 = self.chunk_offset + gc.cursor as u64;
                 self.attribute.name.start = [gc.line, gc.character.saturating_sub(1)];
                 self.state = State::AttribName;
             }
@@ -970,18 +999,22 @@ impl<'a> SAXParser<'a> {
         }
         self.attribute.value.start = [gc.line, gc.character];
         self.attribute.value.header.0 = gc.cursor;
+        self.attribute.value.byte_range.0 = self.chunk_offset + gc.cursor as u64;
         if first_byte == b'"' || first_byte == b'\'' {
             self.quote = first_byte;
             self.state = State::AttribValueQuoted;
+            self.attribute.attr_type = if first_byte == b'"' { AttrType::DoubleQuoted } else { AttrType::SingleQuoted };
         } else if first_byte == b'{' {
             self.state = State::JSXAttributeExpression;
             self.attribute.attr_type = AttrType::JSX;
             self.brace_ct += 1;
         } else {
             self.attribute.value.header.0 = gc.last_cursor_pos;
+            self.attribute.value.byte_range.0 = self.chunk_offset + gc.last_cursor_pos as u64;
             // subtract 1 to account for the lack of a quote
             self.attribute.value.start = [gc.line, gc.character.saturating_sub(1)];
             self.state = State::AttribValueUnquoted;
+            self.attribute.attr_type = AttrType::NoQuotes;
             self.attribute_value_unquoted(gc, current);
         }
     }
@@ -991,13 +1024,14 @@ impl<'a> SAXParser<'a> {
             self.attribute.value.end = [gc.line, gc.character.saturating_sub(1)];
             let header_1 = gc.cursor.saturating_sub(1);
             self.attribute.value.header.1 = if header_1 == self.attribute.value.header.0 {header_1.saturating_sub(1)} else {header_1};
-            self.process_attribute();
+            self.attribute.value.byte_range.1 = self.chunk_offset + gc.cursor as u64;
+            self.process_attribute(gc);
             self.quote = 0;
             self.state = State::AttribValueClosed;
             return;
         }
         gc.take_until(self.quote, false);
-        self.attribute.value.header.1 = gc.cursor
+        self.attribute.value.header.1 = gc.cursor;
     }
 
     fn attribute_value_closed(&mut self, gc: &mut GraphemeClusters, current: &[u8]) {
@@ -1010,6 +1044,7 @@ impl<'a> SAXParser<'a> {
             self.state = State::OpenTagSlash;
         } else {
             self.attribute.name.header.0 = gc.last_cursor_pos;
+            self.attribute.name.byte_range.0 = self.chunk_offset + gc.last_cursor_pos as u64;
             self.state = State::AttribName;
             self.attribute.name.start = [gc.line, gc.character.saturating_sub(1)];
             self.attribute_name(gc, current);
@@ -1038,7 +1073,7 @@ impl<'a> SAXParser<'a> {
             }
         }
 
-        self.process_attribute();
+        self.process_attribute(gc);
         match byte {
             b'/' => self.state = State::OpenTagSlash,
             b'>' => self.process_open_tag(false, gc),
@@ -1046,8 +1081,9 @@ impl<'a> SAXParser<'a> {
         }
     }
 
-    fn process_attribute(&mut self) {
+    fn process_attribute(&mut self, gc: &mut GraphemeClusters) {
         let mut attr = mem::replace(&mut self.attribute, Attribute::new());
+        attr.byte_range.1 = self.chunk_offset + gc.cursor as u64;
         if self.events[Event::Attribute] && attr.hydrate(self.source_ptr) {
             let attr_box = Box::new(attr.clone());
             self.event_handler.handle_event(Event::Attribute, Entity::Attribute(&attr_box));
@@ -1063,6 +1099,7 @@ impl<'a> SAXParser<'a> {
         let mut tag = mem::replace(&mut self.tag, Tag::new([0, 0]));
         tag.self_closing = self_closing;
         tag.open_end = [gc.line, gc.character];
+        tag.byte_range.1 = self.chunk_offset + gc.cursor as u64;
 
         if self.events[Event::OpenTag] {
             tag.hydrate(self.source_ptr);
@@ -1098,6 +1135,7 @@ impl<'a> SAXParser<'a> {
             if tag_name == close_tag_name {
                 tag.close_start = self.tag.close_start;
                 tag.close_end = [gc.line, gc.character];
+                tag.byte_range.1 = self.chunk_offset + gc.cursor as u64;
                 found = true;
                 tag_index = i;
                 break;
@@ -1146,7 +1184,7 @@ impl<'a> SAXParser<'a> {
         if self.brace_ct == 0 {
             self.attribute.value.end = [gc.line, gc.character.saturating_sub(1)];
             self.attribute.value.header.1 = gc.last_cursor_pos;
-            self.process_attribute();
+            self.process_attribute(gc);
             self.state = State::AttribValueClosed;
             return;
         }
@@ -1157,6 +1195,7 @@ impl<'a> SAXParser<'a> {
         if self.text.is_none() && (self.events[Event::Text] || self.events[Event::CloseTag]) {
             let mut text = Text::new([line, character]);
             text.header = (offset, offset);
+            text.byte_range.0 = self.chunk_offset + offset as u64;
             self.text = Some(text);
         }
 
@@ -1347,6 +1386,7 @@ mod tests {
 
         let attrs = event_handler.attributes.borrow();
         let attr = &attrs[0];
+        assert_eq!(attr.byte_range, (14, 21));
         assert_eq!(attr.name.value, b"id");
         assert_eq!(attr.name.start, [1, 13]);
         assert_eq!(attr.name.end, [1, 15]);
@@ -1683,11 +1723,17 @@ the plugin
         sax.identity();
 
         let texts = event_handler.texts.borrow();
+        let comment = &texts[0];
         assert_eq!(texts.len(), 2);
-        let comment_value = String::from_utf8(texts[0].value.clone()).unwrap();
+        assert_eq!(comment.byte_range.0, 0);
+        assert_eq!(comment.byte_range.1, 43);
+        let comment_value = String::from_utf8(comment.value.clone()).unwrap();
         assert_eq!(comment_value, "name='test 3 attr' this is a comment");
 
-        let text_value = String::from_utf8(texts[1].value.clone()).unwrap();
+        let text = &texts[1];
+        assert_eq!(text.byte_range.0, 43);
+        assert_eq!(text.byte_range.1, 88);
+        let text_value = String::from_utf8(text.value.clone()).unwrap();
         assert_eq!(text_value, " <-- name='test 3 attr' this is just text -->");
 
         Ok(())
@@ -1761,8 +1807,9 @@ the plugin
         sax.identity();
 
         let texts = event_handler.texts.borrow();
+        let text = &texts[0];
         assert_eq!(texts.len(), 1);
-        let text_value = String::from_utf8(texts[0].value.clone()).unwrap();
+        let text_value = String::from_utf8(text.value.clone()).unwrap();
         assert_eq!(text_value, String::from_utf8(Vec::from(bytes)).unwrap());
 
         Ok(())
@@ -1918,9 +1965,12 @@ the plugin
         sax.write(str.as_bytes());
         sax.identity();
 
-        let proc_inst = event_handler.proc_insts.borrow();
-        assert_eq!(proc_inst.len(), 1);
-        assert_eq!(proc_inst[0].target.value, b"xml-stylesheet");
+        let proc_insts = event_handler.proc_insts.borrow();
+        assert_eq!(proc_insts.len(), 1);
+        let proc_inst = &proc_insts[0];
+        assert_eq!(proc_inst.byte_range.0, 0);
+        assert_eq!(proc_inst.byte_range.1, 142);
+        assert_eq!(proc_inst.target.value, b"xml-stylesheet");
 
         Ok(())
     }
@@ -1941,8 +1991,18 @@ the plugin
 
         let tags = event_handler.tags.borrow();
         assert_eq!(tags.len(), 3);
-        assert_eq!(tags[0].attributes.len(), 1);
-        assert_eq!(tags[1].attributes.len(), 1);
+
+        let tag = &tags[0];
+        assert_eq!(tag.attributes.len(), 1);
+        assert_eq!(tag.byte_range, (63, 93));
+
+        let tag1= &tags[1];
+        assert_eq!(tag1.attributes.len(), 1);
+        assert_eq!(tag1.byte_range, (96, 130));
+
+        let tag2 = &tags[2];
+        assert_eq!(tag2.attributes.len(), 0);
+        assert_eq!(tag2.byte_range, (13, 156));
 
         Ok(())
     }
@@ -1970,7 +2030,10 @@ the plugin
 
         let tags = event_handler.tags.borrow();
         assert_eq!(tags.len(), 7);
-        assert_eq!(tags[0].self_closing, true);
+        let tag = &tags[0];
+        assert_eq!(tag.byte_range, (27, 71));
+        assert_eq!(tag.self_closing, true);
+
         assert_eq!(tags[1].self_closing, true);
         assert_eq!(tags[2].self_closing, true);
         assert_eq!(tags[3].self_closing, true);
@@ -2028,8 +2091,10 @@ the plugin
 
             let attrs = event_handler.attributes.borrow();
             assert_eq!(attrs.len(), 1, "At iteration i={}, Expected exactly one attribute, got {:?}", i, attrs.len());
-            assert_eq!(attrs[0].value.value, b"100.00", "At iteration i={}, Expected attribute value to be 100.00, got {:?}", i, attrs[0].value.value);
-            assert_eq!(attrs[0].name.value, b"top", "At iteration i={}, Expected attribute name to be 100.00, got {:?}", i, attrs[0].name.value);
+            let attr = &attrs[0];
+            assert_eq!(attr.byte_range, (6, 18), "At iteration i={}, Expected byte_range to be (6, 18), got ({:?}, {:?})", i, attr.byte_range.0, attr.byte_range.1);
+            assert_eq!(attr.value.value, b"100.00", "At iteration i={}, Expected attribute value to be 100.00, got {:?}", i, attrs[0].value.value);
+            assert_eq!(attr.name.value, b"top", "At iteration i={}, Expected attribute name to be 100.00, got {:?}", i, attrs[0].name.value);
         }
         Ok(())
     }

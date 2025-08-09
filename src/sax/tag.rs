@@ -12,6 +12,7 @@ pub struct Tag {
     pub close_start: [u64; 2],
     pub close_end: [u64; 2],
     pub header: (usize, usize),
+    pub byte_range: (u64, u64),
 }
 
 impl Tag {
@@ -27,6 +28,7 @@ impl Tag {
             open_end: [0; 2],
             close_start: [0; 2],
             close_end: [0; 2],
+            byte_range: (0, 0),
         }
     }
 
@@ -83,6 +85,7 @@ pub struct Text {
     pub value: Vec<u8>,
     pub start: [u64; 2],
     pub end: [u64; 2],
+    pub byte_range: (u64, u64),
 }
 
 impl Text {
@@ -92,6 +95,7 @@ impl Text {
             value: Vec::new(),
             end: [0; 2],
             header: (0, 0),
+            byte_range: (0,0),
         };
     }
 
@@ -139,6 +143,7 @@ pub struct Attribute {
     pub name: Text,
     pub value: Text,
     pub attr_type: AttrType,
+    pub byte_range: (u64, u64)
 }
 
 impl Attribute {
@@ -147,6 +152,7 @@ impl Attribute {
             name: Text::new([0; 2]),
             value: Text::new([0; 2]),
             attr_type: AttrType::Normal,
+            byte_range: (0, 0)
         };
     }
 
@@ -162,6 +168,7 @@ pub struct ProcInst {
     pub end: [u64; 2],
     pub target: Text,
     pub content: Text,
+    pub byte_range: (u64, u64)
 }
 
 impl ProcInst {
@@ -171,6 +178,7 @@ impl ProcInst {
             end: [0; 2],
             target: Text::new([0; 2]),
             content: Text::new([0; 2]),
+            byte_range: (0, 0)
         };
     }
 
@@ -197,8 +205,11 @@ pub enum Dispatched {
 
 #[derive(Clone, Copy)]
 pub enum AttrType {
-    Normal = 0x00,
-    JSX = 0x01,
+    Normal =        0b0000,
+    JSX =           0b0001,
+    NoQuotes =      0b0010,
+    SingleQuoted =  0b0100,
+    DoubleQuoted =  0b1000,
 }
 
 pub struct Accumulator {

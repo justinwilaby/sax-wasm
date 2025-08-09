@@ -93,27 +93,39 @@ describe("SaxWasm", () => {
     );
     deepStrictEqual(JSON.parse(JSON.stringify(_data[0])), {
       name: {
-        end: {
-          character: 13,
-          line: 0,
-        },
         start: {
-          character: 8,
           line: 0,
+          character: 8,
+        },
+        end: {
+          line: 0,
+          character: 13,
         },
         value: "*ngIf",
-      },
-      type: 0,
-      value: {
-        end: {
-          character: 24,
-          line: 0,
+        byteOffsets: {
+          start: 0,
+          end: 13,
         },
+      },
+      value: {
         start: {
-          character: 15,
           line: 0,
+          character: 15,
+        },
+        end: {
+          line: 0,
+          character: 24,
         },
         value: "something",
+        byteOffsets: {
+          start: 15,
+          end: 25,
+        },
+      },
+      type: 8,
+      byteOffsets: {
+        start: 8,
+        end: 25,
       },
     });
   });

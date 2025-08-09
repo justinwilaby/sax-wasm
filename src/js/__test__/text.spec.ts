@@ -35,6 +35,7 @@ describe('SaxWasm', () => {
     parser.end();
     deepStrictEqual(_data.length,3);
     deepStrictEqual(_data[0].value,'I like to use ');
+    deepStrictEqual(_data[0].byteOffsets, {start: 5, end: 19})
     deepStrictEqual(_data[1].value,'bold text');
     deepStrictEqual(_data[2].value,' to emphasize');
     strictEqual(_event, SaxEventType.Text);
@@ -54,7 +55,7 @@ describe('SaxWasm', () => {
   it('should serialize to JSON as deepStrictEqualed', () => {
     parser.write(Buffer.from('a happy little parser'));
     parser.end();
-    deepStrictEqual(JSON.stringify(_data[0]),'{"start":{"line":0,"character":0},"end":{"line":0,"character":21},"value":"a happy little parser"}');
+    deepStrictEqual(JSON.stringify(_data[0]),'{"start":{"line":0,"character":0},"end":{"line":0,"character":21},"value":"a happy little parser","byteOffsets":{"start":0,"end":21}}');
     strictEqual(_event, SaxEventType.Text);
   });
 });
