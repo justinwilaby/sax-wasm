@@ -32,7 +32,7 @@ export type SaxEvent = [typeof SaxEventType.Text, Text] | [typeof SaxEventType.P
  * Represents the different types of attributes.
  */
 export declare enum AttributeType {
-    Normal = 0,
+    NoValue = 0,
     JSX = 1,
     NoQuotes = 2,
     SingleQuoted = 4,

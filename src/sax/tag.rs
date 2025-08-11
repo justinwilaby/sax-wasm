@@ -151,7 +151,7 @@ impl Attribute {
         return Attribute {
             name: Text::new([0; 2]),
             value: Text::new([0; 2]),
-            attr_type: AttrType::Normal,
+            attr_type: AttrType::NoValue,
             byte_range: (0, 0)
         };
     }
@@ -205,7 +205,7 @@ pub enum Dispatched {
 
 #[derive(Clone, Copy)]
 pub enum AttrType {
-    Normal =        0b0000,
+    NoValue =       0b0000,
     JSX =           0b0001,
     NoQuotes =      0b0010,
     SingleQuoted =  0b0100,
