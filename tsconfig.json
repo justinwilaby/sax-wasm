@@ -4,7 +4,7 @@
     "module": "ESNext",
     "target": "esnext",
     "outDir": "lib",
-    "declaration": true,
+    "declaration": false,
     "esModuleInterop": false,
     "allowSyntheticDefaultImports": true,
     "moduleResolution": "Node",

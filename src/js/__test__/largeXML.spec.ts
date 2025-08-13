@@ -33,7 +33,7 @@ describe('When parsing XML, the SaxWasm', () => {
       readable.on('data', (chunk) => {
         parser.write(chunk as Uint8Array);
       });
-      readable.on('end', resolve);
+      readable.on('end', () => resolve(1));
     });
   });
 
@@ -61,7 +61,7 @@ describe('When parsing XML, the SaxWasm', () => {
     const readable = createReadStream(pathResolve(__dirname + '/xml.xml'), options);
     const webReadable = Readable.toWeb(readable);
     const eventsFromGenerator: [SaxEventType, Detail][] = [];
-    for await (const [event, detail] of parser.parse(webReadable.getReader())) {
+    for await (const [event, detail] of parser.parse(webReadable.getReader() as ReadableStreamDefaultReader<Uint8Array<ArrayBufferLike>>)) {
       eventsFromGenerator.push([event, detail.toJSON()]);
     }
 
@@ -74,7 +74,7 @@ describe('When parsing XML, the SaxWasm', () => {
       readable.on('data', (chunk) => {
         parser.write(chunk as Uint8Array);
       });
-      readable.on('end', resolve);
+      readable.on('end', () => resolve(1));
     });
     deepEqual(eventsFromGenerator, eventsFromEventHandler);
   });

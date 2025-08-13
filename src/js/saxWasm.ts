@@ -40,10 +40,22 @@ export type SaxEvent = [typeof SaxEventType.Text, Text]
   | [typeof SaxEventType.CloseTag, Tag]
   | [typeof SaxEventType.Cdata, Text]
 
+/**
+ * Represents the different types of attributes.
+ */
+export enum AttributeType {
+  NoValue = 0b0000,
+  JSX = 0b0001,
+  NoQuotes = 0b0010,
+  SingleQuoted = 0b0100,
+  DoubleQuoted = 0b1000,
+}
+
 export type AttributeDetail = {
-  readonly type: 0 | 1;
+  readonly type: AttributeType;
   readonly name: TextDetail;
   readonly value: TextDetail;
+  readonly byteOffsets: ByteOffsets;
 }
 
 export type TagDetail = {
@@ -57,6 +69,7 @@ export type TagDetail = {
 
   readonly name: string;
   readonly selfClosing: boolean;
+  readonly byteOffsets: ByteOffsets;
 }
 
 export type ProcInstDetail = {
@@ -64,16 +77,22 @@ export type ProcInstDetail = {
   readonly content: TextDetail;
   readonly start: PositionDetail;
   readonly end: PositionDetail;
+  readonly byteOffsets: ByteOffsets;
 }
 
 export type TextDetail = {
   readonly start: PositionDetail;
   readonly end: PositionDetail;
   readonly value: string;
+  readonly byteOffsets: ByteOffsets;
 }
 export type PositionDetail = {
   readonly line: number;
   readonly character: number;
+}
+export type ByteOffsets = {
+  start: number;
+  end: number;
 }
 /**
  * Represents the detail of a SAX event.
@@ -131,14 +150,6 @@ export class Position implements PositionDetail {
 }
 
 /**
- * Represents the different types of attributes.
- */
-export enum AttributeType {
-  Normal = 0b00,
-  JSX = 0b01,
-}
-
-/**
  * Represents an attribute in the XML data.
  *
  * This class decodes the Attribute data sent across
@@ -150,7 +161,7 @@ export enum AttributeType {
  * 4. 'value' bytes - byte position name_length-n (n bytes)
  */
 export class Attribute extends Reader<AttributeDetail> implements AttributeDetail {
-  public static LENGTH = 120 as const;
+  public static LENGTH = 168 as const;
 
   public type: AttributeType;
   public name: Text;
@@ -160,15 +171,26 @@ export class Attribute extends Reader<AttributeDetail> implements AttributeDetai
     super(data, memory);
     this.name = new Text(new Uint8Array(data.buffer, data.byteOffset, Text.LENGTH), memory);
     this.value = new Text(new Uint8Array(data.buffer, data.byteOffset + Text.LENGTH, Text.LENGTH), memory);
-    this.type = data[112];
+    this.type = data[144];
+  }
+
+  /**
+  * Gets the byte offsets representing the
+  * start and end byte in the data
+  */
+  public get byteOffsets(): ByteOffsets {
+    return (this.cache.byteOffsets ??= {
+      start: readU64(this.data, 152),
+      end: readU64(this.data, 160)
+    }) as ByteOffsets;
   }
 
   /**
    * @inheritDoc
    */
   public toJSON() {
-    const { name, value, type } = this;
-    return { name: name.toJSON(), value: value.toJSON(), type };
+    const { name, value, type, byteOffsets } = this;
+    return { name: name.toJSON(), value: value.toJSON(), type, byteOffsets };
   }
 
   /**
@@ -211,7 +233,7 @@ export class Attribute extends Reader<AttributeDetail> implements AttributeDetai
  * * `ptr` - The initial pointer position.
  */
 export class ProcInst extends Reader<ProcInstDetail> implements ProcInstDetail {
-  public static LENGTH = 144 as const;
+  public static LENGTH = 186 as const;
 
   public target: Text;
   public content: Text;
@@ -231,7 +253,7 @@ export class ProcInst extends Reader<ProcInstDetail> implements ProcInstDetail {
   public get start(): PositionDetail {
     return (
       (this.cache.start as PositionDetail) ||
-      (this.cache.start = readPosition(this.data, 128))
+      (this.cache.start = readPosition(this.data, 0))
     );
   }
 
@@ -248,13 +270,24 @@ export class ProcInst extends Reader<ProcInstDetail> implements ProcInstDetail {
   }
 
   /**
+   * Gets the byte offsets representing the
+   * start and end byte in the data
+   */
+  public get byteOffsets(): ByteOffsets {
+    return (this.cache.byteOffsets ??= {
+      start: readU64(this.data, 16),
+      end: readU64(this.data, 24),
+    }) as ByteOffsets;
+  }
+
+  /**
    * Converts the processing instruction to a JSON object.
    *
    * @returns A JSON object representing the processing instruction.
    */
   public toJSON() {
-    const { start, end, target, content } = this;
-    return { start, end, target: target.toJSON(), content: content.toJSON() };
+    const { start, end, target, content, byteOffsets } = this;
+    return { start, end, target: target.toJSON(), content: content.toJSON(), byteOffsets };
   }
 
   /**
@@ -273,7 +306,8 @@ export class ProcInst extends Reader<ProcInstDetail> implements ProcInstDetail {
  * into its respective fields: `start`, `end`, and `value`.
  */
 export class Text extends Reader<TextDetail> implements TextDetail {
-  public static LENGTH = 56 as const;
+  public static LENGTH = 72 as const;
+
   /**
    * Gets the start position of the text node.
    *
@@ -307,13 +341,24 @@ export class Text extends Reader<TextDetail> implements TextDetail {
   }
 
   /**
+  * Gets the byte offsets representing the
+  * start and end byte in the data
+  */
+  public get byteOffsets(): ByteOffsets {
+    return (this.cache.byteOffsets ??= {
+      start: readU64(this.data, 56),
+      end: readU64(this.data, 64)
+    }) as ByteOffsets;
+  }
+
+  /**
    * Converts the text node to a JSON object.
    *
    * @returns A JSON object representing the text node.
    */
   public toJSON() {
-    const { start, end, value } = this;
-    return { start, end, value };
+    const { start, end, value, byteOffsets } = this;
+    return { start, end, value, byteOffsets };
   }
 
   /**
@@ -334,7 +379,7 @@ export class Text extends Reader<TextDetail> implements TextDetail {
  * `closeEnd`, `selfClosing`, `name`, `attributes`, and `textNodes`.
  */
 export class Tag extends Reader<TagDetail> implements TagDetail {
-  public static LENGTH = 104 as const;
+  public static LENGTH = 128 as const;
 
   /**
    * Gets the start position of the tag opening.
@@ -451,12 +496,23 @@ export class Tag extends Reader<TagDetail> implements TagDetail {
   }
 
   /**
+  * Gets the byte offsets representing the
+  * start and end byte in the data
+  */
+  public get byteOffsets(): ByteOffsets {
+    return (this.cache.byteOffsets ??= {
+      start: readU64(this.data, 112),
+      end: readU64(this.data, 120)
+    }) as ByteOffsets;
+  }
+
+  /**
    * Converts the tag to a JSON object.
    *
    * @returns A JSON object representing the tag.
    */
   public toJSON() {
-    const { openStart, openEnd, closeStart, closeEnd, name, attributes, textNodes, selfClosing, } = this;
+    const { openStart, openEnd, closeStart, closeEnd, name, attributes, textNodes, selfClosing, byteOffsets } = this;
     return {
       openStart,
       openEnd,
@@ -466,6 +522,7 @@ export class Tag extends Reader<TagDetail> implements TagDetail {
       attributes: attributes.map(a => a.toJSON()),
       textNodes: textNodes.map(t => t.toJSON()),
       selfClosing,
+      byteOffsets,
     };
   }
 
@@ -586,7 +643,7 @@ export class SAXParser {
    */
   public async *parse(reader: ReadableStreamDefaultReader<Uint8Array>): AsyncGenerator<SaxEvent> {
     let eventAggregator: SaxEvent[] = [];
-    this.eventHandler = function <T extends SaxEvent> (event:T[0], detail:T[1]) {
+    this.eventHandler = function <T extends SaxEvent>(event: T[0], detail: T[1]) {
       eventAggregator.push([event, detail] as T);
     };
 
@@ -731,18 +788,15 @@ export class SAXParser {
   public async prepareWasm(saxWasm: Response | Promise<Response>): Promise<boolean>;
   public async prepareWasm(saxWasm: Uint8Array): Promise<boolean>;
   public async prepareWasm(saxWasm: Uint8Array | Response | Promise<Response>): Promise<boolean> {
-    let result: WebAssembly.WebAssemblyInstantiatedSource;
     const env = {
       memory: new WebAssembly.Memory({ initial: 10, shared: true, maximum: 150 } as WebAssembly.MemoryDescriptor),
       table: new WebAssembly.Table({ initial: 1, element: 'anyfunc' } as WebAssembly.TableDescriptor),
       event_listener: this.eventTrap
     };
 
-    if (saxWasm instanceof Uint8Array) {
-      result = await WebAssembly.instantiate(saxWasm, { env });
-    } else {
-      result = await WebAssembly.instantiateStreaming(saxWasm, { env });
-    }
+    const result = (saxWasm instanceof Uint8Array
+      ? await WebAssembly.instantiate(saxWasm as Uint8Array, { env })
+      : await WebAssembly.instantiateStreaming(saxWasm as Response, { env })) as WebAssembly.WebAssemblyInstantiatedSource;
 
     if (result && typeof this.events === 'number') {
       const { parser } = this.wasmSaxParser = result.instance.exports as unknown as WasmSaxParser;
@@ -778,30 +832,30 @@ export const readU32 = (uint8Array: Uint8Array, ptr: number): number =>
   (uint8Array[ptr + 1] << 8) |
   uint8Array[ptr];
 
-  /**
-   * Reads a u64 as a javascript number. This
-   * will limit precision to 2⁵³ - 1 or 53 bits
-   * or Number.MAX_SAFE_INTEGER or an XML document
-   * that's 8,388,608 GB in size.
-   *
-   * When working with strings in JS, 64 bit
-   * bigints don't make sense because string
-   * length limits will be encountered before
-   * reaching these values.
-   *
-   * @param uint8Array The data to read the u64 from
-   * @param ptr The offset to start at
-   * @returns number
-   */
-  const readU64 = (uint8Array: Uint8Array, ptr = 0): number =>
-    (uint8Array[ptr + 7] << 56) |
-    (uint8Array[ptr + 6] << 48) |
-    (uint8Array[ptr + 5] << 40) |
-    (uint8Array[ptr + 4] << 32) |
-    (uint8Array[ptr + 3] << 24) |
-    (uint8Array[ptr + 2] << 16) |
-    (uint8Array[ptr + 1] << 8) |
-    uint8Array[ptr];
+/**
+ * Reads a u64 as a javascript number. This
+ * will limit precision to 2⁵³ - 1 or 53 bits
+ * or Number.MAX_SAFE_INTEGER or an XML document
+ * that's 8,388,608 GB in size.
+ *
+ * When working with strings in JS, 64 bit
+ * bigints don't make sense because string
+ * length limits will be encountered before
+ * reaching these values.
+ *
+ * @param uint8Array The data to read the u64 from
+ * @param ptr The offset to start at
+ * @returns number
+ */
+const readU64 = (uint8Array: Uint8Array, ptr = 0): number =>
+  (uint8Array[ptr + 7] << 56) |
+  (uint8Array[ptr + 6] << 48) |
+  (uint8Array[ptr + 5] << 40) |
+  (uint8Array[ptr + 4] << 32) |
+  (uint8Array[ptr + 3] << 24) |
+  (uint8Array[ptr + 2] << 16) |
+  (uint8Array[ptr + 1] << 8) |
+  uint8Array[ptr];
 
 export const readPosition = (uint8Array: Uint8Array, ptr = 0): Position => {
   const line = readU64(uint8Array, ptr);

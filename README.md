@@ -36,6 +36,31 @@ For each entity, `sax-wasm` returns a `Position` object:
 
 The position data 100% works with `xml.substring(start, end)` or `xml.slice(start, end)` and takes into account 2-4 byte graphemes such as emojis, cyrillic or utf-16 encoded documents.
 
+### Byte Offset Ranges
+
+In addition to line and character positions, `sax-wasm` now provides byte offset ranges for all entities. This allows for precise byte-level access to the original data:
+
+- **Byte Offsets**: Each entity includes `byteOffsets` with:
+  - `start`: The starting byte position in the original data
+  - `end`: The ending byte position in the original data
+
+This is particularly useful for:
+- Direct byte-level manipulation of the source data
+- Precise substring extraction without character encoding concerns
+- Performance-critical applications that need byte-accurate positioning
+
+### Attribute Types
+
+The parser now distinguishes between different attribute syntax types:
+
+- **Normal**: Standard XML attributes (`attr="value"`)
+- **JSX**: JSX-style attributes (`attr={expression}`)
+- **NoQuotes**: Unquoted attributes (`attr=value`)
+- **SingleQuoted**: Single-quoted attributes (`attr='value'`)
+- **DoubleQuoted**: Double-quoted attributes (`attr="value"`)
+
+This information is available in the `type` field of each attribute and can be used for syntax highlighting, linting, or format-specific processing.
+
 #### Example Output
 
 When parsing `<div class="myDiv">This is my div</div>`, you might receive output like this:
@@ -71,6 +96,10 @@ When parsing `<div class="myDiv">This is my div</div>`, you might receive output
           character: 10,
         },
         value: "class",
+        byteOffsets: {
+          start: 5,
+          end: 10,
+        },
       },
       value: {
         start: {
@@ -82,8 +111,16 @@ When parsing `<div class="myDiv">This is my div</div>`, you might receive output
           character: 17,
         },
         value: "myDiv",
+        byteOffsets: {
+          start: 12,
+          end: 17,
+        },
       },
-      type: 0,
+      type: 8, // AttributeType.DoubleQuoted
+      byteOffsets: {
+        start: 5,
+        end: 17,
+      },
     },
   ],
   textNodes: [
@@ -97,9 +134,17 @@ When parsing `<div class="myDiv">This is my div</div>`, you might receive output
         character: 33,
       },
       value: "This is my div",
+      byteOffsets: {
+        start: 19,
+        end: 33,
+      },
     },
   ],
   selfClosing: false,
+  byteOffsets: {
+    start: 0,
+    end: 39,
+  },
 }
 ```
 
@@ -192,6 +237,8 @@ be recreated by applying rules to the events that are reported by the parser.
 1. Namespaces are reported in attributes. No special events dedicated to namespaces.
 1. Streaming utf-8 code points in a Uint8Array is required.
 1. Whitespace between XML elements is not reported. If you need this, a simple subtraction of the `line` and `character` between the end of one tag and the start of the next will reveal where this whitespace exists.
+1. **Byte offset ranges** are provided for all entities, enabling precise byte-level access to the original data.
+1. **Attribute type detection** distinguishes between different attribute syntaxes (normal, JSX, quoted, unquoted) for enhanced parsing capabilities.
 
 ## Streaming
 Streaming is supported with sax-wasm by writing utf-8 code points (Uint8Array) to the parser instance. Writes can occur safely
@@ -238,6 +285,7 @@ json using `JSON.stringify()`. The first read of a property on a data object rep
 retrieve the value from raw bytes and convert it to a `string`, `number` or `Position` on the JavaScript thread. This
 conversion time becomes noticeable on very large documents with many elements and attributes. **NOTE:** After
 the initial read, the value is cached and accessing it becomes faster.
+1. Use **byte offsets** for direct data access - When you need to extract specific portions of the original data, use the `byteOffsets` property instead of character positions. This avoids the overhead of character encoding conversions and provides direct byte-level access to the source data.
 
 ## SAXParser.js
 ## Constructor
