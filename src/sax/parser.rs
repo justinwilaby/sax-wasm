@@ -945,13 +945,12 @@ impl<'a> SAXParser<'a> {
                 self.state = State::AttribValue;
             }
             b'>' => {
+                self.attribute.name.end = [gc.line, gc.character.saturating_sub(1)];
                 self.process_attribute(gc);
                 self.process_open_tag(false, gc);
             }
             // whitespace
             b if b < 33 => {
-                // self.attribute.name.byte_range.1 = (self.chunk_offset + gc.cursor as u64).saturating_sub(1);
-                // self.attribute.name.end = [gc.line, gc.character.saturating_sub(1)];
                 self.state = State::AttribNameSawWhite;
                 self.attribute_name_saw_white(gc, current);
             }
@@ -2213,6 +2212,35 @@ the plugin
         assert_eq!(attr1.value.start, [2, 19]);
         assert_eq!(attr1.value.end, [2, 22]);
         assert_eq!(attr1.value.byte_range, (49, 52));
+
+        Ok(())
+    }
+    #[test]
+    fn test_attribute_position_no_value_attr1() -> Result<()> {
+        let event_handler = TextEventHandler::new();
+        let mut sax = SAXParser::new(&event_handler);
+        let mut events = [false; 10];
+        events[Event::Attribute] = true;
+        events[Event::CloseTag] = true;
+        sax.events = events;
+
+        let str = r#"<div x></div>"#;
+
+        sax.write(str.as_bytes());
+        sax.identity();
+
+        let attrs = event_handler.attributes.borrow();
+        assert_eq!(attrs.len(), 1, "Expected exactly 1 attributes, got {}", attrs.len());
+
+        // First attribute: noValueAttr (boolean attribute)
+        let attr = &attrs[0];
+        assert_eq!(attr.name.value, b"x");
+        assert_eq!(attr.value.value, b"");
+        assert_eq!(attr.name.start, [0, 5]);
+        assert_eq!(attr.name.end, [0, 6]);
+        assert_eq!(attr.name.byte_range, (5, 6));
+        assert_eq!(attr.value.start, [0, 0]);
+        assert_eq!(attr.value.end, [0, 0]);
 
         Ok(())
     }
