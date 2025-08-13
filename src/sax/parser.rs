@@ -930,7 +930,7 @@ impl<'a> SAXParser<'a> {
             _ => {
                 self.attribute.name.start = [gc.line, gc.character.saturating_sub(1)];
                 self.attribute.name.header.0 = gc.last_cursor_pos;
-                self.attribute.name.byte_range.1 = self.chunk_offset + gc.cursor as u64;
+                self.attribute.name.byte_range.0 = (self.chunk_offset + gc.cursor as u64).saturating_sub(1);
                 self.state = State::AttribName;
                 self.attribute_name(gc, current);
             }
@@ -941,7 +941,6 @@ impl<'a> SAXParser<'a> {
         match current[0] {
             b'=' => {
                 self.attribute.name.end = [gc.line, gc.character.saturating_sub(1)];
-                self.attribute.name.header.1 = gc.cursor.saturating_sub(1);
                 self.attribute.name.byte_range.1 = (self.chunk_offset + gc.cursor as u64).saturating_sub(1);
                 self.state = State::AttribValue;
             }
@@ -951,7 +950,10 @@ impl<'a> SAXParser<'a> {
             }
             // whitespace
             b if b < 33 => {
+                // self.attribute.name.byte_range.1 = (self.chunk_offset + gc.cursor as u64).saturating_sub(1);
+                // self.attribute.name.end = [gc.line, gc.character.saturating_sub(1)];
                 self.state = State::AttribNameSawWhite;
+                self.attribute_name_saw_white(gc, current);
             }
             _ => {
                 gc.take_until_one_found(ATTRIBUTE_NAME_END, false);
@@ -966,6 +968,7 @@ impl<'a> SAXParser<'a> {
         let byte = current[0];
         // whitespace
         if byte < 33 {
+            gc.skip_whitespace();
             return;
         }
 
@@ -984,7 +987,7 @@ impl<'a> SAXParser<'a> {
             _ => {
                 self.attribute.name.value = Vec::from(current);
                 self.attribute.name.header.0 = gc.cursor;
-                self.attribute.name.byte_range.0 = self.chunk_offset + gc.cursor as u64;
+                self.attribute.name.byte_range.0 = (self.chunk_offset + gc.cursor as u64).saturating_sub(1);
                 self.attribute.name.start = [gc.line, gc.character.saturating_sub(1)];
                 self.state = State::AttribName;
             }
@@ -1024,7 +1027,7 @@ impl<'a> SAXParser<'a> {
             self.attribute.value.end = [gc.line, gc.character.saturating_sub(1)];
             let header_1 = gc.cursor.saturating_sub(1);
             self.attribute.value.header.1 = if header_1 == self.attribute.value.header.0 {header_1.saturating_sub(1)} else {header_1};
-            self.attribute.value.byte_range.1 = self.chunk_offset + gc.cursor as u64;
+            self.attribute.value.byte_range.1 = (self.chunk_offset + gc.cursor as u64).saturating_sub(1);
             self.process_attribute(gc);
             self.quote = 0;
             self.state = State::AttribValueClosed;
@@ -1045,6 +1048,7 @@ impl<'a> SAXParser<'a> {
         } else {
             self.attribute.name.header.0 = gc.last_cursor_pos;
             self.attribute.name.byte_range.0 = self.chunk_offset + gc.last_cursor_pos as u64;
+            self.attribute.byte_range.0 = self.attribute.name.byte_range.0;
             self.state = State::AttribName;
             self.attribute.name.start = [gc.line, gc.character.saturating_sub(1)];
             self.attribute_name(gc, current);
@@ -1066,6 +1070,7 @@ impl<'a> SAXParser<'a> {
                 attr_end = found;
             }
             self.attribute.value.header.1 = gc.cursor;
+            self.attribute.value.byte_range.1 = gc.cursor as u64;
             self.attribute.value.end = [gc.line, gc.character];
 
             if !attr_end && current[0] != byte {
@@ -1349,22 +1354,27 @@ mod tests {
 
         let attrs = event_handler.attributes.borrow();
         let attr = &attrs[0];
+
         assert_eq!(attr.name.value, b"x");
         assert_eq!(attr.name.start, [1, 13]);
         assert_eq!(attr.name.end, [1, 14]);
+        assert_eq!(attr.name.byte_range, (14, 15));
 
         assert_eq!(attr.value.value, b"1");
         assert_eq!(attr.value.start, [1, 15]);
         assert_eq!(attr.value.end, [1, 16]);
+        assert_eq!(attr.value.byte_range, (16, 17));
 
         let attr1 = &attrs[1];
         assert_eq!(attr1.name.value, b"y");
         assert_eq!(attr1.name.start, [2, 12]);
         assert_eq!(attr1.name.end, [2, 13]);
+        assert_eq!(attr1.name.byte_range, (30, 31));
 
         assert_eq!(attr1.value.value, b"3");
         assert_eq!(attr1.value.start, [2, 14]);
         assert_eq!(attr1.value.end, [2, 15]);
+        assert_eq!(attr1.value.byte_range, (32, 33));
         Ok(())
     }
     #[test]
@@ -1558,13 +1568,16 @@ mod tests {
 
         let attrs = event_handler.attributes.borrow();
         let texts = event_handler.texts.borrow();
+        let attr = &attrs[0];
+        let attr1 = &attrs[1];
+        let attr3 = &attrs[2];
         assert_eq!(attrs.len(), 3);
-        assert_eq!(attrs[0].name.value, b"attribute1");
-        assert_eq!(attrs[0].value.value, b"value1");
-        assert_eq!(attrs[1].name.value, b"a");
-        assert_eq!(attrs[1].value.value, b"value2");
-        assert_eq!(attrs[2].name.value, b"attribute3");
-        assert_eq!(attrs[2].value.value, b"value3");
+        assert_eq!(attr.name.value, b"attribute1");
+        assert_eq!(attr.value.value, b"value1");
+        assert_eq!(attr1.name.value, b"a");
+        assert_eq!(attr1.value.value, b"value2");
+        assert_eq!(attr3.name.value, b"attribute3");
+        assert_eq!(attr3.value.value, b"value3");
         assert_eq!(texts.len(), 0);
 
         Ok(())
@@ -1588,14 +1601,16 @@ mod tests {
         assert_eq!(texts.len(), 2);
 
         // orphaned close tag should be treated as text
+        let tag = &tags[0];
+        let tag1 = &tags[1];
         assert_eq!(&texts[0].value, b"GitHub");
         assert_eq!(&texts[1].value, b"</orphan>");
 
-        assert_eq!(tags[0].name, b"a");
-        assert_eq!(tags[0].close_start[1], 39);
+        assert_eq!(tag.name, b"a");
+        assert_eq!(tag.close_start[1], 39);
 
-        assert_eq!(tags[1].name, b"div");
-        assert_eq!(tags[1].close_start[1], 52);
+        assert_eq!(tag1.name, b"div");
+        assert_eq!(tag1.close_start[1], 52);
         Ok(())
     }
     #[test]
@@ -1832,7 +1847,8 @@ the plugin
 
             let texts = event_handler.texts.borrow();
             assert_eq!(texts.len(), 1, "At iteration i={}, expected exactly one text element, got {}", i, texts.len());
-            let text_value = String::from_utf8(texts[0].value.clone()).unwrap();
+            let text = &texts[0];
+            let text_value = String::from_utf8(text.value.clone()).unwrap();
             assert_eq!(
                 text_value,
                 String::from_utf8(Vec::from("something".as_bytes())).unwrap(),
@@ -2152,6 +2168,51 @@ the plugin
         assert_eq!(attrs[1].name.value, b"name", "Second attribute name should be 'name', got {:?}", attrs[1].name.value);
         assert_eq!(attrs[1].value.value, b"myName", "Second attribute value should be 'myName', got {:?}", attrs[1].value.value);
         assert_eq!(attrs[1].name.start, [0, 14], "Second attribute start position should be [0, 14], got {:?}", attrs[1].name.start);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_attribute_position_no_value_attr() -> Result<()> {
+        let event_handler = TextEventHandler::new();
+        let mut sax = SAXParser::new(&event_handler);
+        let mut events = [false; 10];
+        events[Event::Attribute] = true;
+        events[Event::CloseTag] = true;
+        sax.events = events;
+
+        let str = r#"
+            <div noValueAttr
+                x="abc">
+            </div>"#;
+
+        sax.write(str.as_bytes());
+        sax.identity();
+
+        let attrs = event_handler.attributes.borrow();
+        assert_eq!(attrs.len(), 2, "Expected exactly 2 attributes, got {}", attrs.len());
+
+        // First attribute: noValueAttr (boolean attribute)
+        let attr = &attrs[0];
+        assert_eq!(attr.name.value, b"noValueAttr");
+        assert_eq!(attr.value.value, b"");
+        assert_eq!(attr.name.start, [1, 17]);
+        assert_eq!(attr.name.end, [1, 28]);
+        assert_eq!(attr.name.byte_range, (18, 29));
+        assert_eq!(attr.value.start, [0, 0]);
+        assert_eq!(attr.value.end, [0, 0]);
+
+
+        // Second attribute: x="abc"
+        let attr1 = &attrs[1];
+        assert_eq!(attr1.name.value, b"x");
+        assert_eq!(attr1.value.value, b"abc");
+        assert_eq!(attr1.name.start, [2, 16]);
+        assert_eq!(attr1.name.end, [2, 17]);
+        assert_eq!(attr1.name.byte_range, (46, 47));
+        assert_eq!(attr1.value.start, [2, 19]);
+        assert_eq!(attr1.value.end, [2, 22]);
+        assert_eq!(attr1.value.byte_range, (49, 52));
 
         Ok(())
     }

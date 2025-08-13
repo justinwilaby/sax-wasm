@@ -103,7 +103,7 @@ describe("SaxWasm", () => {
         },
         value: "*ngIf",
         byteOffsets: {
-          start: 0,
+          start: 8,
           end: 13,
         },
       },
@@ -119,7 +119,7 @@ describe("SaxWasm", () => {
         value: "something",
         byteOffsets: {
           start: 15,
-          end: 25,
+          end: 24,
         },
       },
       type: 8,
