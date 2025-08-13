@@ -45,7 +45,7 @@ impl GraphemeClusters<'_> {
     /// let bytes = "hello".as_bytes();
     /// let gc = GraphemeClusters::new(bytes);
     /// ```
-    pub fn new(bytes: &[u8]) -> GraphemeClusters {
+    pub fn new(bytes: &[u8]) -> GraphemeClusters<'_> {
         GraphemeClusters {
             bytes,
             byte_len: bytes.len(),
@@ -141,7 +141,7 @@ impl GraphemeClusters<'_> {
     /// }
     /// assert!(gc_with_surrogate.take_until_one_found(&[b'!'], false).is_none());
     /// ```
-    pub fn take_until_one_found(&mut self, haystack: &[u8], include_match: bool) -> Option<(&'_ [u8], bool)> {
+    pub fn take_until_one_found(&mut self, haystack: &[u8], include_match: bool) -> Option<(&[u8], bool)> {
         if self.cursor == self.byte_len {
             return None;
         }
@@ -217,7 +217,7 @@ impl GraphemeClusters<'_> {
         Some((unsafe { &*ptr::slice_from_raw_parts(ptr.add(start), cursor - start) }, found))
     }
 
-    pub fn take_until(&mut self, match_byte: u8, include_match_or_exhaust: bool) -> Option<(&'_ [u8], bool)> {
+    pub fn take_until(&mut self, match_byte: u8, include_match_or_exhaust: bool) -> Option<(&[u8], bool)> {
         if self.cursor == self.byte_len {
             return None;
         }
