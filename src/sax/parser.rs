@@ -991,11 +991,11 @@ impl<'a> SAXParser<'a> {
                 self.process_open_tag(false, gc);
             }
             _ => {
-                self.attribute.name.value = Vec::from(current);
-                self.attribute.name.header.0 = gc.cursor;
-                self.attribute.name.byte_range.0 = (self.chunk_offset + gc.cursor as u64).saturating_sub(1);
                 self.attribute.name.start = [gc.line, gc.character.saturating_sub(1)];
+                self.attribute.name.header.0 = gc.last_cursor_pos;
+                self.attribute.name.byte_range.0 = self.chunk_offset + gc.last_cursor_pos as u64;
                 self.state = State::AttribName;
+                self.attribute_name(gc, current);
             }
         }
     }
