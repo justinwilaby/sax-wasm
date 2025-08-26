@@ -227,4 +227,21 @@ describe('SaxWasm', () => {
       deepStrictEqual(_data[i].value.value, attr.value);
     });
   });
+
+  it('should report correct end position for second single char attribute', () => {
+    const xml = `<div a\n    b\n    attributeWithValue="xyz">\n</div>`;
+    parser.write(Buffer.from(xml));
+    deepStrictEqual(_event, SaxEventType.Attribute);
+    deepStrictEqual(_data.length, 3);
+
+    const attrA = _data[0];
+    deepStrictEqual(attrA.name.value, 'a');
+    deepStrictEqual(JSON.parse(JSON.stringify(attrA.name.start)), { line: 0, character: 5 });
+    deepStrictEqual(JSON.parse(JSON.stringify(attrA.name.end)), { line: 0, character: 6 });
+
+    const attrB = _data[1];
+    deepStrictEqual(attrB.name.value, 'b');
+    deepStrictEqual(JSON.parse(JSON.stringify(attrB.name.start)), { line: 1, character: 4 });
+    deepStrictEqual(JSON.parse(JSON.stringify(attrB.name.end)), { line: 1, character: 5 });
+  });
 });
