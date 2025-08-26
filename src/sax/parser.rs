@@ -951,6 +951,13 @@ impl<'a> SAXParser<'a> {
             }
             // whitespace
             b if b < 33 => {
+                if current[0] == b'\n' {
+                    self.attribute.name.end = [gc.last_line, gc.last_character];
+                } else {
+                    self.attribute.name.end = [gc.line, gc.character.saturating_sub(1)];
+                }
+                self.attribute.name.header.1 = gc.last_cursor_pos;
+                self.attribute.name.byte_range.1 = self.chunk_offset + gc.last_cursor_pos as u64;
                 self.state = State::AttribNameSawWhite;
                 self.attribute_name_saw_white(gc, current);
             }
