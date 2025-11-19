@@ -6,7 +6,7 @@ use std::ptr;
 use super::grapheme_iterator::GraphemeClusters;
 use super::names::is_name_start_char;
 use super::tag::*;
-use super::utils::ascii_compare;
+use super::utils::{ascii_compare, ascii_contains};
 
 /// Byte Order Mark (BOM) for UTF-8 encoded files.
 static BOM: [u8; 3] = [0xef, 0xbb, 0xbf];
@@ -169,7 +169,7 @@ impl<'a> SAXParser<'a> {
             attribute: Attribute::new(),
             proc_inst: None,
             tag: Tag::new([0, 0]),
-            close_tag: Text::new([0,0]),
+            close_tag: Text::new([0, 0]),
             fragment: Vec::new(),
 
             // Position Tracking
@@ -349,7 +349,7 @@ impl<'a> SAXParser<'a> {
         self.attribute = Attribute::new();
         self.proc_inst = None;
         self.tag = Tag::new([0, 0]);
-        self.close_tag = Text::new([0,0]);
+        self.close_tag = Text::new([0, 0]);
         self.fragment.clear();
 
         // Reset Position Tracking
@@ -519,7 +519,7 @@ impl<'a> SAXParser<'a> {
         self.tag.open_start = [gc.line, gc.character.saturating_sub(2)];
         self.tag.byte_range.0 = (self.chunk_offset + gc.cursor as u64).saturating_sub(2);
         let mut byte = current[0];
-        if !TAG_NAME_END.contains(&byte) {
+        if !ascii_contains(TAG_NAME_END, byte) {
             if let Some((span, found)) = gc.take_until_one_found(TAG_NAME_END, true) {
                 byte = span[span.len() - 1];
                 self.tag.header.1 = if found {
@@ -629,7 +629,7 @@ impl<'a> SAXParser<'a> {
 
     fn markup_decl(&mut self, gc: &mut GraphemeClusters, current: &[u8]) {
         let byte = current[0];
-        if !ENTITY_CAPTURE_END.contains(&byte) {
+        if !ascii_contains(ENTITY_CAPTURE_END, byte) {
             gc.take_until_one_found(ENTITY_CAPTURE_END, false);
         }
 
@@ -1012,7 +1012,11 @@ impl<'a> SAXParser<'a> {
         if first_byte == b'"' || first_byte == b'\'' {
             self.quote = first_byte;
             self.state = State::AttribValueQuoted;
-            self.attribute.attr_type = if first_byte == b'"' { AttrType::DoubleQuoted } else { AttrType::SingleQuoted };
+            self.attribute.attr_type = if first_byte == b'"' {
+                AttrType::DoubleQuoted
+            } else {
+                AttrType::SingleQuoted
+            };
         } else if first_byte == b'{' {
             self.state = State::JSXAttributeExpression;
             self.attribute.attr_type = AttrType::JSX;
@@ -1032,7 +1036,11 @@ impl<'a> SAXParser<'a> {
         if current[0] == self.quote {
             self.attribute.value.end = [gc.line, gc.character.saturating_sub(1)];
             let header_1 = gc.cursor.saturating_sub(1);
-            self.attribute.value.header.1 = if header_1 == self.attribute.value.header.0 {header_1.saturating_sub(1)} else {header_1};
+            self.attribute.value.header.1 = if header_1 == self.attribute.value.header.0 {
+                header_1.saturating_sub(1)
+            } else {
+                header_1
+            };
             self.attribute.value.byte_range.1 = (self.chunk_offset + gc.cursor as u64).saturating_sub(1);
             self.process_attribute(gc);
             self.quote = 0;
@@ -1135,7 +1143,7 @@ impl<'a> SAXParser<'a> {
 
     fn process_close_tag(&mut self, gc: &mut GraphemeClusters) {
         self.state = State::BeginWhitespace;
-        let mut close_tag = mem::replace(&mut self.close_tag, Text::new([0,0]));
+        let mut close_tag = mem::replace(&mut self.close_tag, Text::new([0, 0]));
         let close_tag_name = close_tag.get_value_slice(self.source_ptr, gc.byte_len);
 
         let mut found = false;
@@ -2018,7 +2026,7 @@ the plugin
         assert_eq!(tag.attributes.len(), 1);
         assert_eq!(tag.byte_range, (63, 93));
 
-        let tag1= &tags[1];
+        let tag1 = &tags[1];
         assert_eq!(tag1.attributes.len(), 1);
         assert_eq!(tag1.byte_range, (96, 130));
 
@@ -2114,9 +2122,24 @@ the plugin
             let attrs = event_handler.attributes.borrow();
             assert_eq!(attrs.len(), 1, "At iteration i={}, Expected exactly one attribute, got {:?}", i, attrs.len());
             let attr = &attrs[0];
-            assert_eq!(attr.byte_range, (6, 18), "At iteration i={}, Expected byte_range to be (6, 18), got ({:?}, {:?})", i, attr.byte_range.0, attr.byte_range.1);
-            assert_eq!(attr.value.value, b"100.00", "At iteration i={}, Expected attribute value to be 100.00, got {:?}", i, attrs[0].value.value);
-            assert_eq!(attr.name.value, b"top", "At iteration i={}, Expected attribute name to be 100.00, got {:?}", i, attrs[0].name.value);
+            assert_eq!(
+                attr.byte_range,
+                (6, 18),
+                "At iteration i={}, Expected byte_range to be (6, 18), got ({:?}, {:?})",
+                i,
+                attr.byte_range.0,
+                attr.byte_range.1
+            );
+            assert_eq!(
+                attr.value.value, b"100.00",
+                "At iteration i={}, Expected attribute value to be 100.00, got {:?}",
+                i, attrs[0].value.value
+            );
+            assert_eq!(
+                attr.name.value, b"top",
+                "At iteration i={}, Expected attribute name to be 100.00, got {:?}",
+                i, attrs[0].name.value
+            );
         }
         Ok(())
     }
@@ -2141,12 +2164,24 @@ the plugin
         assert_eq!(tags[0].name, b"script", "Tag name should be 'script', got {:?}", tags[0].name);
         // The <script> tag should have one attribute: type=text/javascript
         assert_eq!(tags[0].attributes.len(), 1, "<script> tag should have 1 attribute, got {}", tags[0].attributes.len());
-        assert_eq!(tags[0].attributes[0].name.value, b"type", "Attribute name should be 'type', got {:?}", tags[0].attributes[0].name.value);
-        assert_eq!(tags[0].attributes[0].value.value, b"text/javascript", "Attribute value should be 'text/javascript', got {:?}", tags[0].attributes[0].value.value);
+        assert_eq!(
+            tags[0].attributes[0].name.value, b"type",
+            "Attribute name should be 'type', got {:?}",
+            tags[0].attributes[0].name.value
+        );
+        assert_eq!(
+            tags[0].attributes[0].value.value, b"text/javascript",
+            "Attribute value should be 'text/javascript', got {:?}",
+            tags[0].attributes[0].value.value
+        );
         // There should be one attribute event
         assert_eq!(attrs.len(), 1, "Expected exactly 1 attribute event, got {}", attrs.len());
         assert_eq!(attrs[0].name.value, b"type", "Attribute event name should be 'type', got {:?}", attrs[0].name.value);
-        assert_eq!(attrs[0].value.value, b"text/javascript", "Attribute event value should be 'text/javascript', got {:?}", attrs[0].value.value);
+        assert_eq!(
+            attrs[0].value.value, b"text/javascript",
+            "Attribute event value should be 'text/javascript', got {:?}",
+            attrs[0].value.value
+        );
         Ok(())
     }
 
@@ -2207,7 +2242,6 @@ the plugin
         assert_eq!(attr.name.byte_range, (18, 29));
         assert_eq!(attr.value.start, [0, 0]);
         assert_eq!(attr.value.end, [0, 0]);
-
 
         // Second attribute: x="abc"
         let attr1 = &attrs[1];

@@ -1,6 +1,6 @@
+use super::utils::{ascii_contains, grapheme_len};
+use core::arch::wasm32::{i8x16_bitmask, i8x16_eq, i8x16_splat, v128_load, v128_or};
 use std::{mem, ptr};
-
-use super::utils::grapheme_len;
 
 /// Represents an iterator over grapheme clusters in a byte slice.
 ///
@@ -148,7 +148,7 @@ impl GraphemeClusters<'_> {
         let ptr = self.bytes.as_ptr();
         let idx = self.cursor.saturating_sub(1);
         let current_byte = unsafe { *self.bytes.get_unchecked(idx) };
-        if haystack.contains(&current_byte) {
+        if ascii_contains(haystack, current_byte) {
             return Some((unsafe { &*ptr::slice_from_raw_parts(ptr.add(idx), 1) }, true));
         }
 
@@ -164,9 +164,10 @@ impl GraphemeClusters<'_> {
         while cursor < max_index {
             let next_byte = unsafe { *ptr.add(cursor) };
 
-            if haystack.contains(&next_byte) {
+            if ascii_contains(haystack, next_byte) {
                 found = true;
                 matched_byte = next_byte;
+                len = grapheme_len(next_byte);
                 break;
             }
 
@@ -210,8 +211,8 @@ impl GraphemeClusters<'_> {
         self.cursor = cursor;
         self.last_cursor_pos = cursor - len;
 
-        self.last_line = std::mem::replace(&mut self.line, line);
-        self.last_character = std::mem::replace(&mut self.character, character);
+        self.last_line = mem::replace(&mut self.line, line);
+        self.last_character = mem::replace(&mut self.character, character);
 
         // Use unsafe slice creation for performance
         Some((unsafe { &*ptr::slice_from_raw_parts(ptr.add(start), cursor - start) }, found))
@@ -271,8 +272,8 @@ impl GraphemeClusters<'_> {
 
         self.cursor = cursor;
         self.last_cursor_pos = cursor - len;
-        self.last_line = std::mem::replace(&mut self.line, line);
-        self.last_character = std::mem::replace(&mut self.character, character);
+        self.last_line = mem::replace(&mut self.line, line);
+        self.last_character = mem::replace(&mut self.character, character);
 
         Some((unsafe { &*ptr::slice_from_raw_parts(ptr.add(start), cursor - start) }, found))
     }
@@ -284,6 +285,64 @@ impl GraphemeClusters<'_> {
         let mut done = false;
         let max_index = self.byte_len;
         let ptr = self.bytes.as_ptr();
+
+        unsafe {
+            // Fast path: scan 16 bytes at a time for non-whitespace. Whitespace set
+            // matches the ASCII characters the parser expects: space, tab, CR, NL.
+            let sp = i8x16_splat(b' ' as i8);
+            let tab = i8x16_splat(b'\t' as i8);
+            let nl = i8x16_splat(b'\n' as i8);
+            let cr = i8x16_splat(b'\r' as i8);
+
+            while cursor + 16 <= max_index {
+                let chunk = v128_load(ptr.add(cursor) as *const _);
+                let is_space = i8x16_eq(chunk, sp);
+                let is_tab = i8x16_eq(chunk, tab);
+                let is_nl = i8x16_eq(chunk, nl);
+                let is_cr = i8x16_eq(chunk, cr);
+                let ws_mask_bits = i8x16_bitmask(v128_or(v128_or(is_space, is_tab), v128_or(is_nl, is_cr))) as u32;
+                let nl_mask_bits = i8x16_bitmask(is_nl) as u32;
+                let non_ws_mask_bits = !ws_mask_bits & 0xFFFF;
+
+                if non_ws_mask_bits == 0 {
+                    // The entire chunk is whitespace.
+                    if nl_mask_bits != 0 {
+                        let nl_count = nl_mask_bits.count_ones();
+                        line += nl_count as u64;
+                        // After the last newline, the character counts the bytes that follow.
+                        let last_nl_idx = 31u32.saturating_sub(nl_mask_bits.leading_zeros()) as usize;
+                        character = 15usize.saturating_sub(last_nl_idx) as u64;
+                    } else {
+                        character += 16;
+                    }
+                    cursor += 16;
+                    continue;
+                }
+
+                // Found a non-whitespace byte within this chunk. Process only the prefix.
+                let first_non_ws = non_ws_mask_bits.trailing_zeros() as usize;
+                let prefix_mask = if first_non_ws == 0 {
+                    0
+                } else {
+                    (1u32 << first_non_ws) - 1
+                };
+                let nl_prefix = nl_mask_bits & prefix_mask;
+                let nl_count = nl_prefix.count_ones();
+
+                if nl_count == 0 {
+                    character += first_non_ws as u64;
+                } else {
+                    line += nl_count as u64;
+                    let last_nl_idx = 31u32.saturating_sub(nl_prefix.leading_zeros()) as usize;
+                    character = first_non_ws.saturating_sub(last_nl_idx + 1) as u64;
+                }
+
+                cursor += first_non_ws;
+                done = true;
+                break;
+            }
+        }
+
         while cursor < max_index {
             let next_byte = unsafe { *ptr.add(cursor) };
             if next_byte > 32 {
@@ -300,9 +359,9 @@ impl GraphemeClusters<'_> {
             cursor += 1;
         }
         self.cursor = cursor;
-        self.last_cursor_pos = cursor - 1;
-        self.last_line = std::mem::replace(&mut self.line, line);
-        self.last_character = std::mem::replace(&mut self.character, character);
+        self.last_cursor_pos = cursor.saturating_sub(1);
+        self.last_line = mem::replace(&mut self.line, line);
+        self.last_character = mem::replace(&mut self.character, character);
 
         done
     }
@@ -319,7 +378,7 @@ impl GraphemeClusters<'_> {
         Some(bytes)
     }
 }
-/// An iterator for grapheme clusters in a utf-8 formatted string
+/// An iterator for grapheme clusters in an utf-8 formatted string
 ///
 /// This iterator provides a tuple: (grapheme: &str, from_index:usize, to_index:usize)
 impl<'a> Iterator for GraphemeClusters<'a> {
@@ -358,8 +417,8 @@ impl<'a> Iterator for GraphemeClusters<'a> {
 
         let s = unsafe { bytes.get_unchecked(cursor..end) };
         self.last_cursor_pos = mem::replace(&mut self.cursor, end);
-        self.last_line = std::mem::replace(&mut self.line, line);
-        self.last_character = std::mem::replace(&mut self.character, character);
+        self.last_line = mem::replace(&mut self.line, line);
+        self.last_character = mem::replace(&mut self.character, character);
 
         Some(s)
     }

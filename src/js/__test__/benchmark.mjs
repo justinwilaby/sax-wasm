@@ -1,7 +1,7 @@
 import { readFileSync } from 'fs';
 import { URL } from 'url';
 import { resolve } from 'path';
-import { Buffer } from 'buffer';
+import { Buffer } from 'node:buffer';
 
 import { SAXParser } from '../../../lib/esm/index.js';
 
@@ -13,6 +13,7 @@ import { SaxesParser } from 'saxes'
 
 // Remove variations in disk access latency
 const xml = new Uint8Array(readFileSync(resolve(new URL('./xml.xml', import.meta.url).pathname)));
+const xmlBuf = Buffer.from(xml.buffer, xml.byteOffset, xml.byteLength);
 const chunkLen = 64 * 1024;
 
 async function benchmarkSaxWasmParser() {
@@ -24,7 +25,7 @@ async function benchmarkSaxWasmParser() {
   let t = process.hrtime();
   let offset = 0;
   while (offset < xml.length) {
-    parser.write(Buffer.from(xml.slice(offset, chunkLen + offset)));
+    parser.write(xmlBuf.subarray(offset, chunkLen + offset));
     offset += chunkLen;
   }
   parser.end();
@@ -37,7 +38,7 @@ async function benchmarkNodeXmlParser() {
   let t = process.hrtime();
   let offset = 0;
   while (offset < xml.length) {
-    parser.parseString(Buffer.from(xml.slice(offset, chunkLen + offset)));
+    parser.parseString(xmlBuf.subarray(offset, chunkLen + offset));
     offset += chunkLen;
   }
   let [s, n] = process.hrtime(t);
@@ -49,7 +50,7 @@ async function benchmarkExpatParser() {
   let t = process.hrtime();
   let offset = 0;
   while (offset < xml.length) {
-    parser.parse(Buffer.from(xml.slice(offset, chunkLen + offset)));
+    parser.parse(xmlBuf.subarray(offset, chunkLen + offset));
     offset += chunkLen;
   }
 
@@ -63,7 +64,7 @@ async function benchmarkSaxesParser() {
 
   let offset = 0;
   while (offset < xml.length) {
-    parser.write(Buffer.from(xml.slice(offset, chunkLen + offset)));
+    parser.write(xmlBuf.subarray(offset, chunkLen + offset));
     offset += chunkLen;
   }
   let [s, n] = process.hrtime(t);
@@ -76,7 +77,7 @@ async function benchmarkSaxParser() {
 
   let offset = 0;
   while (offset < xml.length) {
-    parser.write(Buffer.from(xml.slice(offset, chunkLen + offset)));
+    parser.write(xmlBuf.subarray(offset, chunkLen + offset));
     offset += chunkLen;
   }
   let [s, n] = process.hrtime(t);
@@ -89,7 +90,7 @@ async function benchmarkLtxParser() {
 
   let offset = 0;
   while (offset < xml.length) {
-    parser.write(Buffer.from(xml.slice(offset, chunkLen + offset)));
+    parser.write(xmlBuf.subarray(offset, chunkLen + offset));
     offset += chunkLen;
   }
 
@@ -113,11 +114,11 @@ async function benchmark() {
 
 benchmark().then(benchmarks => {
   const { saxWasm, nodeXml, saxes, sax, expat, ltx } = benchmarks;
-  process.stdout.write(Buffer.from(`sax-wasm: ${saxWasm.reduce((ct = 0, t) => (ct += t)) / saxWasm.length} ms with ${saxWasm.length} runs\n`));
-  process.stdout.write(Buffer.from(`ltx: ${ltx.reduce((ct = 0, t) => (ct += t)) / ltx.length} ms with ${ltx.length} runs\n`));
-  process.stdout.write(Buffer.from(`saxes: ${saxes.reduce((ct = 0, t) => (ct += t)) / saxes.length} ms with ${saxes.length} runs\n`));
-  process.stdout.write(Buffer.from(`expat: ${expat.reduce((ct = 0, t) => (ct += t)) / expat.length} ms with ${expat.length} runs\n`));
-  process.stdout.write(Buffer.from(`nodeXml: ${nodeXml.reduce((ct = 0, t) => (ct += t)) / nodeXml.length} ms with ${nodeXml.length} runs\n`));
-  process.stdout.write(Buffer.from(`sax: ${sax.reduce((ct = 0, t) => (ct += t)) / sax.length} ms with ${sax.length} runs\n`));
+  process.stdout.write(Buffer.from(`sax-wasm: ${saxWasm.reduce((ct = 0, t) => (ct + t)) / saxWasm.length} ms with ${saxWasm.length} runs\n`));
+  process.stdout.write(Buffer.from(`ltx: ${ltx.reduce((ct = 0, t) => (ct + t)) / ltx.length} ms with ${ltx.length} runs\n`));
+  process.stdout.write(Buffer.from(`saxes: ${saxes.reduce((ct = 0, t) => (ct + t)) / saxes.length} ms with ${saxes.length} runs\n`));
+  process.stdout.write(Buffer.from(`expat: ${expat.reduce((ct = 0, t) => (ct + t)) / expat.length} ms with ${expat.length} runs\n`));
+  process.stdout.write(Buffer.from(`nodeXml: ${nodeXml.reduce((ct = 0, t) => (ct + t)) / nodeXml.length} ms with ${nodeXml.length} runs\n`));
+  process.stdout.write(Buffer.from(`sax: ${sax.reduce((ct = 0, t) => (ct + t)) / sax.length} ms with ${sax.length} runs\n`));
   process.exit(0);
 });
