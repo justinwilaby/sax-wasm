@@ -5,6 +5,82 @@
 
 *When you absolutely, positively have to have the fastest parser in the room, accept no substitutes.*
 
+## Quickstart
+
+- Works in Node (>=18.20.5) and modern browsers. Install with `npm i sax-wasm`.
+- Initialize `SAXParser`, load the packaged `lib/sax-wasm.wasm`, and stream bytes via a reader.
+
+Node (ESM):
+```js
+import { readFile } from 'node:fs/promises';
+import { createReadStream } from 'node:fs';
+import { Readable } from 'node:stream';
+import { SaxEventType, SAXParser } from 'sax-wasm';
+
+const wasmUrl = new URL('sax-wasm/lib/sax-wasm.wasm', import.meta.url);
+const wasmBytes = await readFile(wasmUrl);
+
+const parser = new SAXParser(SaxEventType.Text | SaxEventType.OpenTag);
+await parser.prepareWasm(wasmBytes);
+
+const xmlUrl = new URL('./example.xml', import.meta.url);
+const webStream = Readable.toWeb(createReadStream(xmlUrl));
+for await (const [event, detail] of parser.parse(webStream.getReader())) {
+  // handle events
+}
+```
+
+Browser:
+```js
+import { SaxEventType, SAXParser } from 'sax-wasm';
+
+const parser = new SAXParser(SaxEventType.Attribute | SaxEventType.OpenTag);
+await parser.prepareWasm(fetch(new URL('sax-wasm/lib/sax-wasm.wasm', import.meta.url)));
+
+const res = await fetch('/document.xml');
+for await (const [event, detail] of parser.parse(res.body.getReader())) {
+  // handle events
+}
+```
+
+Note: `prepareWasm` accepts `Uint8Array | Response | Promise<Response>`.
+
+TypeScript note (Node 20+/22): `SAXParser.parse` expects a `ReadableStreamDefaultReader<Uint8Array>`.
+Node's `Readable.toWeb()` often produces a `ReadableStream<any>`, so the generic type is lost.
+You can either type the stream or cast the reader:
+
+```ts
+// Option A: type the stream
+const webStream = Readable.toWeb(createReadStream(xmlUrl)) as ReadableStream<Uint8Array>;
+for await (const [event, detail] of parser.parse(webStream.getReader())) {
+  // ...
+}
+
+// Option B: cast the reader
+for await (const [event, detail] of parser.parse(
+  webStream.getReader() as ReadableStreamDefaultReader<Uint8Array>
+)) {
+  // ...
+}
+```
+
+## Table of contents
+
+- [Installation](#installation)
+- [Usage in Node (ESM)](#usage-in-node-esm)
+- [Usage for the web](#usage-for-the-web)
+- [Events](#events)
+- [Whitespace handling](#whitespace-handling)
+- [Entity start and end positions](#entity-start-and-end-positions)
+- [The 'lifetime' of events](#the-lifetime-of-events)
+- [Differences from other parsers](#differences-from-other-parsers)
+- [Streaming](#streaming)
+- [Speeding things up on large documents](#speeding-things-up-on-large-documents)
+- [SAXParser (JavaScript/TypeScript)](#saxparser-javascripttypescript)
+- [sax-wasm.wasm](#sax-wasmwasm)
+- [Benchmarks](#benchmarks-node-v22200--macos-arm64)
+- [Building from source](#building-from-source)
+
 The first streamable, low memory XML, HTML, JSX and Angular Template parser for [WebAssembly](https://developer.mozilla.org/en-US/docs/WebAssembly).
 
 Sax Wasm is a sax style parser for XML, HTML, JSX and Angular Templates written in [Rust](https://www.rust-lang.org/en-US/), compiled for
@@ -15,18 +91,18 @@ for speed and support for JSX syntax.
 Suitable for [LSP](https://langserver.org/) implementations, sax-wasm provides line numbers and character positions within the
 document for elements, attributes and text node which provides the raw building blocks for linting, transpilation and lexing.
 
-## Entity Start and End Positions
+## Entity start and end positions
 
 The `sax-wasm` parser provides precise location information for each entity encountered during the parsing process. Here's how you can access and utilize this information:
 
-### Entity Types
+### Entity types
 
 - **Elements**: Both opening and closing tags.
 - **Attributes**: Within elements.
 - **Text**: Text content, CDATA, Entities, etc.
 - **ProcInst**: Processing instructions.
 
-### Position Data
+### Position data
 
 For each entity, `sax-wasm` returns a `Position` object:
 
@@ -34,9 +110,9 @@ For each entity, `sax-wasm` returns a `Position` object:
   - `line`: The line number where the entity begins.
   - `character`: The column or "character" number where the entity begins.
 
-The position data 100% works with `xml.substring(start, end)` or `xml.slice(start, end)` and takes into account 2-4 byte graphemes such as emojis, cyrillic or utf-16 encoded documents.
+The position data 100% works with `xml.substring(start, end)` or `xml.slice(start, end)` and takes into account 2–4 byte graphemes such as emojis, Cyrillic, or UTF‑16 encoded documents.
 
-### Byte Offset Ranges
+### Byte offset ranges
 
 In addition to line and character positions, `sax-wasm` now provides byte offset ranges for all entities. This allows for precise byte-level access to the original data:
 
@@ -49,138 +125,172 @@ This is particularly useful for:
 - Precise substring extraction without character encoding concerns
 - Performance-critical applications that need byte-accurate positioning
 
-### Attribute Types
+### Attribute types
 
-The parser now distinguishes between different attribute syntax types:
+The parser distinguishes between different attribute syntax types (see `AttributeType` in `src/js/saxWasm.ts`):
 
-- **Normal**: Standard XML attributes (`attr="value"`)
-- **JSX**: JSX-style attributes (`attr={expression}`)
-- **NoQuotes**: Unquoted attributes (`attr=value`)
-- **SingleQuoted**: Single-quoted attributes (`attr='value'`)
-- **DoubleQuoted**: Double-quoted attributes (`attr="value"`)
+- **NoValue**: Attribute with no value (e.g. `disabled`)
+- **JSX**: JSX-style attributes (e.g. `prop={expression}`)
+- **NoQuotes**: Unquoted attributes (e.g. `attr=value`)
+- **SingleQuoted**: Single-quoted attributes (e.g. `attr='value'`)
+- **DoubleQuoted**: Double-quoted attributes (e.g. `attr="value"`)
 
-This information is available in the `type` field of each attribute and can be used for syntax highlighting, linting, or format-specific processing.
+This information is available in the `type` field of each attribute and can be used for syntax highlighting, linting, or format‑specific processing.
 
 #### Example Output
 
 When parsing `<div class="myDiv">This is my div</div>`, you might receive output like this:
 
-```js
+Preview:
+```jsonc
 {
-  openStart: {
-    line: 0,
-    character: 0,
-  },
-  openEnd: {
-    line: 0,
-    character: 19,
-  },
-  closeStart: {
-    line: 0,
-    character: 33,
-  },
-  closeEnd: {
-    line: 0,
-    character: 39,
-  },
-  name: "div",
-  attributes: [
-    {
-      name: {
-        start: {
-          line: 0,
-          character: 5,
-        },
-        end: {
-          line: 0,
-          character: 10,
-        },
-        value: "class",
-        byteOffsets: {
-          start: 5,
-          end: 10,
-        },
-      },
-      value: {
-        start: {
-          line: 0,
-          character: 12,
-        },
-        end: {
-          line: 0,
-          character: 17,
-        },
-        value: "myDiv",
-        byteOffsets: {
-          start: 12,
-          end: 17,
-        },
-      },
-      type: 8, // AttributeType.DoubleQuoted
-      byteOffsets: {
-        start: 5,
-        end: 17,
-      },
-    },
-  ],
-  textNodes: [
-    {
-      start: {
-        line: 0,
-        character: 19,
-      },
-      end: {
-        line: 0,
-        character: 33,
-      },
-      value: "This is my div",
-      byteOffsets: {
-        start: 19,
-        end: 33,
-      },
-    },
-  ],
-  selfClosing: false,
-  byteOffsets: {
-    start: 0,
-    end: 39,
-  },
+  "openStart": { "line": 0, "character": 0 },
+  "openEnd":   { "line": 0, "character": 19 },
+  "closeStart":{ "line": 0, "character": 33 },
+  "closeEnd":  { "line": 0, "character": 39 },
+  "name": "div",
+  "attributes": [ { "name": { "value": "class" }, "value": { "value": "myDiv" } } ],
+  "textNodes": [ { "value": "This is my div" } ],
+  "selfClosing": false
 }
 ```
 
-## Benchmarks (Node v20.18.1 / 2.7 GHz Quad-Core Intel Core i7)
-All parsers are tested using a large XML document (3 MB) containing a variety of elements and is streamed from memory to remove variations in disk access latency and focus on benchmarking just the parser alone. Other libraries test benchmarks using a very small XML fragment such as `<foo bar="baz">quux</foo>` which does not hit all code branches responsible for processing the document and heavily skews the results in their favor.
+Full details:
+<details>
+<summary>Show full example</summary>
+
+```jsonc
+{
+  "openStart": {
+    "line": 0,
+    "character": 0
+  },
+  "openEnd": {
+    "line": 0,
+    "character": 19
+  },
+  "closeStart": {
+    "line": 0,
+    "character": 33
+  },
+  "closeEnd": {
+    "line": 0,
+    "character": 39
+  },
+  "name": "div",
+  "attributes": [
+    {
+      "name": {
+        "start": {
+          "line": 0,
+          "character": 5
+        },
+        "end": {
+          "line": 0,
+          "character": 10
+        },
+        "value": "class",
+        "byteOffsets": {
+          "start": 5,
+          "end": 10
+        }
+      },
+      "value": {
+        "start": {
+          "line": 0,
+          "character": 12
+        },
+        "end": {
+          "line": 0,
+          "character": 17
+        },
+        "value": "myDiv",
+        "byteOffsets": {
+          "start": 12,
+          "end": 17
+        }
+      },
+      "type": 8, // AttributeType.DoubleQuoted
+      "byteOffsets": {
+        "start": 5,
+        "end": 17
+      }
+    }
+  ],
+  "textNodes": [
+    {
+      "start": {
+        "line": 0,
+        "character": 19
+      },
+      "end": {
+        "line": 0,
+        "character": 33
+      },
+      "value": "This is my div",
+      "byteOffsets": {
+        "start": 19,
+        "end": 33
+      }
+    }
+  ],
+  "selfClosing": false,
+  "byteOffsets": {
+    "start": 0,
+    "end": 39
+  }
+}
+```
+
+</details>
+
+## Benchmarks (Node v22.20.0 / macOS arm64)
+Benchmarks last updated: 2025‑11‑18. Reproduce locally with:
+
+```bash
+npm install
+npm run build:wasm
+npm run benchmark
+```
+
+The benchmark script (`src/js/__test__/benchmark.mjs`) streams the bundled `src/js/__test__/xml.xml` (≈3 MB) from memory to minimize disk variance and reports the mean over 10 runs.
+Run recorded on Apple M4 Pro (Apple Silicon).
 
 | Parser with Advanced Features                                                              | time/ms (lower is better)| JS     | Runs in browser |
 |--------------------------------------------------------------------------------------------|-------------------------:|:------:|:---------------:|
-| [sax-wasm](https://github.com/justinwilaby/sax-wasm)                                       |                    13.27 | ☑      | ☑               |
-| [saxes](https://github.com/lddubeau/saxes)                                                 |                    41.01 | ☑      | ☑               |
-| [ltx(using Saxes as the parser)](https://github.com/xmppjs/ltx)                            |                    44.56 | ☑      | ☑               |
-| [sax-js](https://github.com/isaacs/sax-js)                                                 |                   116.98 | ☑      | ☑*              |
-| [node-xml](https://github.com/dylang/node-xml)                                             |                   124.49 | ☑      | ☐               |
-| [node-expat](https://github.com/xmppo/node-expat)                                          |                   149.61 | ☑      | ☐               |
+| [sax-wasm](https://github.com/justinwilaby/sax-wasm)                                       |                     6.85 | ☑      | ☑               |
+| [saxes](https://github.com/lddubeau/saxes)                                                 |                    11.19 | ☑      | ☑               |
+| [ltx(using Saxes as the parser)](https://github.com/xmppjs/ltx)                            |                    11.77 | ☑      | ☑               |
+| [sax-js](https://github.com/isaacs/sax-js)                                                 |                    29.58 | ☑      | ☑*              |
+| [node-xml](https://github.com/dylang/node-xml)                                             |                    40.19 | ☑      | ☐               |
+| [node-expat](https://github.com/xmppo/node-expat)                                          |                    40.93 | ☑      | ☐               |
 <sub>*built for node but *should* run in the browser</sub>
 
 ## Installation
+Install once, then jump back to Quickstart for minimal usage:
 ```bash
-npm i -s sax-wasm
+npm i sax-wasm
 ```
-## Usage in Node
+Supports Node (>=18.20.5) with both ESM and CJS entry points and modern browsers.
+
+## Usage in Node (ESM)
 ```js
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import { readFile } from 'node:fs/promises';
+import { createReadStream } from 'node:fs';
+import { Readable } from 'node:stream';
 import { SaxEventType, SAXParser } from 'sax-wasm';
 
-const wasmUrl = new URL(import.meta.resolve('sax-wasm/lib/sax-wasm.wasm'));
-const saxWasm = await readFile(wasmUrl);
-const parser = new SAXParser(SaxEventType.Cdata | SaxEventType.OpenTag);
+// Locate the WASM file from the package
+const wasmUrl = new URL('sax-wasm/lib/sax-wasm.wasm', import.meta.url);
+const wasmBytes = await readFile(wasmUrl);
 
-if (await parser.prepareWasm(saxWasm)) {
-  const xmlPath = import.meta.resolve('../src/xml.xml');
-  const readable = createReadStream(new URL(xmlPath));
-  const webReadable = Readable.toWeb(readable);
-  for await (const [event, detail] of parser.parse(webReadable.getReader())) {
+const parser = new SAXParser(SaxEventType.Cdata | SaxEventType.OpenTag);
+if (await parser.prepareWasm(wasmBytes)) {
+  const xmlUrl = new URL('../src/xml.xml', import.meta.url);
+  const nodeStream = createReadStream(xmlUrl);
+  const webStream = Readable.toWeb(nodeStream);
+
+  for await (const [event, detail] of parser.parse(webStream.getReader())) {
     if (event === SaxEventType.Cdata) {
       // process Cdata
     } else {
@@ -188,6 +298,29 @@ if (await parser.prepareWasm(saxWasm)) {
     }
   }
 }
+```
+
+CommonJS:
+```js
+const { readFileSync, createReadStream } = require('node:fs');
+const path = require('node:path');
+const { Readable } = require('node:stream');
+const { SaxEventType, SAXParser } = require('sax-wasm');
+
+async function run() {
+  const wasmPath = require.resolve('sax-wasm/lib/sax-wasm.wasm');
+  const parser = new SAXParser(SaxEventType.Text | SaxEventType.OpenTag);
+  await parser.prepareWasm(readFileSync(wasmPath));
+
+  const xmlPath = path.resolve(__dirname, './example.xml');
+  const webStream = Readable.toWeb(createReadStream(xmlPath));
+
+  for await (const [event, detail] of parser.parse(webStream.getReader())) {
+    // handle events
+  }
+}
+
+run();
 ```
 ## Usage for the web
 1. Instantiate and prepare the wasm for parsing
@@ -198,18 +331,14 @@ under the hood to load the wasm.
 ```js
 import { SaxEventType, SAXParser } from 'sax-wasm';
 
-// Fetch the WebAssembly binary
-const wasmUrl = new URL(import.meta.resolve('sax-wasm/lib/sax-wasm.wasm'));
-const response = fetch(wasmUrl);
-
-// Instantiate
+// Fetch and instantiate the WebAssembly binary
+const wasmUrl = new URL('sax-wasm/lib/sax-wasm.wasm', import.meta.url);
 const parser = new SAXParser(SaxEventType.Attribute | SaxEventType.OpenTag);
 
-// Instantiate and prepare the wasm for parsing
-const ready = await parser.prepareWasm(response);
+const ready = await parser.prepareWasm(fetch(wasmUrl));
 if (ready) {
   // Fetch the XML document
-  const xmlResponse = await fetch('path/to/document.xml');
+  const xmlResponse = await fetch('/path/to/document.xml');
   const reader = xmlResponse.body.getReader();
 
   for await (const [event, detail] of parser.parse(reader)) {
@@ -221,24 +350,24 @@ if (ready) {
   }
 }
 ```
-## The 'Lifetime' of events
+## The 'lifetime' of events
 `Tag`, `Attribute`, `ProcInst` and `Text` objects received from the parsing operation have a 'lifetime' that is limited to the `eventHandler()` or the function loop body for the `*parse()` generator. Data sent across the FFI (Foreign Function Interface) boundary is read directly from WASM memory which is partly why sax-wasm is so fast. This comes with the tradeoff that this memory is temporary because it is overwritten on the next write operation. If you need to persist the event data for long term use, call `toJSON()` on each object as needed. This comes at a slight performance cost and should not be necessary for the vast majority of use cases.
 
 ## Differences from other parsers
-Besides being incredibly fast, there are some notable differences between other SAX style parsers:
 
-1. This repo is maintained
-1. UTF-16 encoded documents are supported. 1-4 byte graphemes are fully supported even if streaming causes a break between surrogates.
-1. JSX is supported including JSX fragments. Things like `<foo bar={this.bar()}></bar>` and `<><foo/><bar/></>` will parse as expected.
-1. Angular 2+ templates are supported. Things like <button type="submit" [disabled]=disabled *ngIf=boolean (click)="clickHandler(event)"></button> will parse as expected.
-1. HTML is supported provided it is not a "quirks mode" document that ran in IE9.
-1. No attempt is made to validate the document. sax-wasm reports what it sees. If you need strict mode or document validation, it may
-be recreated by applying rules to the events that are reported by the parser.
-1. Namespaces are reported in attributes. No special events dedicated to namespaces.
-1. Streaming utf-8 code points in a Uint8Array is required.
-1. Whitespace between XML elements is not reported. If you need this, a simple subtraction of the `line` and `character` between the end of one tag and the start of the next will reveal where this whitespace exists.
-1. **Byte offset ranges** are provided for all entities, enabling precise byte-level access to the original data.
-1. **Attribute type detection** distinguishes between different attribute syntaxes (normal, JSX, quoted, unquoted) for enhanced parsing capabilities.
+| Feature / Behavior | sax-wasm stance |
+|--------------------|-----------------|
+| Maintenance | Actively maintained |
+| Encoding | UTF‑8/UTF‑16; 1–4 byte graphemes preserved even across chunk boundaries |
+| JSX | Supported (including fragments) |
+| Angular templates | Supported (e.g., bindings, structural directives, event handlers) |
+| HTML | Supported (non-quirks mode) |
+| Validation | Non-validating; emits what it sees—apply your own rules for strict mode |
+| Namespaces | Reported in attributes; no dedicated namespace events |
+| Streaming input | Requires streaming UTF‑8 bytes (`Uint8Array`) |
+| Inter-element whitespace | Not emitted; infer via positions or enable `Text` and filter |
+| Byte offsets | Provided for all entities for direct byte slicing |
+| Attribute types | Reported (no‑value, JSX, unquoted, single, double quoted) |
 
 ## Streaming
 Streaming is supported with sax-wasm by writing utf-8 code points (Uint8Array) to the parser instance. Writes can occur safely
@@ -247,66 +376,56 @@ Doing so anyway risks overwriting memory still in play.
 
 ## Events
 Events are subscribed to using a bitmask composed from flags representing the event type.
-Bit positions along a 12 bit integer can be masked on to tell the parser to emit the event of that type.
-For example, passing in the following bitmask to the parser instructs it to emit events for text, open tags and attributes:
+For example, passing in the following bitmask to the parser instructs it to emit events for Text, OpenTag and Attribute:
 ```js
 import { SaxEventType } from 'sax-wasm';
 parser.events = SaxEventType.Text | SaxEventType.OpenTag | SaxEventType.Attribute;
 ```
 Complete list of event/argument pairs:
 
-|Event                             |Mask          | Argument passed to handler                    |
-|----------------------------------|--------------|-----------------------------------------------|
-|SaxEventType.Text                 |0b000000000001| text: [Text](src/js/saxWasm.ts#L114)          |
-|SaxEventType.ProcessingInstruction|0b000000000010| procInst: [Text](src/js/saxWasm.ts#L114)      |
-|SaxEventType.SGMLDeclaration      |0b000000000100| sgmlDecl: [Text](src/js/saxWasm.ts#L114)      |
-|SaxEventType.Doctype              |0b000000001000| doctype: [Text](src/js/saxWasm.ts#L114)       |
-|SaxEventType.Comment              |0b000000010000| comment: [Text](src/js/saxWasm.ts#L114)       |
-|SaxEventType.OpenTagStart         |0b000000100000| tag: [Tag](src/js/saxWasm.ts#L141)            |
-|SaxEventType.Attribute            |0b000001000000| attribute: [Attribute](src/js/saxWasm.ts#L54) |
-|SaxEventType.OpenTag              |0b000010000000| tag: [Tag](src/js/saxWasm.ts#L141)            |
-|SaxEventType.CloseTag             |0b000100000000| tag: [Tag](src/js/saxWasm.ts#L141)            |
-|SaxEventType.CDATA                |0b001000000000| start: [Position](src/js/saxWasm.ts#L39)      |
+|Event                             |Mask          | Argument passed to handler    |
+|----------------------------------|--------------|--------------------------------|
+|SaxEventType.Text                 |0b1           | `text: Text`                  |
+|SaxEventType.ProcessingInstruction|0b10          | `procInst: ProcInst`          |
+|SaxEventType.Declaration          |0b100         | `declaration: Text`           |
+|SaxEventType.Doctype              |0b1000        | `doctype: Text`               |
+|SaxEventType.Comment              |0b10000       | `comment: Text`               |
+|SaxEventType.OpenTagStart         |0b100000      | `tag: Tag`                    |
+|SaxEventType.Attribute            |0b1000000     | `attribute: Attribute`        |
+|SaxEventType.OpenTag              |0b10000000    | `tag: Tag`                    |
+|SaxEventType.CloseTag             |0b100000000   | `tag: Tag`                    |
+|SaxEventType.Cdata                |0b1000000000  | `text: Text`                  |
+
+Note: In prose you may see “CDATA”, but the enum value is spelled `Cdata`.
+
+### Whitespace handling
+Whitespace-only text nodes between elements are intentionally not emitted to keep streaming performance high. If you need to account for inter-element whitespace, compare the `line`/`character` positions of consecutive tags to infer gaps.
 
 ## Speeding things up on large documents
-The speed of the sax-wasm parser is incredibly fast and can parse very large documents in a blink of an eye. Although
-it's performance out of the box is ridiculous, the JavaScript thread *must* be involved with transforming raw
-bytes to human readable data, there are times where slowdowns can occur if you're not careful. These are some of the
-items to consider when top speed and performance is an absolute must:
-1. Stream your document from it's source as a `Uint8Array` - This is covered in the examples above. Things slow down
-significantly when the document is loaded in JavaScript as a string, then encoded to bytes using `Buffer.from(document)` or
-`new TextEncoder.encode(document)` before being passed to the parser. Encoding on the JavaScript thread is adds a non-trivial
-amount of overhead so its best to keep the data as raw bytes. Streaming often means the parser will already be done once
-the document finishes downloading!
-1. Keep the events bitmask to a bare minimum whenever possible - the more events that are required, the more work the
-JavaScript thread must do once sax-wasm.wasm reports back.
-1. Limit property reads on the reported data to only what's necessary - this includes things like stringifying the data to
-json using `JSON.stringify()`. The first read of a property on a data object reported by the `eventHandler` will
-retrieve the value from raw bytes and convert it to a `string`, `number` or `Position` on the JavaScript thread. This
-conversion time becomes noticeable on very large documents with many elements and attributes. **NOTE:** After
-the initial read, the value is cached and accessing it becomes faster.
-1. Use **byte offsets** for direct data access - When you need to extract specific portions of the original data, use the `byteOffsets` property instead of character positions. This avoids the overhead of character encoding conversions and provides direct byte-level access to the source data.
+| Concern | Do this | Why it helps |
+|---------|---------|--------------|
+| Input format | Stream `Uint8Array` bytes directly (avoid loading XML as string and re-encoding) | Skips JS-side encoding overhead; parser often finishes as the download ends |
+| Events requested | Keep the `events` bitmask minimal | Less JS work per callback, fewer conversions |
+| Property access | Read only what you need; avoid bulk `JSON.stringify()` | First access performs the costly decode; later reads are cached |
+| Data extraction | Prefer `byteOffsets` over character positions when slicing | Avoids encoding conversions; direct byte-level access |
+| Chunking | Stream in chunks; don’t buffer the whole document | Keeps memory and latency low |
 
-## SAXParser.js
+## SAXParser (JavaScript/TypeScript)
 ## Constructor
-`SaxParser([events: number, [options: SaxParserOptions]])`
+`new SAXParser(events?: number)`
 
-Constructs new SaxParser instance with the specified events bitmask and options
+Constructs a new SAXParser instance with the specified events bitmask.
 ### Parameters
 
 - `events` - A number representing a bitmask of events that should be reported by the parser.
 
 ### Methods
 
-- `prepareWasm(wasm: Uint8Array): Promise<boolean>` - Instantiates the wasm binary with reasonable defaults and stores
-the instance as a member of the class. Always resolves to true or throws if something went wrong.
+- `prepareWasm(wasm: Uint8Array | Response | Promise<Response>): Promise<boolean>` – Instantiates the WASM module with reasonable defaults and stores the instance as a member of the class. Resolves to `true` or throws if something went wrong.
 
-- `write(chunk: Uint8Array, offset: number = 0): void;` - writes the supplied bytes to the wasm memory buffer and kicks
-off processing. An optional offset can be provided if the read should occur at an index other than `0`. **NOTE:**
-The `line` and `character` counters are *not* reset.
+- `write(chunk: Uint8Array): void` – Writes the supplied bytes to the WASM memory buffer and kicks off processing. **NOTE:** The `line` and `character` counters are not reset between writes.
 
-- `end(): void;` - Ends processing for the stream. The `line` and `character` counters are reset to zero and the parser is
-readied for the next document.
+- `end(): void` – Ends processing for the stream. The `line` and `character` counters are reset to zero and the parser is readied for the next document.
 
 ### Properties
 
@@ -332,31 +451,23 @@ unpredictable results but probably will not break.
 ## Building from source
 ### Prerequisites
 
-This project requires rust v1.30+ since it contains the `wasm32-unknown-unknown` target out of the box.
+This project targets the Rust stable toolchain with the `wasm32-unknown-unknown` target enabled.
 
-Install rust:
+Install rust and the wasm target:
 ```bash
 curl https://sh.rustup.rs -sSf | sh
-```
-Install the stable compiler and switch to it.
-```bash
 rustup install stable
 rustup default stable
-```
-Install the wasm32-unknown-unknown target.
-```bash
 rustup target add wasm32-unknown-unknown --toolchain stable
 ```
-Install [node with npm](https://nodejs.org/en/) then run the following command from the project root.
+
+Install [node with npm](https://nodejs.org/en/), then from the project root:
 ```bash
 npm install
-```
-Install the wasm-bindgen-cli tool
-```bash
 cargo install wasm-bindgen-cli
 ```
-The project can now be built using:
+
+Build artifacts (JS, types, wasm) land in `lib/`:
 ```bash
 npm run build
 ```
-The artifacts from the build will be located in the `/libs` directory.

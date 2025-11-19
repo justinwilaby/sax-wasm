@@ -1,5 +1,3 @@
-use std::u8;
-
 /// Compares two ASCII strings case-insensitively.
 ///
 /// This function compares two ASCII strings for equality, ignoring case differences.
@@ -123,5 +121,17 @@ pub fn grapheme_len(byte: u8) -> usize {
         4 // 4-byte sequence
     } else {
         1 // Default case (invalid UTF-8 leading byte)
+    }
+}
+
+#[inline(always)]
+pub fn ascii_contains(haystack: &[u8], byte: u8) -> bool {
+    match haystack {
+        [] => false,
+        [a] => *a == byte,
+        [a, b] => byte == *a || byte == *b,
+        [a, b, c] => byte == *a || byte == *b || byte == *c,
+        [a, b, c, d] => byte == *a || byte == *b || byte == *c || byte == *d,
+        _ => haystack.contains(&byte),
     }
 }

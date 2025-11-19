@@ -415,7 +415,7 @@ export declare class SAXParser {
     wasmSaxParser?: WasmSaxParser;
     eventHandler?: <T extends SaxEvent>(type: T[0], detail: T[1]) => void;
     private createDetailConstructor;
-    private eventToDetailConstructor;
+    private eventConstructors;
     private writeBuffer?;
     constructor(events?: number);
     /**

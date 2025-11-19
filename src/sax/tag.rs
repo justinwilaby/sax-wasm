@@ -95,7 +95,7 @@ impl Text {
             value: Vec::new(),
             end: [0; 2],
             header: (0, 0),
-            byte_range: (0,0),
+            byte_range: (0, 0),
         };
     }
 
@@ -143,7 +143,7 @@ pub struct Attribute {
     pub name: Text,
     pub value: Text,
     pub attr_type: AttrType,
-    pub byte_range: (u64, u64)
+    pub byte_range: (u64, u64),
 }
 
 impl Attribute {
@@ -152,7 +152,7 @@ impl Attribute {
             name: Text::new([0; 2]),
             value: Text::new([0; 2]),
             attr_type: AttrType::NoValue,
-            byte_range: (0, 0)
+            byte_range: (0, 0),
         };
     }
 
@@ -168,7 +168,7 @@ pub struct ProcInst {
     pub end: [u64; 2],
     pub target: Text,
     pub content: Text,
-    pub byte_range: (u64, u64)
+    pub byte_range: (u64, u64),
 }
 
 impl ProcInst {
@@ -178,7 +178,7 @@ impl ProcInst {
             end: [0; 2],
             target: Text::new([0; 2]),
             content: Text::new([0; 2]),
-            byte_range: (0, 0)
+            byte_range: (0, 0),
         };
     }
 
@@ -205,11 +205,11 @@ pub enum Dispatched {
 
 #[derive(Clone, Copy)]
 pub enum AttrType {
-    NoValue =       0b0000,
-    JSX =           0b0001,
-    NoQuotes =      0b0010,
-    SingleQuoted =  0b0100,
-    DoubleQuoted =  0b1000,
+    NoValue = 0b0000,
+    JSX = 0b0001,
+    NoQuotes = 0b0010,
+    SingleQuoted = 0b0100,
+    DoubleQuoted = 0b1000,
 }
 
 pub struct Accumulator {

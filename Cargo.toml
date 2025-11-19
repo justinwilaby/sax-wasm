@@ -13,7 +13,6 @@ categories = ["wasm", "parser-implementations"]
 crate-type = ["cdylib", "rlib"]
 
 [dev-dependencies]
-wasm-opt = "0.116"
 
 [profile.release]
 opt-level = 3          # Maximum optimization level

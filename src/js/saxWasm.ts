@@ -553,28 +553,29 @@ export class SAXParser {
   public eventHandler?: <T extends SaxEvent>(type: T[0], detail: T[1]) => void;
 
   private createDetailConstructor<T extends { new(...args: unknown[]): {}; LENGTH: number }>(Constructor: T) {
-    return (memoryBuffer: ArrayBuffer, ptr: number): Reader<Detail> => {
-      return new Constructor(new Uint8Array(memoryBuffer, ptr, Constructor.LENGTH).slice(), this.wasmSaxParser.memory) as Reader<Detail>;
+    return (memoryBuffer: ArrayBuffer, ptr: number): Reader => {
+      return new Constructor(new Uint8Array(memoryBuffer, ptr, Constructor.LENGTH), this.wasmSaxParser.memory) as Reader;
     };
   }
 
-  private eventToDetailConstructor = new Map<SaxEventType, (memoryBuffer: ArrayBuffer, ptr: number) => Reader<Detail>>([
-    [SaxEventType.Attribute, this.createDetailConstructor(Attribute)],
-    [SaxEventType.ProcessingInstruction, this.createDetailConstructor(ProcInst)],
-    [SaxEventType.OpenTag, this.createDetailConstructor(Tag)],
-    [SaxEventType.CloseTag, this.createDetailConstructor(Tag)],
-    [SaxEventType.OpenTagStart, this.createDetailConstructor(Tag)],
-    [SaxEventType.Text, this.createDetailConstructor(Text)],
-    [SaxEventType.Cdata, this.createDetailConstructor(Text)],
-    [SaxEventType.Comment, this.createDetailConstructor(Text)],
-    [SaxEventType.Doctype, this.createDetailConstructor(Text)],
-    [SaxEventType.Declaration, this.createDetailConstructor(Text)],
-  ]);
+  private eventConstructors: Array<((memoryBuffer: ArrayBuffer, ptr: number) => Reader<Detail>) | undefined> = [];
 
   private writeBuffer?: Uint8Array;
 
   constructor(events = 0) {
     const self = this;
+    // Initialize a fast lookup table for event constructors to avoid Map lookups per event.
+    this.eventConstructors[SaxEventType.Attribute] = this.createDetailConstructor(Attribute);
+    this.eventConstructors[SaxEventType.ProcessingInstruction] = this.createDetailConstructor(ProcInst);
+    this.eventConstructors[SaxEventType.OpenTag] = this.createDetailConstructor(Tag);
+    this.eventConstructors[SaxEventType.CloseTag] = this.createDetailConstructor(Tag);
+    this.eventConstructors[SaxEventType.OpenTagStart] = this.createDetailConstructor(Tag);
+    this.eventConstructors[SaxEventType.Text] = this.createDetailConstructor(Text);
+    this.eventConstructors[SaxEventType.Cdata] = this.createDetailConstructor(Text);
+    this.eventConstructors[SaxEventType.Comment] = this.createDetailConstructor(Text);
+    this.eventConstructors[SaxEventType.Doctype] = this.createDetailConstructor(Text);
+    this.eventConstructors[SaxEventType.Declaration] = this.createDetailConstructor(Text);
+
     Object.defineProperties(this, {
       events: {
         get: () => ~~events,
@@ -813,9 +814,9 @@ export class SAXParser {
     const memoryBuffer = this.wasmSaxParser.memory.buffer;
     let detail: Attribute | Text | Tag | ProcInst;
 
-    const constructor = this.eventToDetailConstructor.get(event);
-    if (constructor) {
-      detail = constructor(memoryBuffer, ptr) as Attribute | Text | Tag | ProcInst
+    const ctor = this.eventConstructors[event];
+    if (ctor) {
+      detail = ctor(memoryBuffer, ptr) as Attribute | Text | Tag | ProcInst
     } else {
       throw new Error("No reader for this event type");
     }
@@ -826,11 +827,21 @@ export class SAXParser {
 
 export const readString = (data: Uint8Array, offset: number, length: number): string => SAXParser.textDecoder.decode(data.subarray(offset, offset + length));
 
-export const readU32 = (uint8Array: Uint8Array, ptr: number): number =>
-  (uint8Array[ptr + 3] << 24) |
-  (uint8Array[ptr + 2] << 16) |
-  (uint8Array[ptr + 1] << 8) |
-  uint8Array[ptr];
+let cachedDataBuffer: ArrayBuffer | SharedArrayBuffer | null = null;
+let cachedDataView: DataView | null = null;
+const dataViewFor = (array: Uint8Array): DataView => {
+  const buffer = array.buffer;
+  if (buffer !== cachedDataBuffer) {
+    cachedDataBuffer = buffer;
+    cachedDataView = new DataView(buffer);
+  }
+  return cachedDataView!;
+};
+
+export const readU32 = (uint8Array: Uint8Array, ptr: number): number => {
+  const view = dataViewFor(uint8Array);
+  return view.getUint32(uint8Array.byteOffset + ptr, true);
+};
 
 /**
  * Reads a u64 as a javascript number. This
@@ -847,15 +858,12 @@ export const readU32 = (uint8Array: Uint8Array, ptr: number): number =>
  * @param ptr The offset to start at
  * @returns number
  */
-const readU64 = (uint8Array: Uint8Array, ptr = 0): number =>
-  (uint8Array[ptr + 7] << 56) |
-  (uint8Array[ptr + 6] << 48) |
-  (uint8Array[ptr + 5] << 40) |
-  (uint8Array[ptr + 4] << 32) |
-  (uint8Array[ptr + 3] << 24) |
-  (uint8Array[ptr + 2] << 16) |
-  (uint8Array[ptr + 1] << 8) |
-  uint8Array[ptr];
+function readU64(uint8Array: Uint8Array, ptr = 0): number {
+  const view = dataViewFor(uint8Array);
+  const lo = view.getUint32(uint8Array.byteOffset + ptr, true);
+  const hi = view.getUint32(uint8Array.byteOffset + ptr + 4, true);
+  return lo + hi * 0x1_0000_0000;
+}
 
 export const readPosition = (uint8Array: Uint8Array, ptr = 0): Position => {
   const line = readU64(uint8Array, ptr);
