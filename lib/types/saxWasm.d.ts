@@ -567,6 +567,7 @@ export declare class SAXParser {
      */
     prepareWasm(saxWasm: Response | Promise<Response>): Promise<boolean>;
     prepareWasm(saxWasm: Uint8Array): Promise<boolean>;
+    prepareWasm(saxWasm: WebAssembly.Module): Promise<boolean>;
     eventTrap: (event: SaxEventType, ptr: number) => void;
 }
 export declare const readString: (data: Uint8Array, offset: number, length: number) => string;
