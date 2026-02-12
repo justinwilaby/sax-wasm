@@ -22,13 +22,13 @@ function findGlobalBinary() {
 }
 
 function findBinary() {
-  if (existsSync(bundledBinary)) {
-    return bundledBinary;
-  }
-
   const globalBinary = findGlobalBinary();
   if (globalBinary) {
     return globalBinary;
+  }
+
+  if (existsSync(bundledBinary)) {
+    return bundledBinary;
   }
 
   console.error(
