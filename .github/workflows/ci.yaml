@@ -14,44 +14,39 @@ jobs:
 
     strategy:
       matrix:
-        node-version: [22.x]
+        node-version: [25.x]
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       - name: Set up Node.js
-        uses: actions/setup-node@v2
+        uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
-
-      - name: Install Node.js dependencies
-        run: |
-          npm prune
+          cache: npm
+          cache-dependency-path: package-lock.json
 
       - name: Set up Rust
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: 1.88.0
-          target: wasm32-unknown-unknown
-          override: true
+          toolchain: 1.93.0
+          targets: wasm32-unknown-unknown
 
       - name: Install wasm-bindgen-cli
-        run: cargo install wasm-bindgen-cli
+        run: cargo install wasm-bindgen-cli --version 0.2.100 --locked
 
       - name: Install project dependencies
-        run: npm install
+        run: npm ci
+
+      - name: Install Binaryen (global wasm-opt)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y binaryen
+          wasm-opt --version
 
       - name: Build and test
         run: npm run lint && npm run build && npm run coverage
 
       - name: Benchmark
         run: npm run benchmark
-
-      - name: Cache Node.js modules
-        uses: actions/cache@v4
-        with:
-          path: node_modules
-          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-node-

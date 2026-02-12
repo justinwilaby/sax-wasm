@@ -244,8 +244,8 @@ Full details:
 
 </details>
 
-## Benchmarks (Node v22.20.0 / macOS arm64)
-Benchmarks last updated: 2025‑11‑18. Reproduce locally with:
+## Benchmarks (Node v25.6.1 / macOS arm64)
+Benchmarks last updated: 2026-02-12. Reproduce locally with:
 
 ```bash
 npm install
@@ -254,16 +254,17 @@ npm run benchmark
 ```
 
 The benchmark script (`src/js/__test__/benchmark.mjs`) streams the bundled `src/js/__test__/xml.xml` (≈3 MB) from memory to minimize disk variance and reports the mean over 10 runs.
-Run recorded on Apple M4 Pro (Apple Silicon).
+Values below are the mean of 10 benchmark batches (100 internal runs per parser).
+Run recorded on macOS Apple Silicon (arm64).
 
 | Parser with Advanced Features                                                              | time/ms (lower is better)| JS     | Runs in browser |
 |--------------------------------------------------------------------------------------------|-------------------------:|:------:|:---------------:|
-| [sax-wasm](https://github.com/justinwilaby/sax-wasm)                                       |                     6.85 | ☑      | ☑               |
-| [saxes](https://github.com/lddubeau/saxes)                                                 |                    11.19 | ☑      | ☑               |
-| [ltx(using Saxes as the parser)](https://github.com/xmppjs/ltx)                            |                    11.77 | ☑      | ☑               |
-| [sax-js](https://github.com/isaacs/sax-js)                                                 |                    29.58 | ☑      | ☑*              |
-| [node-xml](https://github.com/dylang/node-xml)                                             |                    40.19 | ☑      | ☐               |
-| [node-expat](https://github.com/xmppo/node-expat)                                          |                    40.93 | ☑      | ☐               |
+| [sax-wasm](https://github.com/justinwilaby/sax-wasm)                                       |                     6.80 | ☑      | ☑               |
+| [saxes](https://github.com/lddubeau/saxes)                                                 |                    11.00 | ☑      | ☑               |
+| [ltx(using Saxes as the parser)](https://github.com/xmppjs/ltx)                            |                    11.56 | ☑      | ☑               |
+| [sax-js](https://github.com/isaacs/sax-js)                                                 |                    26.99 | ☑      | ☑*              |
+| [node-xml](https://github.com/dylang/node-xml)                                             |                    31.73 | ☑      | ☐               |
+| [node-expat](https://github.com/xmppo/node-expat)                                          |                    41.51 | ☑      | ☐               |
 <sub>*built for node but *should* run in the browser</sub>
 
 ## Installation
@@ -466,6 +467,15 @@ Install [node with npm](https://nodejs.org/en/), then from the project root:
 npm install
 cargo install wasm-bindgen-cli
 ```
+
+Install Binaryen if you want to use your system `wasm-opt` (recommended for newer optimizer releases):
+```bash
+brew install binaryen
+```
+
+The `npm run wasm-opt` script resolves `wasm-opt` in this order:
+1. Global/system `wasm-opt` from `PATH`
+2. Bundled `node_modules/wasm-opt/bin/*`
 
 Build artifacts (JS, types, wasm) land in `lib/`:
 ```bash
