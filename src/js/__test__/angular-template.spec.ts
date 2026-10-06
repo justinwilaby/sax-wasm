@@ -1,9 +1,10 @@
-import { Detail, Reader, SaxEventType, SAXParser, Tag } from "../saxWasm";
+import { afterEach, beforeEach, describe, it } from 'node:test';
+import { Reader, SaxEventType, SAXParser, Tag } from "../saxWasm.ts";
+import type { Detail } from "../saxWasm.ts";
 import { readFileSync } from "fs";
-import { resolve } from "path";
-import { deepStrictEqual, equal } from "assert";
+import { deepStrictEqual, equal } from "node:assert";
 
-const saxWasm = readFileSync(resolve(__dirname, "../../../lib/sax-wasm.wasm"));
+const saxWasm = readFileSync(new URL('../../../lib/sax-wasm.wasm', import.meta.url));
 describe("SaxWasm", () => {
   let parser: SAXParser;
   let _event: number;
@@ -130,4 +131,3 @@ describe("SaxWasm", () => {
     });
   });
 });
-

@@ -1,11 +1,12 @@
-import { Attribute, readPosition, readU32, SAXParser, SaxEventType, Tag, Text } from '../saxWasm';
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import { Attribute, readPosition, readU32, SAXParser, SaxEventType, Tag, Text } from '../saxWasm.ts';
 import { readFileSync } from 'fs';
-import { resolve } from 'path';
 
 describe('Lazy linear-memory readers', () => {
   it('requires numeric pointers instead of copied struct bytes', () => {
     const memory = new WebAssembly.Memory({ initial: 1 });
-    expect(() => new Attribute(new Uint8Array(Attribute.LENGTH) as unknown as number, memory)).toThrow(TypeError);
+    assert.throws(() => new Attribute(new Uint8Array(Attribute.LENGTH) as unknown as number, memory), TypeError);
   });
 
   it('refreshes struct and string views after memory grows', () => {
@@ -20,26 +21,26 @@ describe('Lazy linear-memory readers', () => {
     view.setUint32(128 + 44, 2, true);
     new Uint8Array(memory.buffer, 512, 5).set(new TextEncoder().encode('hello'));
     const text = new Text(128, memory);
-    expect(text.start.line).toBe(7);
+    assert.strictEqual(text.start.line, 7);
     const oldStringView = text.dataView;
     memory.grow(1);
-    expect(oldStringView.byteLength).toBe(0);
-    expect(text.end.line).toBe(0x1_0000_0000 + 9);
-    expect(text.byteOffsets.start).toBe(2 * 0x1_0000_0000 + 11);
-    expect(text.value).toBe('hello');
-    expect(text.dataView.buffer).toBe(memory.buffer);
+    assert.strictEqual(oldStringView.byteLength, 0);
+    assert.strictEqual(text.end.line, 0x1_0000_0000 + 9);
+    assert.strictEqual(text.byteOffsets.start, 2 * 0x1_0000_0000 + 11);
+    assert.strictEqual(text.value, 'hello');
+    assert.strictEqual(text.dataView.buffer, memory.buffer);
   });
 
   it('shares whole-memory views and creates nested readers lazily', () => {
     const memory = new WebAssembly.Memory({ initial: 1 });
     const attribute = new Attribute(128, memory);
     const text = new Text(512, memory);
-    expect(attribute.dataView).toBe(text.dataView);
+    assert.strictEqual(attribute.dataView, text.dataView);
     memory.grow(1);
-    expect(attribute.name.value).toBe('');
-    expect(attribute.value.value).toBe('');
-    expect(attribute.name).toBe(attribute.name);
-    expect(attribute.dataView).toBe(text.dataView);
+    assert.strictEqual(attribute.name.value, '');
+    assert.strictEqual(attribute.value.value, '');
+    assert.strictEqual(attribute.name, attribute.name);
+    assert.strictEqual(attribute.dataView, text.dataView);
   });
 
   it('reads shared-memory growth and unaligned integer fields', () => {
@@ -47,30 +48,30 @@ describe('Lazy linear-memory readers', () => {
     const text = new Text(128, memory);
     const before = text.dataView;
     memory.grow(1);
-    expect(text.dataView.byteLength).toBe(2 * 65536);
-    expect(text.dataView).not.toBe(before);
+    assert.strictEqual(text.dataView.byteLength, 2 * 65536);
+    assert.notStrictEqual(text.dataView, before);
     const bytes = new Uint8Array(memory.buffer, 3, 24);
     const view = new DataView(memory.buffer);
     view.setUint32(3, 0xfedcba98, true);
     view.setUint32(7, 1, true);
     view.setUint32(11, 23, true);
-    expect(readU32(bytes, 0)).toBe(0xfedcba98);
-    expect(readPosition(bytes).line).toBe(0x1_0000_0000 + 0xfedcba98);
-    expect(readPosition(bytes).character).toBe(23);
+    assert.strictEqual(readU32(bytes, 0), 0xfedcba98);
+    assert.strictEqual(readPosition(bytes).line, 0x1_0000_0000 + 0xfedcba98);
+    assert.strictEqual(readPosition(bytes).character, 23);
   });
 
   it('keeps self-closing event details readable throughout the write', async () => {
     const parser = new SAXParser(SaxEventType.OpenTag | SaxEventType.CloseTag | SaxEventType.Attribute);
-    await parser.prepareWasm(readFileSync(resolve(__dirname, '../../../lib/sax-wasm.wasm')));
+    await parser.prepareWasm(readFileSync(new URL('../../../lib/sax-wasm.wasm', import.meta.url)));
     const retained: Array<[number, Tag | Attribute]> = [];
     parser.eventHandler = (event, detail) => retained.push([event, detail as Tag | Attribute]);
     parser.write(new TextEncoder().encode('<root><child key="value"/><child key="other"/></root>'));
     const tags = retained.filter(([event]) => event === SaxEventType.OpenTag || event === SaxEventType.CloseTag).map(([, detail]) => detail as Tag);
-    expect(tags.map(tag => tag.name)).toEqual(['root', 'child', 'child', 'child', 'child', 'root']);
-    expect(tags[1].attributes[0].value.value).toBe('value');
-    expect(tags[2].attributes[0].value.value).toBe('value');
-    expect(tags[3].attributes[0].value.value).toBe('other');
-    expect(tags[4].attributes[0].value.value).toBe('other');
+    assert.deepStrictEqual(tags.map(tag => tag.name), ['root', 'child', 'child', 'child', 'child', 'root']);
+    assert.strictEqual(tags[1].attributes[0].value.value, 'value');
+    assert.strictEqual(tags[2].attributes[0].value.value, 'value');
+    assert.strictEqual(tags[3].attributes[0].value.value, 'other');
+    assert.strictEqual(tags[4].attributes[0].value.value, 'other');
     parser.end();
   });
 });

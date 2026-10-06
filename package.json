@@ -6,9 +6,10 @@
     "url": "https://github.com/justinwilaby/sax-wasm.git"
   },
   "engines": {
-    "node": ">=18.20.5"
+    "node": ">=24.3.0"
   },
   "description": "An extremely fast JSX, HTML and XML parser written in Rust compiled to WebAssembly for Node and the Web",
+  "type": "module",
   "main": "lib/cjs/index.js",
   "module": "lib/esm/index.js",
   "browser": {
@@ -18,15 +19,15 @@
     "lib/**"
   ],
   "scripts": {
-    "test": "jest",
-    "coverage": "nyc -r text -r json-summary jest",
+    "test": "node --experimental-transform-types --test src/js/__test__/*.spec.ts",
+    "coverage": "node --experimental-transform-types --test --experimental-test-coverage --test-coverage-include='src/js/saxWasm.ts' src/js/__test__/*.spec.ts",
     "build:wasm": "cargo build --target wasm32-unknown-unknown --release && npm run wasm-opt",
-    "wasm-opt": "node scripts/run-wasm-opt.js -O4 target/wasm32-unknown-unknown/release/sax_wasm.wasm -o lib/sax-wasm.wasm --enable-bulk-memory --enable-simd --enable-sign-ext",
+    "wasm-opt": "node scripts/run-wasm-opt.cjs -O4 target/wasm32-unknown-unknown/release/sax_wasm.wasm -o lib/sax-wasm.wasm --enable-bulk-memory --enable-simd --enable-sign-ext",
     "build": "(npm run build:esm && npm run build:cjs & npm run build:types) && npm run build:wasm",
-    "build:dev": "(npm run build:esm -- --sourceMap && npm run build:cjs -- --sourceMap & npm run build:types) && npm run build:wasm && tsc --emitDeclarationOnly",
-    "build:esm": "tsc --module esnext --outDir lib/esm --target esnext",
-    "build:cjs": "tsc --module commonjs --outDir lib/cjs --target esnext",
-    "build:types": "tsc --outDir lib/types --emitDeclarationOnly --declaration",
+    "build:dev": "(npm run build:esm -- --sourceMap && npm run build:cjs -- --sourceMap & npm run build:types) && npm run build:wasm && node_modules/@typescript/native/bin/tsc --emitDeclarationOnly",
+    "build:esm": "node_modules/@typescript/native/bin/tsc --module esnext --outDir lib/esm --target esnext",
+    "build:cjs": "node_modules/@typescript/native/bin/tsc --module commonjs --outDir lib/cjs --target esnext",
+    "build:types": "node_modules/@typescript/native/bin/tsc --outDir lib/types --emitDeclarationOnly --declaration",
     "benchmark": "node src/js/__test__/benchmark.mjs",
     "lint": "eslint src/js/ **/*.ts",
     "layout": "rm -r target && cargo +nightly rustc -- -Zprint-type-sizes"
@@ -57,22 +58,19 @@
   "license": "MIT",
   "homepage": "https://github.com/justinwilaby/sax-wasm",
   "devDependencies": {
-    "@types/jest": "30.0.0",
     "@types/ltx": "^3.1.0",
     "@types/node": "^26.6.4",
     "@types/node-expat": "^2.3.5",
     "@types/sax": "^1.2.7",
+    "@typescript/native": "npm:typescript@^7.0.2",
     "@typescript-eslint/eslint-plugin": "^8.19.0",
     "@typescript-eslint/parser": "^8.19.0",
     "eslint": "9.33.0",
-    "jest": "^30.5.2",
     "ltx": "^3.0.0",
     "node-expat": "^2.4.1",
     "node-xml": "^1.0.2",
-    "nyc": "^18.0.0",
     "sax": "^1.2.4",
     "saxes": "^6.0.0",
-    "ts-jest": "^29.1.2",
-    "typescript": "5.X"
+    "typescript": "^5.9.3"
   }
 }
