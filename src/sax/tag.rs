@@ -89,6 +89,10 @@ pub struct Text {
 }
 
 impl Text {
+    pub(crate) fn can_hydrate(&self) -> bool {
+        self.header.0 <= self.header.1 || !self.value.is_empty()
+    }
+
     pub fn new(start: [u64; 2]) -> Text {
         return Text {
             start,
@@ -116,6 +120,40 @@ impl Text {
         self.value.extend_from_slice(sl);
         self.header = (0, 0);
         return &self.value.as_slice();
+    }
+
+    /// Borrow a name contained in this write, copying only when it spans writes.
+    /// The input remains live until parsing and hydration of this write finish.
+    pub(crate) fn borrow_value(&mut self, ptr: *const u8, ptr_len: usize) -> &[u8] {
+        let (start, end) = self.header;
+        if self.value.is_empty() && start <= end && end <= ptr_len {
+            let len = if start == end && start > 0 {
+                1
+            } else {
+                end - start
+            };
+            if start + len <= ptr_len {
+                return unsafe { slice::from_raw_parts(ptr.add(start), len) };
+            }
+        }
+        self.get_value_slice(ptr, ptr_len)
+    }
+
+    /// Strip syntax from a completed, unhydrated span. (0, 0) is the parser's
+    /// empty sentinel; equal nonzero endpoints otherwise denote one byte.
+    pub(crate) fn trim_borrowed(&mut self, leading: usize, trailing: usize) {
+        debug_assert!(self.value.is_empty());
+        let (start, end) = self.header;
+        let len = if start == end && start > 0 {
+            1
+        } else {
+            end.saturating_sub(start)
+        };
+        if start > end || len <= leading + trailing {
+            self.header = (0, 0);
+        } else {
+            self.header = (start + leading, start + len - trailing);
+        }
     }
 
     pub fn hydrate(&mut self, ptr: *const u8) -> bool {

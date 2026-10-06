@@ -254,6 +254,7 @@ npm run benchmark
 ```
 
 The benchmark script (`src/js/__test__/benchmark.mjs`) streams the bundled `src/js/__test__/xml.xml` (≈3 MB) from memory to minimize disk variance and reports the mean over 10 runs.
+For comparisons that also measure callbacks, lazy field reads, and full event decoding, see the [performance investigation](docs/performance.md), the [borrowed-span follow-up](docs/borrowed-spans.md), and `scripts/benchmark-performance.mjs`.
 Values below are the mean of 10 benchmark batches (100 internal runs per parser).
 Run recorded on macOS Apple Silicon (arm64).
 
@@ -448,6 +449,8 @@ stream and kicks off processing. The parser assumes that the bytes are valid utf
 unpredictable results but probably will not break.
 
 - `end()` - resets the `character` and `line` counts but does not halt processing of the current buffer.
+
+- `event_abi_version() -> u32` - Returns `1` for the current event descriptor format. The module imports `env.event_listener_v1(event: u32, ptr: u32)`. Custom wrappers must read the [descriptor layout](docs/borrowed-spans.md#event-descriptor-abi) and keep input bytes unchanged until the next `write()` or `end()`. The bundled JS wrapper detects this format automatically and also supports older Wasm binaries; older wrappers cannot instantiate the new binary.
 
 ## Building from source
 ### Prerequisites

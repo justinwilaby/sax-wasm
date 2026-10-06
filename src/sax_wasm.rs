@@ -1,29 +1,57 @@
+use std::cell::RefCell;
 use std::mem;
 use std::ptr;
 use std::slice;
 
+use crate::event_descriptors::EventStore;
 use crate::sax::parser::*;
 use crate::sax::tag::*;
 
-static mut SAX: *mut SAXParser = 0 as *mut SAXParser;
-pub struct SaxEventHandler;
+static mut SAX: *mut SAXParser = ptr::null_mut();
+pub struct SaxEventHandler {
+    store: RefCell<EventStore>,
+}
 
 impl SaxEventHandler {
     pub fn new() -> Self {
-        SaxEventHandler
+        SaxEventHandler {
+            store: RefCell::new(EventStore::default()),
+        }
     }
 }
 
 impl EventHandler for SaxEventHandler {
     fn handle_event(&self, event: Event, data: Entity) {
-        let ptr = match data {
-            Entity::Attribute(attribute) => ptr::from_ref(attribute) as *const u8,
-            Entity::ProcInst(proc_inst) => ptr::from_ref(proc_inst) as *const u8,
-            Entity::Tag(tag) => ptr::from_ref(tag) as *const u8,
-            Entity::Text(text) => ptr::from_ref(text) as *const u8,
-        };
-        unsafe { event_listener(1 << event as u32, ptr) };
+        let ptr = self.store.borrow_mut().snapshot(data, &[], true);
+        unsafe { event_listener_v1(1 << event as u32, ptr) };
     }
+
+    fn supports_borrowed_events(&self) -> bool {
+        true
+    }
+
+    fn handle_borrowed_event(&self, event: Event, data: Entity, source: &[u8]) {
+        let ptr = self.store.borrow_mut().snapshot(data, source, false);
+        // Release the RefCell borrow before entering JavaScript.
+        unsafe { event_listener_v1(1 << event as u32, ptr) };
+    }
+
+    fn handle_borrowed_event_pair(&self, first: Event, second: Event, data: Entity, source: &[u8]) {
+        let ptr = self.store.borrow_mut().snapshot(data, source, false);
+        unsafe {
+            event_listener_v1(1 << first as u32, ptr);
+            event_listener_v1(1 << second as u32, ptr);
+        }
+    }
+
+    fn clear_events(&self) {
+        self.store.borrow_mut().clear();
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn event_abi_version() -> u32 {
+    1
 }
 
 fn generate_event_lookup(events: u32) -> [bool; 10] {
@@ -55,6 +83,7 @@ pub unsafe extern "C" fn end() {
     (*SAX).identity();
 }
 
+#[link(wasm_import_module = "env")]
 extern "C" {
-    fn event_listener(event: u32, ptr: *const u8);
+    fn event_listener_v1(event: u32, ptr: *const u8);
 }

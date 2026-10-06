@@ -80,25 +80,25 @@ export type ByteOffsets = {
  * Represents the detail of a SAX event.
  */
 export type Detail = AttributeDetail | TextDetail | TagDetail | ProcInstDetail;
-/**
- * Abstract class for decoding SAX event data.
- *
- * @template T - The type of detail to be read.
- */
+/** Abstract class for decoding SAX event data directly from linear memory. */
 export declare abstract class Reader<T extends Detail = Detail> {
-    #private;
-    protected data: Uint8Array;
     protected memory: WebAssembly.Memory;
+    protected descriptorABI: boolean;
     protected cache: Record<string, unknown>;
+    protected pointer: number;
+    private views;
+    private dataBytes?;
+    private copiedView?;
+    private currentViews;
     get dataView(): Uint8Array;
-    /**
-     * Creates a new Reader instance.
-     *
-     * @param data - The data buffer containing the event data.
-     * @param ptr - The initial pointer position.
-     * @param memory - The WebAssembly memory instance.
-     */
-    constructor(data: Uint8Array, memory: WebAssembly.Memory);
+    protected get data(): Uint8Array;
+    protected set data(data: Uint8Array);
+    constructor(data: Uint8Array | number, memory: WebAssembly.Memory, descriptorABI?: boolean);
+    protected childData(offset: number, length: number): Uint8Array | number;
+    protected readU32(offset: number): number;
+    protected readU64(offset: number): number;
+    protected readPosition(offset: number): Position;
+    protected readByte(offset: number): number;
     /**
      * Converts the reader data to a JSON object.
      *
@@ -137,10 +137,13 @@ export declare class Position implements PositionDetail {
  */
 export declare class Attribute extends Reader<AttributeDetail> implements AttributeDetail {
     static LENGTH: 168;
+    static DESCRIPTOR_LENGTH: 136;
     type: AttributeType;
-    name: Text;
-    value: Text;
-    constructor(data: Uint8Array, memory: WebAssembly.Memory);
+    get name(): Text;
+    set name(value: Text);
+    get value(): Text;
+    set value(value: Text);
+    constructor(data: Uint8Array | number, memory: WebAssembly.Memory, descriptorABI?: boolean);
     /**
     * Gets the byte offsets representing the
     * start and end byte in the data
@@ -200,9 +203,11 @@ export declare class Attribute extends Reader<AttributeDetail> implements Attrib
  */
 export declare class ProcInst extends Reader<ProcInstDetail> implements ProcInstDetail {
     static LENGTH: 186;
-    target: Text;
-    content: Text;
-    constructor(data: Uint8Array, memory: WebAssembly.Memory);
+    static DESCRIPTOR_LENGTH: 160;
+    get target(): Text;
+    set target(value: Text);
+    get content(): Text;
+    set content(value: Text);
     /**
      * Gets the start position of the processing instruction.
      *
@@ -255,6 +260,7 @@ export declare class ProcInst extends Reader<ProcInstDetail> implements ProcInst
  */
 export declare class Text extends Reader<TextDetail> implements TextDetail {
     static LENGTH: 72;
+    static DESCRIPTOR_LENGTH: 56;
     /**
      * Gets the start position of the text node.
      *
@@ -305,6 +311,7 @@ export declare class Text extends Reader<TextDetail> implements TextDetail {
  */
 export declare class Tag extends Reader<TagDetail> implements TagDetail {
     static LENGTH: 128;
+    static DESCRIPTOR_LENGTH: 112;
     /**
      * Gets the start position of the tag opening.
      *
@@ -403,6 +410,7 @@ interface WasmSaxParser extends WebAssembly.Exports {
     parser: (events: number) => void;
     write: (pointer: number, length: number) => void;
     end: () => void;
+    event_abi_version?: () => number;
 }
 type TextDecoder = {
     decode: (input?: ArrayBufferView | ArrayBuffer, options?: {
@@ -417,6 +425,7 @@ export declare class SAXParser {
     private createDetailConstructor;
     private eventConstructors;
     private writeBuffer?;
+    private descriptorABI;
     constructor(events?: number);
     /**
      * Parses the XML data from a readable stream.

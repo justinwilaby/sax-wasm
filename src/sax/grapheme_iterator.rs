@@ -1,4 +1,5 @@
 use super::utils::{ascii_contains, grapheme_len};
+#[cfg(target_arch = "wasm32")]
 use core::arch::wasm32::{i8x16_bitmask, i8x16_eq, i8x16_splat, v128_load, v128_or};
 use std::{mem, ptr};
 
@@ -27,6 +28,47 @@ pub struct GraphemeClusters<'a> {
 }
 
 impl GraphemeClusters<'_> {
+    #[inline]
+    fn ascii_prefix(&self) -> bool {
+        #[cfg(target_arch = "wasm32")]
+        {
+            self.byte_len - self.cursor >= 16 && unsafe { i8x16_bitmask(v128_load(self.bytes.as_ptr().add(self.cursor) as *const _)) == 0 }
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            false
+        }
+    }
+
+    /// Skip an ASCII run using in-bounds, unaligned Wasm SIMD loads. Newlines,
+    /// non-ASCII bytes and delimiters are handled by the scalar UTF-8 path.
+    #[inline(never)]
+    fn ascii_run(&self, cursor: usize, delimiters: &[u8]) -> usize {
+        let start = cursor;
+        #[cfg(target_arch = "wasm32")]
+        let mut cursor = cursor;
+        #[cfg(target_arch = "wasm32")]
+        unsafe {
+            let newline = i8x16_splat(b'\n' as i8);
+            while self.byte_len - cursor >= 16 {
+                let chunk = v128_load(self.bytes.as_ptr().add(cursor) as *const _);
+                let mut stop = v128_or(chunk, i8x16_eq(chunk, newline));
+                for &delimiter in delimiters {
+                    stop = v128_or(stop, i8x16_eq(chunk, i8x16_splat(delimiter as i8)));
+                }
+                let mask = i8x16_bitmask(stop) as u32;
+                if mask != 0 {
+                    cursor += mask.trailing_zeros() as usize;
+                    break;
+                }
+                cursor += 16;
+            }
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        let _ = delimiters;
+        cursor - start
+    }
+
     /// Creates a new `GraphemeClusters` iterator for the given byte slice.
     ///
     /// # Arguments
@@ -141,7 +183,17 @@ impl GraphemeClusters<'_> {
     /// }
     /// assert!(gc_with_surrogate.take_until_one_found(&[b'!'], false).is_none());
     /// ```
+    #[inline(always)]
     pub fn take_until_one_found(&mut self, haystack: &[u8], include_match: bool) -> Option<(&[u8], bool)> {
+        if self.ascii_prefix() {
+            self.take_until_one_found_impl::<true>(haystack, include_match)
+        } else {
+            self.take_until_one_found_impl::<false>(haystack, include_match)
+        }
+    }
+
+    #[inline(always)]
+    fn take_until_one_found_impl<const SIMD: bool>(&mut self, haystack: &[u8], include_match: bool) -> Option<(&[u8], bool)> {
         if self.cursor == self.byte_len {
             return None;
         }
@@ -160,6 +212,16 @@ impl GraphemeClusters<'_> {
         let mut matched_byte = b'0';
         let mut found = false;
         let mut len = 0;
+        let run = if SIMD {
+            self.ascii_run(cursor, haystack)
+        } else {
+            0
+        };
+        cursor += run;
+        character += run as u64;
+        if run != 0 {
+            len = 1;
+        }
 
         while cursor < max_index {
             let next_byte = unsafe { *ptr.add(cursor) };
@@ -218,7 +280,17 @@ impl GraphemeClusters<'_> {
         Some((unsafe { &*ptr::slice_from_raw_parts(ptr.add(start), cursor - start) }, found))
     }
 
+    #[inline(always)]
     pub fn take_until(&mut self, match_byte: u8, include_match_or_exhaust: bool) -> Option<(&[u8], bool)> {
+        if self.ascii_prefix() {
+            self.take_until_impl::<true>(match_byte, include_match_or_exhaust)
+        } else {
+            self.take_until_impl::<false>(match_byte, include_match_or_exhaust)
+        }
+    }
+
+    #[inline(always)]
+    fn take_until_impl<const SIMD: bool>(&mut self, match_byte: u8, include_match_or_exhaust: bool) -> Option<(&[u8], bool)> {
         if self.cursor == self.byte_len {
             return None;
         }
@@ -230,9 +302,20 @@ impl GraphemeClusters<'_> {
         let mut character = self.character;
         let mut found = false;
         let mut len = 0;
+        let run = if SIMD {
+            self.ascii_run(cursor, &[match_byte])
+        } else {
+            0
+        };
+        cursor += run;
+        character += run as u64;
+        if run != 0 {
+            len = 1;
+        }
 
         while cursor < max_index {
             let next_byte = unsafe { *ptr.add(cursor) };
+
             len = grapheme_len(next_byte);
 
             if next_byte == match_byte {
@@ -286,6 +369,7 @@ impl GraphemeClusters<'_> {
         let max_index = self.byte_len;
         let ptr = self.bytes.as_ptr();
 
+        #[cfg(target_arch = "wasm32")]
         unsafe {
             // Fast path: scan 16 bytes at a time for non-whitespace. Whitespace set
             // matches the ASCII characters the parser expects: space, tab, CR, NL.

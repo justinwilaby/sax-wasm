@@ -99,25 +99,92 @@ export type ByteOffsets = {
  */
 export type Detail = AttributeDetail | TextDetail | TagDetail | ProcInstDetail;
 
-/**
- * Abstract class for decoding SAX event data.
- *
- * @template T - The type of detail to be read.
- */
+type MemoryViews = { buffer: ArrayBuffer; bytes: Uint8Array; view: DataView; shared: boolean };
+const memoryViews = new WeakMap<WebAssembly.Memory, MemoryViews>();
+const viewsFor = (memory: WebAssembly.Memory): MemoryViews => {
+  let views = memoryViews.get(memory);
+  if (!views || views.buffer.byteLength === 0 || (views.shared && views.buffer !== memory.buffer)) {
+    const buffer = memory.buffer;
+    views = { buffer, bytes: new Uint8Array(buffer), view: new DataView(buffer), shared: typeof SharedArrayBuffer !== 'undefined' && buffer instanceof SharedArrayBuffer };
+    memoryViews.set(memory, views);
+  }
+  return views;
+};
+
+/** Abstract class for decoding SAX event data directly from linear memory. */
 export abstract class Reader<T extends Detail = Detail> {
   protected cache = {} as Record<string, unknown>;
-  #dataView: Uint8Array;
-  get dataView(): Uint8Array {
-    return this.#dataView ??= new Uint8Array(this.memory.buffer);
+  protected pointer: number;
+  private views: MemoryViews;
+  private dataBytes?: Uint8Array;
+  private copiedView?: DataView;
+
+  private currentViews(): MemoryViews {
+    if (this.views.buffer.byteLength === 0 || (this.views.shared && this.views.buffer !== this.memory.buffer)) {
+      this.views = viewsFor(this.memory);
+    }
+    return this.views;
   }
-  /**
-   * Creates a new Reader instance.
-   *
-   * @param data - The data buffer containing the event data.
-   * @param ptr - The initial pointer position.
-   * @param memory - The WebAssembly memory instance.
-   */
-  constructor(protected data: Uint8Array, protected memory: WebAssembly.Memory) {
+
+  get dataView(): Uint8Array {
+    return this.currentViews().bytes;
+  }
+
+  // Preserve the protected struct view for subclasses, but built-in readers
+  // read fields by offset without allocating a typed array for each entity.
+  protected get data(): Uint8Array {
+    if (this.copiedView) {
+      return this.dataBytes!;
+    }
+    const { buffer } = this.currentViews();
+    if (!this.dataBytes || this.dataBytes.buffer !== buffer) {
+      const length = (this.constructor as unknown as { LENGTH: number; DESCRIPTOR_LENGTH: number })[this.descriptorABI ? 'DESCRIPTOR_LENGTH' : 'LENGTH'];
+      this.dataBytes = new Uint8Array(buffer, this.pointer, length);
+    }
+    return this.dataBytes;
+  }
+
+  protected set data(data: Uint8Array) {
+    this.pointer = data.byteOffset;
+    this.dataBytes = data;
+    this.copiedView = data.buffer === this.currentViews().buffer ? undefined : new DataView(data.buffer);
+  }
+
+  constructor(data: Uint8Array | number, protected memory: WebAssembly.Memory, protected descriptorABI = false) {
+    this.pointer = typeof data === 'number' ? data : data.byteOffset;
+    this.dataBytes = typeof data === 'number' ? undefined : data;
+    this.views = viewsFor(memory);
+    this.copiedView = typeof data !== 'number' && data.buffer !== this.views.buffer ? new DataView(data.buffer) : undefined;
+  }
+
+  protected childData(offset: number, length: number): Uint8Array | number {
+    return this.copiedView ? new Uint8Array(this.copiedView.buffer, this.pointer + offset, length) : this.pointer + offset;
+  }
+
+  protected readU32(offset: number): number {
+    return (this.copiedView ?? this.currentViews().view).getUint32(this.pointer + offset, true);
+  }
+
+  protected readU64(offset: number): number {
+    const view = this.copiedView ?? this.currentViews().view;
+    const ptr = this.pointer + offset;
+    return view.getUint32(ptr, true) + view.getUint32(ptr + 4, true) * 0x1_0000_0000;
+  }
+
+  protected readPosition(offset: number): Position {
+    const view = this.copiedView ?? this.currentViews().view;
+    const ptr = this.pointer + offset;
+    return new Position(
+      view.getUint32(ptr, true) + view.getUint32(ptr + 4, true) * 0x1_0000_0000,
+      view.getUint32(ptr + 8, true) + view.getUint32(ptr + 12, true) * 0x1_0000_0000
+    );
+  }
+
+  protected readByte(offset: number): number {
+    if (this.copiedView) {
+      return this.copiedView.getUint8(this.pointer + offset);
+    }
+    return this.currentViews().bytes[this.pointer + offset];
   }
 
   /**
@@ -162,16 +229,29 @@ export class Position implements PositionDetail {
  */
 export class Attribute extends Reader<AttributeDetail> implements AttributeDetail {
   public static LENGTH = 168 as const;
+  public static DESCRIPTOR_LENGTH = 136 as const;
 
   public type: AttributeType;
-  public name: Text;
-  public value: Text;
 
-  constructor(data: Uint8Array, memory: WebAssembly.Memory) {
-    super(data, memory);
-    this.name = new Text(new Uint8Array(data.buffer, data.byteOffset, Text.LENGTH), memory);
-    this.value = new Text(new Uint8Array(data.buffer, data.byteOffset + Text.LENGTH, Text.LENGTH), memory);
-    this.type = data[144];
+  public get name(): Text {
+    return (this.cache.name ??= new Text(this.childData(0, this.descriptorABI ? Text.DESCRIPTOR_LENGTH : Text.LENGTH), this.memory, this.descriptorABI)) as Text;
+  }
+
+  public set name(value: Text) {
+    this.cache.name = value;
+  }
+
+  public get value(): Text {
+    return (this.cache.value ??= new Text(this.childData(this.descriptorABI ? Text.DESCRIPTOR_LENGTH : Text.LENGTH, this.descriptorABI ? Text.DESCRIPTOR_LENGTH : Text.LENGTH), this.memory, this.descriptorABI)) as Text;
+  }
+
+  public set value(value: Text) {
+    this.cache.value = value;
+  }
+
+  constructor(data: Uint8Array | number, memory: WebAssembly.Memory, descriptorABI = false) {
+    super(data, memory, descriptorABI);
+    this.type = this.readByte(this.descriptorABI ? 112 : 144);
   }
 
   /**
@@ -180,8 +260,8 @@ export class Attribute extends Reader<AttributeDetail> implements AttributeDetai
   */
   public get byteOffsets(): ByteOffsets {
     return (this.cache.byteOffsets ??= {
-      start: readU64(this.data, 152),
-      end: readU64(this.data, 160)
+      start: this.readU64(this.descriptorABI ? 120 : 152),
+      end: this.readU64(this.descriptorABI ? 128 : 160)
     }) as ByteOffsets;
   }
 
@@ -234,15 +314,22 @@ export class Attribute extends Reader<AttributeDetail> implements AttributeDetai
  */
 export class ProcInst extends Reader<ProcInstDetail> implements ProcInstDetail {
   public static LENGTH = 186 as const;
+  public static DESCRIPTOR_LENGTH = 160 as const;
 
-  public target: Text;
-  public content: Text;
+  public get target(): Text {
+    return (this.cache.target ??= new Text(this.childData(32, this.descriptorABI ? Text.DESCRIPTOR_LENGTH : Text.LENGTH), this.memory, this.descriptorABI)) as Text;
+  }
 
-  constructor(data: Uint8Array, memory: WebAssembly.Memory) {
-    super(data, memory);
+  public set target(value: Text) {
+    this.cache.target = value;
+  }
 
-    this.target = new Text(new Uint8Array(data.buffer, data.byteOffset + 32, Text.LENGTH), memory);
-    this.content = new Text(new Uint8Array(data.buffer, data.byteOffset + 32 + Text.LENGTH, Text.LENGTH), memory);
+  public get content(): Text {
+    return (this.cache.content ??= new Text(this.childData(32 + (this.descriptorABI ? Text.DESCRIPTOR_LENGTH : Text.LENGTH), this.descriptorABI ? Text.DESCRIPTOR_LENGTH : Text.LENGTH), this.memory, this.descriptorABI)) as Text;
+  }
+
+  public set content(value: Text) {
+    this.cache.content = value;
   }
 
   /**
@@ -253,7 +340,7 @@ export class ProcInst extends Reader<ProcInstDetail> implements ProcInstDetail {
   public get start(): PositionDetail {
     return (
       (this.cache.start as PositionDetail) ||
-      (this.cache.start = readPosition(this.data, 0))
+      (this.cache.start = this.readPosition(0))
     );
   }
 
@@ -265,7 +352,7 @@ export class ProcInst extends Reader<ProcInstDetail> implements ProcInstDetail {
   public get end(): PositionDetail {
     return (
       (this.cache.end as PositionDetail) ||
-      (this.cache.end = readPosition(this.data, 16))
+      (this.cache.end = this.readPosition(16))
     );
   }
 
@@ -275,8 +362,8 @@ export class ProcInst extends Reader<ProcInstDetail> implements ProcInstDetail {
    */
   public get byteOffsets(): ByteOffsets {
     return (this.cache.byteOffsets ??= {
-      start: readU64(this.data, 16),
-      end: readU64(this.data, 24),
+      start: this.readU64(16),
+      end: this.readU64(24),
     }) as ByteOffsets;
   }
 
@@ -307,6 +394,7 @@ export class ProcInst extends Reader<ProcInstDetail> implements ProcInstDetail {
  */
 export class Text extends Reader<TextDetail> implements TextDetail {
   public static LENGTH = 72 as const;
+  public static DESCRIPTOR_LENGTH = 56 as const;
 
   /**
    * Gets the start position of the text node.
@@ -314,7 +402,7 @@ export class Text extends Reader<TextDetail> implements TextDetail {
    * @returns The start position of the text node.
    */
   public get start(): PositionDetail {
-    return this.cache.start as PositionDetail || (this.cache.start = readPosition(this.data, 24));
+    return this.cache.start as PositionDetail || (this.cache.start = this.readPosition(this.descriptorABI ? 8 : 24));
   }
 
   /**
@@ -323,7 +411,7 @@ export class Text extends Reader<TextDetail> implements TextDetail {
    * @returns The end position of the text node.
    */
   public get end(): PositionDetail {
-    return this.cache.end as PositionDetail || (this.cache.end = readPosition(this.data, 40));
+    return this.cache.end as PositionDetail || (this.cache.end = this.readPosition(this.descriptorABI ? 24 : 40));
   }
 
   /**
@@ -332,11 +420,11 @@ export class Text extends Reader<TextDetail> implements TextDetail {
    * @returns The value of the text node.
    */
   public get value(): string {
-    if (this.cache.value) {
+    if (this.cache.value !== undefined) {
       return this.cache.value as string;
     }
-    const vecPtr = readU32(this.data, 12);
-    const valueLen = readU32(this.data, 16);
+    const vecPtr = this.readU32(this.descriptorABI ? 0 : 12);
+    const valueLen = this.readU32(this.descriptorABI ? 4 : 16);
     return (this.cache.value = readString(this.dataView, vecPtr, valueLen));
   }
 
@@ -346,8 +434,8 @@ export class Text extends Reader<TextDetail> implements TextDetail {
   */
   public get byteOffsets(): ByteOffsets {
     return (this.cache.byteOffsets ??= {
-      start: readU64(this.data, 56),
-      end: readU64(this.data, 64)
+      start: this.readU64(this.descriptorABI ? 40 : 56),
+      end: this.readU64(this.descriptorABI ? 48 : 64)
     }) as ByteOffsets;
   }
 
@@ -380,6 +468,7 @@ export class Text extends Reader<TextDetail> implements TextDetail {
  */
 export class Tag extends Reader<TagDetail> implements TagDetail {
   public static LENGTH = 128 as const;
+  public static DESCRIPTOR_LENGTH = 112 as const;
 
   /**
    * Gets the start position of the tag opening.
@@ -389,7 +478,7 @@ export class Tag extends Reader<TagDetail> implements TagDetail {
   public get openStart(): PositionDetail {
     return (
       (this.cache.openStart as PositionDetail) ||
-      (this.cache.openStart = readPosition(this.data, 40))
+      (this.cache.openStart = this.readPosition(this.descriptorABI ? 32 : 40))
     );
   }
   /**
@@ -400,7 +489,7 @@ export class Tag extends Reader<TagDetail> implements TagDetail {
   public get openEnd(): PositionDetail {
     return (
       (this.cache.openEnd as PositionDetail) ||
-      (this.cache.openEnd = readPosition(this.data, 56))
+      (this.cache.openEnd = this.readPosition(this.descriptorABI ? 48 : 56))
     );
   }
   /**
@@ -411,7 +500,7 @@ export class Tag extends Reader<TagDetail> implements TagDetail {
   public get closeStart(): PositionDetail {
     return (
       (this.cache.closeStart as PositionDetail) ||
-      (this.cache.closeStart = readPosition(this.data, 72))
+      (this.cache.closeStart = this.readPosition(this.descriptorABI ? 64 : 72))
     );
   }
 
@@ -423,7 +512,7 @@ export class Tag extends Reader<TagDetail> implements TagDetail {
   public get closeEnd(): PositionDetail {
     return (
       (this.cache.closeEnd as PositionDetail) ||
-      (this.cache.closeEnd = readPosition(this.data, 88))
+      (this.cache.closeEnd = this.readPosition(this.descriptorABI ? 80 : 88))
     );
   }
 
@@ -433,7 +522,7 @@ export class Tag extends Reader<TagDetail> implements TagDetail {
    * @returns The self-closing flag of the tag.
    */
   public get selfClosing(): boolean {
-    return !!this.data[36];
+    return !!this.readByte(this.descriptorABI ? 24 : 36);
   }
 
   /**
@@ -445,8 +534,8 @@ export class Tag extends Reader<TagDetail> implements TagDetail {
     if (this.cache.name) {
       return this.cache.name as string;
     }
-    const vecPtr = readU32(this.data, 4);
-    const valueLen = readU32(this.data, 8);
+    const vecPtr = this.readU32(this.descriptorABI ? 0 : 4);
+    const valueLen = this.readU32(this.descriptorABI ? 4 : 8);
     return (this.cache.name = readString(this.dataView, vecPtr, valueLen));
   }
 
@@ -461,14 +550,13 @@ export class Tag extends Reader<TagDetail> implements TagDetail {
       return this.cache.attributes as Attribute[];
     }
     // starting location of the attribute block
-    let ptr = readU32(this.data, 16);
-    const numAttrs = readU32(this.data, 20);
+    let ptr = this.readU32(this.descriptorABI ? 8 : 16);
+    const numAttrs = this.readU32(this.descriptorABI ? 12 : 20);
 
     const attributes = [] as Attribute[];
     for (let i = 0; i < numAttrs; i++) {
-      const attrVecData = new Uint8Array(this.dataView.buffer, ptr, Attribute.LENGTH);
-      attributes[i] = new Attribute(attrVecData, this.memory);
-      ptr += Attribute.LENGTH;
+      attributes[i] = new Attribute(ptr, this.memory, this.descriptorABI);
+      ptr += this.descriptorABI ? Attribute.DESCRIPTOR_LENGTH : Attribute.LENGTH;
     }
     return (this.cache.attributes = attributes);
   }
@@ -484,13 +572,12 @@ export class Tag extends Reader<TagDetail> implements TagDetail {
       return this.cache.textNodes as Text[];
     }
     // starting location of the text nodes block
-    let ptr = readU32(this.data, 28);
-    const numTextNodes = readU32(this.data, 32);
+    let ptr = this.readU32(this.descriptorABI ? 16 : 28);
+    const numTextNodes = this.readU32(this.descriptorABI ? 20 : 32);
     const textNodes = [] as Text[];
     for (let i = 0; i < numTextNodes; i++) {
-      const textVecData = new Uint8Array(this.dataView.buffer, ptr, Text.LENGTH);
-      textNodes[i] = new Text(textVecData, this.memory);
-      ptr += Text.LENGTH;
+      textNodes[i] = new Text(ptr, this.memory, this.descriptorABI);
+      ptr += this.descriptorABI ? Text.DESCRIPTOR_LENGTH : Text.LENGTH;
     }
     return (this.cache.textNodes = textNodes);
   }
@@ -501,8 +588,8 @@ export class Tag extends Reader<TagDetail> implements TagDetail {
   */
   public get byteOffsets(): ByteOffsets {
     return (this.cache.byteOffsets ??= {
-      start: readU64(this.data, 112),
-      end: readU64(this.data, 120)
+      start: this.readU64(this.descriptorABI ? 96 : 112),
+      end: this.readU64(this.descriptorABI ? 104 : 120)
     }) as ByteOffsets;
   }
 
@@ -536,6 +623,7 @@ interface WasmSaxParser extends WebAssembly.Exports {
   parser: (events: number) => void;
   write: (pointer: number, length: number) => void;
   end: () => void;
+  event_abi_version?: () => number;
 }
 
 type TextDecoder = {
@@ -553,14 +641,15 @@ export class SAXParser {
   public eventHandler?: <T extends SaxEvent>(type: T[0], detail: T[1]) => void;
 
   private createDetailConstructor<T extends { new(...args: unknown[]): {}; LENGTH: number }>(Constructor: T) {
-    return (memoryBuffer: ArrayBuffer, ptr: number): Reader => {
-      return new Constructor(new Uint8Array(memoryBuffer, ptr, Constructor.LENGTH), this.wasmSaxParser.memory) as Reader;
+    return (ptr: number): Reader => {
+      return new Constructor(ptr, this.wasmSaxParser.memory, this.descriptorABI) as Reader;
     };
   }
 
-  private eventConstructors: Array<((memoryBuffer: ArrayBuffer, ptr: number) => Reader<Detail>) | undefined> = [];
+  private eventConstructors: Array<((ptr: number) => Reader<Detail>) | undefined> = [];
 
   private writeBuffer?: Uint8Array;
+  private descriptorABI = false;
 
   constructor(events = 0) {
     const self = this;
@@ -793,7 +882,8 @@ export class SAXParser {
     const env = {
       memory: new WebAssembly.Memory({ initial: 10, shared: true, maximum: 150 } as WebAssembly.MemoryDescriptor),
       table: new WebAssembly.Table({ initial: 1, element: 'anyfunc' } as WebAssembly.TableDescriptor),
-      event_listener: this.eventTrap
+      event_listener: this.eventTrap,
+      event_listener_v1: this.eventTrap
     };
 
     let instance: WebAssembly.Instance;
@@ -808,6 +898,11 @@ export class SAXParser {
     }
     if (instance && typeof this.events === 'number') {
       const { parser } = this.wasmSaxParser = instance.exports as unknown as WasmSaxParser;
+      const abi = this.wasmSaxParser.event_abi_version?.() ?? 0;
+      if (abi !== 0 && abi !== 1) {
+        throw new Error(`Unsupported SAX event ABI version: ${abi}`);
+      }
+      this.descriptorABI = abi === 1;
       parser(this.events);
       return true;
     }
@@ -818,12 +913,11 @@ export class SAXParser {
     if (!this.wasmSaxParser || !this.eventHandler) {
       return;
     }
-    const memoryBuffer = this.wasmSaxParser.memory.buffer;
     let detail: Attribute | Text | Tag | ProcInst;
 
     const ctor = this.eventConstructors[event];
     if (ctor) {
-      detail = ctor(memoryBuffer, ptr) as Attribute | Text | Tag | ProcInst
+      detail = ctor(ptr) as Attribute | Text | Tag | ProcInst
     } else {
       throw new Error("No reader for this event type");
     }
