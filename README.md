@@ -17,7 +17,7 @@ import { createReadStream } from 'node:fs';
 import { Readable } from 'node:stream';
 import { SaxEventType, SAXParser } from 'sax-wasm';
 
-const wasmUrl = new URL('sax-wasm/lib/sax-wasm.wasm', import.meta.url);
+const wasmUrl = new URL(import.meta.resolve('sax-wasm/lib/sax-wasm.wasm'));
 const wasmBytes = await readFile(wasmUrl);
 
 const parser = new SAXParser(SaxEventType.Text | SaxEventType.OpenTag);
@@ -35,7 +35,7 @@ Browser:
 import { SaxEventType, SAXParser } from 'sax-wasm';
 
 const parser = new SAXParser(SaxEventType.Attribute | SaxEventType.OpenTag);
-await parser.prepareWasm(fetch(new URL('sax-wasm/lib/sax-wasm.wasm', import.meta.url)));
+await parser.prepareWasm(fetch('/assets/sax-wasm.wasm'));
 
 const res = await fetch('/document.xml');
 for await (const [event, detail] of parser.parse(res.body.getReader())) {
@@ -43,7 +43,7 @@ for await (const [event, detail] of parser.parse(res.body.getReader())) {
 }
 ```
 
-Note: `prepareWasm` accepts `Uint8Array | Response | Promise<Response>`.
+Note: `prepareWasm` accepts a `Uint8Array`, `WebAssembly.Module`, `Response`, or `Promise<Response>`.
 
 TypeScript note (Node 24+): `SAXParser.parse` expects a `ReadableStreamDefaultReader<Uint8Array>`.
 Node's `Readable.toWeb()` often produces a `ReadableStream<any>`, so the generic type is lost.
@@ -78,14 +78,14 @@ for await (const [event, detail] of parser.parse(
 - [Speeding things up on large documents](#speeding-things-up-on-large-documents)
 - [SAXParser (JavaScript/TypeScript)](#saxparser-javascripttypescript)
 - [sax-wasm.wasm](#sax-wasmwasm)
-- [Benchmarks](#benchmarks-node-v22200--macos-arm64)
+- [Benchmarks](#benchmarks)
 - [Building from source](#building-from-source)
 - [Development workflow](#development-workflow)
 
-The first streamable, low memory XML, HTML, JSX and Angular Template parser for [WebAssembly](https://developer.mozilla.org/en-US/docs/WebAssembly).
+`sax-wasm` is a streaming, low-memory XML, HTML, JSX, and Angular-template parser built with [WebAssembly](https://developer.mozilla.org/en-US/docs/WebAssembly).
 
 Sax Wasm is a sax style parser for XML, HTML, JSX and Angular Templates written in [Rust](https://www.rust-lang.org/en-US/), compiled for
-WebAssembly with the sole motivation to bring the **fastest possible speeds** to XML and JSX parsing for node and the web.
+WebAssembly to provide fast XML and JSX parsing for Node.js and the web.
 Inspired by [sax js](https://github.com/isaacs/sax-js) and rebuilt with Rust for WebAssembly, sax-wasm brings optimizations
 for speed and support for JSX syntax.
 
@@ -111,7 +111,7 @@ For each entity, `sax-wasm` returns a `Position` object:
   - `line`: The line number where the entity begins.
   - `character`: The column or "character" number where the entity begins.
 
-The position data 100% works with `xml.substring(start, end)` or `xml.slice(start, end)` and takes into account 2–4 byte graphemes such as emojis, Cyrillic, or UTF‑16 encoded documents.
+Positions are zero-based `{ line, character }` pairs. Use them to locate a span within a line-oriented editor or source map. For direct slices of the original UTF-8 input, use `byteOffsets`; JavaScript string indices and UTF-8 byte offsets are not interchangeable.
 
 ### Byte offset ranges
 
@@ -119,7 +119,7 @@ In addition to line and character positions, `sax-wasm` now provides byte offset
 
 - **Byte Offsets**: Each entity includes `byteOffsets` with:
   - `start`: The starting byte position in the original data
-  - `end`: The ending byte position in the original data
+  - `end`: The exclusive ending byte position in the original data
 
 This is particularly useful for:
 - Direct byte-level manipulation of the source data
@@ -214,7 +214,7 @@ Full details:
       "type": 8, // AttributeType.DoubleQuoted
       "byteOffsets": {
         "start": 5,
-        "end": 17
+        "end": 18
       }
     }
   ],
@@ -245,7 +245,9 @@ Full details:
 
 </details>
 
-## Benchmarks (Node v25.6.1 / macOS arm64)
+## Benchmarks
+
+Recorded with Node v25.6.1 on macOS arm64.
 Benchmarks last updated: 2026-02-12. Reproduce locally with:
 
 ```bash
@@ -255,7 +257,7 @@ npm run benchmark
 ```
 
 The benchmark script (`src/js/__test__/benchmark.mjs`) streams the bundled `src/js/__test__/xml.xml` (≈3 MB) from memory to minimize disk variance and reports the mean over 10 runs.
-For comparisons that also measure callbacks, lazy field reads, and full event decoding, see the [performance investigation](docs/performance.md), the [borrowed-span follow-up](docs/borrowed-spans.md), the [single-ABI cleanup and migration](docs/single-abi.md), and `scripts/benchmark-performance.mjs`.
+For comparisons that also measure callbacks, lazy field reads, and full event decoding, run `scripts/benchmark-performance.mjs` locally.
 Values below are the mean of 10 benchmark batches (100 internal runs per parser).
 Run recorded on macOS Apple Silicon (arm64).
 
@@ -284,12 +286,12 @@ import { Readable } from 'node:stream';
 import { SaxEventType, SAXParser } from 'sax-wasm';
 
 // Locate the WASM file from the package
-const wasmUrl = new URL('sax-wasm/lib/sax-wasm.wasm', import.meta.url);
+const wasmUrl = new URL(import.meta.resolve('sax-wasm/lib/sax-wasm.wasm'));
 const wasmBytes = await readFile(wasmUrl);
 
 const parser = new SAXParser(SaxEventType.Cdata | SaxEventType.OpenTag);
 if (await parser.prepareWasm(wasmBytes)) {
-  const xmlUrl = new URL('../src/xml.xml', import.meta.url);
+  const xmlUrl = new URL('./example.xml', import.meta.url);
   const nodeStream = createReadStream(xmlUrl);
   const webStream = Readable.toWeb(nodeStream);
 
@@ -330,15 +332,14 @@ run();
 2. Pipe the document stream to sax-wasm using [ReadableStream.getReader()](https://developer.mozilla.org/en-US/docs/Web/API/ReadableStream/getReader)
 
 **NOTE** This uses [WebAssembly.instantiateStreaming](https://developer.mozilla.org/en-US/docs/WebAssembly/JavaScript_interface/instantiateStreaming)
-under the hood to load the wasm.
+under the hood to load the Wasm binary, so serve `/assets/sax-wasm.wasm` with `Content-Type: application/wasm`.
 ```js
 import { SaxEventType, SAXParser } from 'sax-wasm';
 
 // Fetch and instantiate the WebAssembly binary
-const wasmUrl = new URL('sax-wasm/lib/sax-wasm.wasm', import.meta.url);
 const parser = new SAXParser(SaxEventType.Attribute | SaxEventType.OpenTag);
 
-const ready = await parser.prepareWasm(fetch(wasmUrl));
+const ready = await parser.prepareWasm(fetch('/assets/sax-wasm.wasm'));
 if (ready) {
   // Fetch the XML document
   const xmlResponse = await fetch('/path/to/document.xml');
@@ -361,7 +362,7 @@ if (ready) {
 | Feature / Behavior | sax-wasm stance |
 |--------------------|-----------------|
 | Maintenance | Actively maintained |
-| Encoding | UTF‑8/UTF‑16; 1–4 byte graphemes preserved even across chunk boundaries |
+| Input encoding | UTF-8 byte chunks; split UTF-8 sequences are preserved across chunk boundaries |
 | JSX | Supported (including fragments) |
 | Angular templates | Supported (e.g., bindings, structural directives, event handlers) |
 | HTML | Supported (non-quirks mode) |
@@ -373,7 +374,7 @@ if (ready) {
 | Attribute types | Reported (no‑value, JSX, unquoted, single, double quoted) |
 
 ## Streaming
-Streaming is supported with sax-wasm by writing utf-8 code points (Uint8Array) to the parser instance. Writes can occur safely
+Streaming is supported with sax-wasm by writing UTF-8 byte chunks (`Uint8Array`) to the parser instance. Writes can occur safely
 anywhere except within the `eventHandler` function or within the `eventTrap` (when extending `SAXParser` class).
 Doing so anyway risks overwriting memory still in play.
 
@@ -414,7 +415,7 @@ Whitespace-only text nodes between elements are intentionally not emitted to kee
 | Chunking | Stream in chunks; don’t buffer the whole document | Keeps memory and latency low |
 
 ## SAXParser (JavaScript/TypeScript)
-## Constructor
+### Constructor
 `new SAXParser(events?: number)`
 
 Constructs a new SAXParser instance with the specified events bitmask.
@@ -424,7 +425,9 @@ Constructs a new SAXParser instance with the specified events bitmask.
 
 ### Methods
 
-- `prepareWasm(wasm: Uint8Array | Response | Promise<Response>): Promise<boolean>` – Instantiates the WASM module with reasonable defaults and stores the instance as a member of the class. Resolves to `true` or throws if something went wrong.
+- `prepareWasm(wasm: Uint8Array | WebAssembly.Module | Response | Promise<Response>): Promise<boolean>` – Instantiates the WASM module with reasonable defaults and stores the instance as a member of the class. Resolves to `true` or throws if initialization fails.
+
+- `parse(reader: ReadableStreamDefaultReader<Uint8Array>): AsyncGenerator<SaxEvent>` – Reads chunks from a web-stream reader, writes them to the parser, and yields subscribed events. It calls `end()` when the reader is exhausted.
 
 - `write(chunk: Uint8Array): void` – Writes the supplied bytes to the WASM memory buffer and kicks off processing. **NOTE:** The `line` and `character` counters are not reset between writes.
 
@@ -434,8 +437,7 @@ Constructs a new SAXParser instance with the specified events bitmask.
 
 - `events` - A bitmask containing the events to subscribe to. See the examples for creating the bitmask
 
-- `eventHandler` - A function reference used for event handling. The supplied function must have a signature that accepts
-2 arguments: 1. The `event` which is one of the `SaxEventTypes` and the `body` (listed in the table above)
+- `eventHandler` - A function reference used for event handling. It receives the event bitmask and the corresponding `detail` object listed in the event table.
 
 ## sax-wasm.wasm
 ### Methods
@@ -451,7 +453,7 @@ unpredictable results but probably will not break.
 
 - `end()` - resets the `character` and `line` counts but does not halt processing of the current buffer.
 
-- `event_abi_version() -> u32` - Returns `1` for the required event descriptor format. The module imports `env.event_listener_v1(event: u32, ptr: u32)`. Custom wrappers must read the [descriptor layout](docs/borrowed-spans.md#event-descriptor-abi) and keep input bytes unchanged until the next `write()` or `end()`. The bundled JS wrapper requires version 1 and rejects older binaries. See the [major-release migration notes](docs/single-abi.md#migration).
+- `event_abi_version() -> u32` - Returns `1` for the required event descriptor format. The module imports `env.event_listener_v1(event: u32, ptr: u32)`. Custom wrappers must keep input bytes unchanged until the next `write()` or `end()`. The bundled JS wrapper requires version 1 and rejects other versions.
 
 ## Building from source
 ### Prerequisites
@@ -469,17 +471,16 @@ rustup target add wasm32-unknown-unknown --toolchain stable
 Install [Node.js 24.3 or later with npm](https://nodejs.org/en/), then from the project root:
 ```bash
 npm install
-cargo install wasm-bindgen-cli
 ```
 
-Install Binaryen if you want to use your system `wasm-opt` (recommended for newer optimizer releases):
+Install Binaryen so `wasm-opt` is available on `PATH`:
 ```bash
 brew install binaryen
 ```
 
 The `npm run wasm-opt` script resolves `wasm-opt` in this order:
 1. Global/system `wasm-opt` from `PATH`
-2. Bundled `node_modules/wasm-opt/bin/*`
+2. `node_modules/wasm-opt/bin/*`, if you provide that optional local binary
 
 Build artifacts (JS, types, wasm) land in `lib/`:
 ```bash
