@@ -83,18 +83,12 @@ export type Detail = AttributeDetail | TextDetail | TagDetail | ProcInstDetail;
 /** Abstract class for decoding SAX event data directly from linear memory. */
 export declare abstract class Reader<T extends Detail = Detail> {
     protected memory: WebAssembly.Memory;
-    protected descriptorABI: boolean;
     protected cache: Record<string, unknown>;
     protected pointer: number;
     private views;
-    private dataBytes?;
-    private copiedView?;
     private currentViews;
     get dataView(): Uint8Array;
-    protected get data(): Uint8Array;
-    protected set data(data: Uint8Array);
-    constructor(data: Uint8Array | number, memory: WebAssembly.Memory, descriptorABI?: boolean);
-    protected childData(offset: number, length: number): Uint8Array | number;
+    constructor(pointer: number, memory: WebAssembly.Memory);
     protected readU32(offset: number): number;
     protected readU64(offset: number): number;
     protected readPosition(offset: number): Position;
@@ -127,23 +121,17 @@ export declare class Position implements PositionDetail {
 /**
  * Represents an attribute in the XML data.
  *
- * This class decodes the Attribute data sent across
- * the FFI boundary. Encoded data has the following schema:
- *
- * 1. AttributeType - byte position 0 (1 bytes)
- * 2. name_length - length of the 'name' Text - byte position 1-4 (4 bytes)
- * 3. 'name' bytes - byte position 5-name_length (name_length bytes)
- * 4. 'value' bytes - byte position name_length-n (n bytes)
+ * Decodes a version 1 descriptor: name Text at offset 0, value Text at
+ * offset 56, type at 112, and byte offsets at 120 and 128.
  */
 export declare class Attribute extends Reader<AttributeDetail> implements AttributeDetail {
-    static LENGTH: 168;
-    static DESCRIPTOR_LENGTH: 136;
+    static LENGTH: 136;
     type: AttributeType;
     get name(): Text;
     set name(value: Text);
     get value(): Text;
     set value(value: Text);
-    constructor(data: Uint8Array | number, memory: WebAssembly.Memory, descriptorABI?: boolean);
+    constructor(pointer: number, memory: WebAssembly.Memory);
     /**
     * Gets the byte offsets representing the
     * start and end byte in the data
@@ -179,13 +167,8 @@ export declare class Attribute extends Reader<AttributeDetail> implements Attrib
  * Represents a processing instruction in the XML data.
  *
  * This class decodes the processing instruction data sent across the FFI boundary.
- * The encoded data has the following schema:
- *
- * 1. Start position (line and character) - byte positions 0-7 (8 bytes)
- * 2. End position (line and character) - byte positions 8-15 (8 bytes)
- * 3. Target length - byte positions 16-19 (4 bytes)
- * 4. Target bytes - byte positions 20-(20 + target length - 1) (target length bytes)
- * 5. Content bytes - byte positions (20 + target length)-(end of buffer) (remaining bytes)
+ * Its version 1 descriptor contains start/end positions at offsets 0/16,
+ * target/content Text descriptors at 32/88, and byte offsets at 144/152.
  *
  * The `ProcInst` class decodes this data into its respective fields: `start`, `end`, `target`, and `content`.
  *
@@ -198,12 +181,11 @@ export declare class Attribute extends Reader<AttributeDetail> implements Attrib
  *
  * # Arguments
  *
- * * `buffer` - The buffer containing the processing instruction data.
- * * `ptr` - The initial pointer position.
+ * * `pointer` - The descriptor's numeric offset into Wasm memory.
+ * * `memory` - The Wasm memory containing the descriptor and its strings.
  */
 export declare class ProcInst extends Reader<ProcInstDetail> implements ProcInstDetail {
-    static LENGTH: 186;
-    static DESCRIPTOR_LENGTH: 160;
+    static LENGTH: 160;
     get target(): Text;
     set target(value: Text);
     get content(): Text;
@@ -259,8 +241,7 @@ export declare class ProcInst extends Reader<ProcInstDetail> implements ProcInst
  * into its respective fields: `start`, `end`, and `value`.
  */
 export declare class Text extends Reader<TextDetail> implements TextDetail {
-    static LENGTH: 72;
-    static DESCRIPTOR_LENGTH: 56;
+    static LENGTH: 56;
     /**
      * Gets the start position of the text node.
      *
@@ -310,8 +291,7 @@ export declare class Text extends Reader<TextDetail> implements TextDetail {
  * `closeEnd`, `selfClosing`, `name`, `attributes`, and `textNodes`.
  */
 export declare class Tag extends Reader<TagDetail> implements TagDetail {
-    static LENGTH: 128;
-    static DESCRIPTOR_LENGTH: 112;
+    static LENGTH: 112;
     /**
      * Gets the start position of the tag opening.
      *
@@ -410,7 +390,7 @@ interface WasmSaxParser extends WebAssembly.Exports {
     parser: (events: number) => void;
     write: (pointer: number, length: number) => void;
     end: () => void;
-    event_abi_version?: () => number;
+    event_abi_version: () => number;
 }
 type TextDecoder = {
     decode: (input?: ArrayBufferView | ArrayBuffer, options?: {
@@ -425,7 +405,6 @@ export declare class SAXParser {
     private createDetailConstructor;
     private eventConstructors;
     private writeBuffer?;
-    private descriptorABI;
     constructor(events?: number);
     /**
      * Parses the XML data from a readable stream.

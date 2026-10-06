@@ -3,35 +3,23 @@ import { readFileSync } from 'fs';
 import { resolve } from 'path';
 
 describe('Lazy linear-memory readers', () => {
-  it('accepts copied struct bytes while string pointers still refer to Wasm', () => {
+  it('requires numeric pointers instead of copied struct bytes', () => {
     const memory = new WebAssembly.Memory({ initial: 1 });
-    const header = new Uint8Array(Attribute.LENGTH + 3).subarray(3);
-    const view = new DataView(header.buffer);
-    view.setUint32(3 + 12, 512, true);
-    view.setUint32(3 + 16, 3, true);
-    view.setUint32(3 + Text.LENGTH + 12, 600, true);
-    view.setUint32(3 + Text.LENGTH + 16, 5, true);
-    new Uint8Array(memory.buffer, 512, 3).set(new TextEncoder().encode('key'));
-    new Uint8Array(memory.buffer, 600, 5).set(new TextEncoder().encode('value'));
-    const attribute = new Attribute(header, memory);
-    memory.grow(1);
-    expect(attribute.name.value).toBe('key');
-    expect(attribute.value.value).toBe('value');
+    expect(() => new Attribute(new Uint8Array(Attribute.LENGTH) as unknown as number, memory)).toThrow(TypeError);
   });
 
   it('refreshes struct and string views after memory grows', () => {
     const memory = new WebAssembly.Memory({ initial: 1 });
-    const data = new Uint8Array(memory.buffer, 128, Text.LENGTH);
     const view = new DataView(memory.buffer);
-    view.setUint32(128 + 12, 512, true);
-    view.setUint32(128 + 16, 5, true);
-    view.setUint32(128 + 24, 7, true);
-    view.setUint32(128 + 40, 9, true);
-    view.setUint32(128 + 44, 1, true);
-    view.setUint32(128 + 56, 11, true);
-    view.setUint32(128 + 60, 2, true);
+    view.setUint32(128, 512, true);
+    view.setUint32(128 + 4, 5, true);
+    view.setUint32(128 + 8, 7, true);
+    view.setUint32(128 + 24, 9, true);
+    view.setUint32(128 + 28, 1, true);
+    view.setUint32(128 + 40, 11, true);
+    view.setUint32(128 + 44, 2, true);
     new Uint8Array(memory.buffer, 512, 5).set(new TextEncoder().encode('hello'));
-    const text = new Text(data, memory);
+    const text = new Text(128, memory);
     expect(text.start.line).toBe(7);
     const oldStringView = text.dataView;
     memory.grow(1);
@@ -44,8 +32,8 @@ describe('Lazy linear-memory readers', () => {
 
   it('shares whole-memory views and creates nested readers lazily', () => {
     const memory = new WebAssembly.Memory({ initial: 1 });
-    const attribute = new Attribute(new Uint8Array(memory.buffer, 128, Attribute.LENGTH), memory);
-    const text = new Text(new Uint8Array(memory.buffer, 512, Text.LENGTH), memory);
+    const attribute = new Attribute(128, memory);
+    const text = new Text(512, memory);
     expect(attribute.dataView).toBe(text.dataView);
     memory.grow(1);
     expect(attribute.name.value).toBe('');

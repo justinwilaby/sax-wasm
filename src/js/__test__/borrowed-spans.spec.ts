@@ -8,6 +8,24 @@ const pointer = (reader: Text | Tag): number => (reader as unknown as { pointer:
 const valuePointer = (reader: Text | Tag, parser: SAXParser): number => new DataView(parser.wasmSaxParser.memory.buffer).getUint32(pointer(reader), true);
 
 describe('Versioned borrowed event descriptors', () => {
+  it('rejects missing and unsupported ABI versions before exposing an instance', async () => {
+    const parser = new SAXParser();
+    const empty = new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0]);
+    await expect(parser.prepareWasm(empty)).rejects.toThrow('version: missing; expected 1');
+    expect(parser.wasmSaxParser).toBeUndefined();
+    const name = encoder.encode('event_abi_version');
+    const section = (id: number, bytes: number[]) => [id, bytes.length, ...bytes];
+    const unsupported = new Uint8Array([
+      ...empty,
+      ...section(1, [1, 0x60, 0, 1, 0x7f]),
+      ...section(3, [1, 0]),
+      ...section(7, [1, name.length, ...name, 0, 0]),
+      ...section(10, [1, 4, 0, 0x41, 2, 0x0b]),
+    ]);
+    await expect(parser.prepareWasm(unsupported)).rejects.toThrow('version: 2; expected 1');
+    expect(parser.wasmSaxParser).toBeUndefined();
+  });
+
   it.each([true, false])('applies callback subscription changes to the next self-closing tag (close initially %s)', async (closeInitially) => {
     const parser = new SAXParser(SaxEventType.OpenTag | (closeInitially ? SaxEventType.CloseTag : 0));
     await parser.prepareWasm(wasm);

@@ -34,6 +34,17 @@ const builds = await Promise.all(roots.map(async (root) => ({
   ...(await import(pathToFileURL(resolve(root, 'lib/esm/index.js')).href)),
   module: await WebAssembly.compile(readFileSync(resolve(root, 'lib/sax-wasm.wasm'))),
 })));
+if (baseline && args.includes('--normalize-proc-inst-offsets')) {
+  // Correct only the old wrapper's known offset getter before timing. Every
+  // measured callback still reads byteOffsets, and checksums must agree.
+  const build = builds[0];
+  const offset = WebAssembly.Module.exports(build.module).some(entry => entry.name === 'event_abi_version') ? 144 : 176;
+  Object.defineProperty(build.ProcInst.prototype, 'byteOffsets', {
+    get() {
+      return (this.cache.byteOffsets ??= { start: this.readU64(offset), end: this.readU64(offset + 8) });
+    },
+  });
+}
 const results = [];
 for (const [fixture, bytes] of Object.entries(fixtures)) {
   for (const mode of ['none', 'callback', 'read', 'json']) {
@@ -90,4 +101,4 @@ for (const [fixture, bytes] of Object.entries(fixtures)) {
     console.log(`${fixture.padEnd(10)} ${mode.padEnd(8)} ${medians.map(n => n.toFixed(3) + ' ms').join(' -> ')}${baseline ? ` (${change.toFixed(1)}% less time)` : ''}`);
   }
 }
-if (output) writeFileSync(output, JSON.stringify({ node: process.version, platform: process.platform, arch: process.arch, rounds, warmups, roots, results }, null, 2) + '\n');
+if (output) writeFileSync(output, JSON.stringify({ node: process.version, platform: process.platform, arch: process.arch, rounds, warmups, roots, baselineProcInstOffsetsCorrected: args.includes('--normalize-proc-inst-offsets'), results }, null, 2) + '\n');

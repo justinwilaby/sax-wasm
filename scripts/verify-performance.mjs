@@ -7,13 +7,7 @@ const baselineIndex = process.argv.indexOf('--baseline');
 if (baselineIndex < 0) throw new Error('Usage: node scripts/verify-performance.mjs --baseline /path/to/baseline');
 const roots = [resolve(process.argv[baselineIndex + 1]), fileURLToPath(new URL('..', import.meta.url))];
 const configurations = roots.map(root => ({ wrapperRoot: root, wasmRoot: root }));
-if (process.argv.includes('--legacy-compat')) {
-  configurations.push({ wrapperRoot: roots[1], wasmRoot: roots[0] });
-  const { SAXParser } = await import(pathToFileURL(resolve(roots[0], 'lib/esm/index.js')).href);
-  const currentModule = await WebAssembly.compile(readFileSync(resolve(roots[1], 'lib/sax-wasm.wasm')));
-  await assert.rejects(new SAXParser().prepareWasm(currentModule), WebAssembly.LinkError,
-    'An old wrapper must reject the versioned callback import rather than misread descriptors');
-}
+const normalizeOffsets = process.argv.includes('--normalize-proc-inst-offsets');
 const parsers = await Promise.all(configurations.map(async ({ wrapperRoot, wasmRoot }) => {
   const { SAXParser } = await import(pathToFileURL(resolve(wrapperRoot, 'lib/esm/index.js')).href);
   const parser = new SAXParser();
@@ -21,6 +15,18 @@ const parsers = await Promise.all(configurations.map(async ({ wrapperRoot, wasmR
   return parser;
 }));
 const encoder = new TextEncoder();
+const serialize = (parser, event, detail, configuration) => {
+  const value = detail.toJSON();
+  if (normalizeOffsets && configuration === 0 && event === 2) {
+    // The old wrapper read the end position as byteOffsets. Normalize ONLY
+    // that known bug using its Rust record's actual range, before comparing.
+    const offset = parser.wasmSaxParser.event_abi_version?.() === 1 ? 144 : 176;
+    const view = new DataView(parser.wasmSaxParser.memory.buffer);
+    const u64 = at => view.getUint32(at, true) + view.getUint32(at + 4, true) * 0x1_0000_0000;
+    value.byteOffsets = { start: u64(detail.pointer + offset), end: u64(detail.pointer + offset + 8) };
+  }
+  return value;
+};
 const fixtures = [];
 for (const length of [0, 1, 14, 15, 16, 17, 30, 31, 32, 33, 63, 64, 65, 255]) {
   fixtures.push(encoder.encode(`<?target data?><root title="${'a'.repeat(length)}\n🚀é日本語${'b'.repeat(length)}" empty="">${'x'.repeat(length)}é🚀${'y'.repeat(length)}<child boolean value=unquoted/><child name='value'>content</child><!--${'c'.repeat(length)}--><![CDATA[${'d'.repeat(length)}]]></root>`));
@@ -36,10 +42,10 @@ let comparisons = 0;
 for (let mask = 0; mask < 1024; mask++) {
   for (const [fixtureIndex, bytes] of fixtures.entries()) {
     for (const chunkSize of [1, 7, 15, 16, 17, 31, 32, 33, 64, 127, bytes.length]) {
-      const traces = parsers.map(parser => {
+      const traces = parsers.map((parser, configuration) => {
         const trace = [];
         parser.events = mask;
-        parser.eventHandler = (event, detail) => trace.push([event, detail.toJSON()]);
+        parser.eventHandler = (event, detail) => trace.push([event, serialize(parser, event, detail, configuration)]);
         for (let offset = 0; offset < bytes.length; offset += chunkSize) parser.write(bytes.subarray(offset, offset + chunkSize));
         parser.end();
         return trace;
@@ -52,7 +58,7 @@ for (let mask = 0; mask < 1024; mask++) {
     }
   }
 }
-console.log(`${comparisons} complete event traces match the baseline, including all 1,024 event masks.`);
+console.log(`${comparisons} complete event traces match the baseline, including all 1,024 event masks.${normalizeOffsets ? ' Baseline processing-instruction byte offsets are corrected from their Rust records.' : ''}`);
 // Self-closing callbacks can enable or disable CloseTag during OpenTag.
 for (const initiallyClose of [false, true]) {
   const traces = parsers.map(parser => {

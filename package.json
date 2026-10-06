@@ -59,6 +59,7 @@
   "devDependencies": {
     "@types/jest": "30.0.0",
     "@types/ltx": "^3.1.0",
+    "@types/node": "^26.6.4",
     "@types/node-expat": "^2.3.5",
     "@types/sax": "^1.2.7",
     "@typescript-eslint/eslint-plugin": "^8.19.0",
