@@ -1,13 +1,10 @@
 {
   "compilerOptions": {
-    "baseUrl": "./src",
     "module": "ESNext",
     "target": "esnext",
     "outDir": "lib",
     "declaration": false,
-    "esModuleInterop": false,
     "allowSyntheticDefaultImports": true,
-    "moduleResolution": "Node",
     "skipLibCheck": true
   },
   "lib": [

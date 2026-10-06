@@ -1,15 +1,16 @@
-import { Detail, Reader, SaxEventType, SAXParser, Text } from '../saxWasm';
+import { afterEach, before, beforeEach, describe, it } from 'node:test';
+import { Reader, SaxEventType, SAXParser, Text } from '../saxWasm.ts';
+import type { Detail } from '../saxWasm.ts';
 import { readFileSync } from 'fs';
-import { resolve } from 'path';
-import { deepEqual, strictEqual } from 'assert';
+import { deepEqual, strictEqual } from 'node:assert';
 
-const saxWasm = readFileSync(resolve(__dirname, '../../../lib/sax-wasm.wasm'));
+const saxWasm = readFileSync(new URL('../../../lib/sax-wasm.wasm', import.meta.url));
 describe('When parsing XML, the SaxWasm', () => {
   let parser: SAXParser;
   let _event: SaxEventType | undefined;
   let _data: Text[];
 
-  beforeAll(async () => {
+  before(async () => {
     parser = new SAXParser(SaxEventType.Doctype);
     _data = [];
 

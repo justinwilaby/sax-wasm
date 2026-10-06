@@ -7,7 +7,7 @@
 
 ## Quickstart
 
-- Works in Node (>=18.20.5) and modern browsers. Install with `npm i sax-wasm`.
+- Works in Node (>=24.3.0) and modern browsers. Install with `npm i sax-wasm`.
 - Initialize `SAXParser`, load the packaged `lib/sax-wasm.wasm`, and stream bytes via a reader.
 
 Node (ESM):
@@ -273,7 +273,7 @@ Install once, then jump back to Quickstart for minimal usage:
 ```bash
 npm i sax-wasm
 ```
-Supports Node (>=18.20.5) with both ESM and CJS entry points and modern browsers.
+Supports Node (>=24.3.0) with both ESM and CJS entry points and modern browsers.
 
 ## Usage in Node (ESM)
 ```js

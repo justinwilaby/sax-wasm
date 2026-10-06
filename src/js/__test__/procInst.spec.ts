@@ -1,16 +1,17 @@
-import { Detail, ProcInst, Reader, SaxEventType, SAXParser } from '../saxWasm';
+import { afterEach, before, beforeEach, describe, it } from 'node:test';
+import { ProcInst, Reader, SaxEventType, SAXParser } from '../saxWasm.ts';
+import type { Detail } from '../saxWasm.ts';
 import { readFileSync } from 'fs';
-import { resolve } from 'path';
-import { deepEqual, strictEqual } from 'assert';
+import { deepEqual, strictEqual } from 'node:assert';
 
-const saxWasm = readFileSync(resolve(__dirname, '../../../lib/sax-wasm.wasm'));
+const saxWasm = readFileSync(new URL('../../../lib/sax-wasm.wasm', import.meta.url));
 
 describe('When parsing processing instructions, the SaxWasm', () => {
   let parser: SAXParser;
   let _event: SaxEventType;
   let _data: ProcInst | undefined;
 
-  beforeAll(async () => {
+  before(async () => {
     parser = new SAXParser(SaxEventType.ProcessingInstruction);
 
     parser.eventHandler = function (event: SaxEventType, data:Reader<Detail>) {
@@ -41,7 +42,7 @@ describe('When parsing processing instructions, the SaxWasm', () => {
 
   });
 
-  it.each([1, 7, 65536])('reports UTF-8 byte offsets across %s-byte writes', (chunkSize) => {
+  for (const chunkSize of [1, 7, 65536]) it(`reports UTF-8 byte offsets across ${chunkSize}-byte writes`, () => {
     const input = Buffer.from('<root>é🚀\n<?target content?></root>');
     for (let offset = 0; offset < input.length; offset += chunkSize) {
       parser.write(input.subarray(offset, offset + chunkSize));

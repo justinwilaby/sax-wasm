@@ -1,8 +1,9 @@
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
 import { readFileSync } from 'fs';
-import { resolve } from 'path';
-import { Attribute, ProcInst, SAXParser, SaxEventType, Tag, Text } from '../saxWasm';
+import { Attribute, ProcInst, SAXParser, SaxEventType, Tag, Text } from '../saxWasm.ts';
 
-const wasm = readFileSync(resolve(__dirname, '../../../lib/sax-wasm.wasm'));
+const wasm = readFileSync(new URL('../../../lib/sax-wasm.wasm', import.meta.url));
 const encoder = new TextEncoder();
 const pointer = (reader: Text | Tag): number => (reader as unknown as { pointer: number }).pointer;
 const valuePointer = (reader: Text | Tag, parser: SAXParser): number => new DataView(parser.wasmSaxParser.memory.buffer).getUint32(pointer(reader), true);
@@ -11,8 +12,8 @@ describe('Versioned borrowed event descriptors', () => {
   it('rejects missing and unsupported ABI versions before exposing an instance', async () => {
     const parser = new SAXParser();
     const empty = new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0]);
-    await expect(parser.prepareWasm(empty)).rejects.toThrow('version: missing; expected 1');
-    expect(parser.wasmSaxParser).toBeUndefined();
+    await assert.rejects(parser.prepareWasm(empty), /version: missing; expected 1/);
+    assert.strictEqual(parser.wasmSaxParser, undefined);
     const name = encoder.encode('event_abi_version');
     const section = (id: number, bytes: number[]) => [id, bytes.length, ...bytes];
     const unsupported = new Uint8Array([
@@ -22,11 +23,11 @@ describe('Versioned borrowed event descriptors', () => {
       ...section(7, [1, name.length, ...name, 0, 0]),
       ...section(10, [1, 4, 0, 0x41, 2, 0x0b]),
     ]);
-    await expect(parser.prepareWasm(unsupported)).rejects.toThrow('version: 2; expected 1');
-    expect(parser.wasmSaxParser).toBeUndefined();
+    await assert.rejects(parser.prepareWasm(unsupported), /version: 2; expected 1/);
+    assert.strictEqual(parser.wasmSaxParser, undefined);
   });
 
-  it.each([true, false])('applies callback subscription changes to the next self-closing tag (close initially %s)', async (closeInitially) => {
+  for (const closeInitially of [true, false]) it(`applies callback subscription changes to the next self-closing tag (close initially ${closeInitially})`, async () => {
     const parser = new SAXParser(SaxEventType.OpenTag | (closeInitially ? SaxEventType.CloseTag : 0));
     await parser.prepareWasm(wasm);
     const events: SaxEventType[] = [];
@@ -37,7 +38,7 @@ describe('Versioned borrowed event descriptors', () => {
       }
     };
     parser.write(encoder.encode('<item/><next/>'));
-    expect(events).toEqual(closeInitially
+    assert.deepStrictEqual(events, closeInitially
       ? [SaxEventType.OpenTag, SaxEventType.CloseTag, SaxEventType.OpenTag]
       : [SaxEventType.OpenTag, SaxEventType.OpenTag, SaxEventType.CloseTag]);
     parser.end();
@@ -54,21 +55,21 @@ describe('Versioned borrowed event descriptors', () => {
       else texts.push(detail as Text);
     };
     parser.write(input);
-    expect(instructions[0].target.value).toBe('target');
-    expect(instructions[0].content.value).toBe('content');
-    expect(valuePointer(instructions[0].target, parser)).toBe(4 + input.indexOf('target'));
-    expect(valuePointer(instructions[0].content, parser)).toBe(4 + input.indexOf('content'));
-    expect(texts.map(text => text.value)).toEqual(['root', 'a>b', 'c>d', '']);
-    expect(valuePointer(texts[0], parser)).toBe(4 + input.indexOf('root'));
-    expect(valuePointer(texts[1], parser)).toBe(4 + input.indexOf('a>b'));
-    expect(valuePointer(texts[2], parser)).toBe(4 + input.indexOf('c>d'));
+    assert.strictEqual(instructions[0].target.value, 'target');
+    assert.strictEqual(instructions[0].content.value, 'content');
+    assert.strictEqual(valuePointer(instructions[0].target, parser), 4 + input.indexOf('target'));
+    assert.strictEqual(valuePointer(instructions[0].content, parser), 4 + input.indexOf('content'));
+    assert.deepStrictEqual(texts.map(text => text.value), ['root', 'a>b', 'c>d', '']);
+    assert.strictEqual(valuePointer(texts[0], parser), 4 + input.indexOf('root'));
+    assert.strictEqual(valuePointer(texts[1], parser), 4 + input.indexOf('a>b'));
+    assert.strictEqual(valuePointer(texts[2], parser), 4 + input.indexOf('c>d'));
     parser.end();
   });
 
   it('points completed names, attribute values and text directly into this write', async () => {
     const parser = new SAXParser(SaxEventType.OpenTag | SaxEventType.CloseTag | SaxEventType.Text | SaxEventType.Attribute);
     await parser.prepareWasm(wasm);
-    expect(parser.wasmSaxParser.event_abi_version()).toBe(1);
+    assert.strictEqual(parser.wasmSaxParser.event_abi_version(), 1);
     const input = Buffer.from('<root title="café 🚀">content<child key="value"/></root>');
     const tags: Tag[] = [];
     const attributes: Attribute[] = [];
@@ -81,15 +82,15 @@ describe('Versioned borrowed event descriptors', () => {
     parser.write(input);
     // Read after the complete write, when parser-owned tags have been popped
     // or hydrated and descriptor bookkeeping vectors have grown.
-    expect(valuePointer(tags[0], parser)).toBe(4 + input.indexOf('root'));
-    expect(valuePointer(attributes[0].name, parser)).toBe(4 + input.indexOf('title'));
-    expect(valuePointer(attributes[0].value, parser)).toBe(4 + input.indexOf('café 🚀'));
-    expect(valuePointer(texts[0], parser)).toBe(4 + input.indexOf('content'));
-    expect(tags[0].name).toBe('root');
-    expect(tags[0].closeEnd).toEqual({ line: 0, character: 0 });
-    expect(attributes[0].value.value).toBe('café 🚀');
-    expect(texts[0].value).toBe('content');
-    expect(tags.at(-1).textNodes[0].value).toBe('content');
+    assert.strictEqual(valuePointer(tags[0], parser), 4 + input.indexOf('root'));
+    assert.strictEqual(valuePointer(attributes[0].name, parser), 4 + input.indexOf('title'));
+    assert.strictEqual(valuePointer(attributes[0].value, parser), 4 + input.indexOf('café 🚀'));
+    assert.strictEqual(valuePointer(texts[0], parser), 4 + input.indexOf('content'));
+    assert.strictEqual(tags[0].name, 'root');
+    assert.deepStrictEqual({ ...tags[0].closeEnd }, { line: 0, character: 0 });
+    assert.strictEqual(attributes[0].value.value, 'café 🚀');
+    assert.strictEqual(texts[0].value, 'content');
+    assert.strictEqual(tags.at(-1).textNodes[0].value, 'content');
     parser.end();
   });
 
@@ -105,11 +106,11 @@ describe('Versioned borrowed event descriptors', () => {
     parser.write(encoder.encode('<root title="abc'));
     const tail = encoder.encode('def">partial');
     parser.write(tail);
-    expect(attributes[0].value.value).toBe('abcdef');
-    expect(valuePointer(attributes[0].value, parser)).toBeGreaterThan(4 + tail.length);
+    assert.strictEqual(attributes[0].value.value, 'abcdef');
+    assert.ok(valuePointer(attributes[0].value, parser) > 4 + tail.length);
     parser.write(encoder.encode(' text<child/></root>'));
-    expect(texts[0].value).toBe('partial text');
-    expect(valuePointer(texts[0], parser)).toBeGreaterThan(4 + 24);
+    assert.strictEqual(texts[0].value, 'partial text');
+    assert.ok(valuePointer(texts[0], parser) > 4 + 24);
     parser.end();
   });
 
@@ -124,7 +125,7 @@ describe('Versioned borrowed event descriptors', () => {
     parser.write(input.subarray(0, 8)); // two bytes of the four-byte code point
     parser.write(input.subarray(8));
     parser.wasmSaxParser.memory.grow(1);
-    expect(texts.map(text => text.value)).toEqual(['🚀suffix', 'tail']);
+    assert.deepStrictEqual(texts.map(text => text.value), ['🚀suffix', 'tail']);
     parser.end();
   });
 
@@ -142,16 +143,16 @@ describe('Versioned borrowed event descriptors', () => {
       if (event === SaxEventType.Text) texts.push(detail as Text);
     };
     parser.write(input);
-    expect(parser.wasmSaxParser.memory.buffer).not.toBe(originalBuffer);
-    expect(tags.length).toBe(10002);
-    expect(tags[0].name).toBe('root');
-    expect(tags[0].closeEnd).toEqual({ line: 0, character: 0 });
-    expect(tags[1].attributes[0].value.value).toBe('value');
-    expect(tags.at(-1).name).toBe('root');
-    expect(attributes[0].name.value).toBe('key');
-    expect(attributes.at(-1).value.value).toBe('value');
-    expect(texts[0].value).toBe('text');
-    expect(texts.at(-1).value).toBe('text');
+    assert.notStrictEqual(parser.wasmSaxParser.memory.buffer, originalBuffer);
+    assert.strictEqual(tags.length, 10002);
+    assert.strictEqual(tags[0].name, 'root');
+    assert.deepStrictEqual({ ...tags[0].closeEnd }, { line: 0, character: 0 });
+    assert.strictEqual(tags[1].attributes[0].value.value, 'value');
+    assert.strictEqual(tags.at(-1).name, 'root');
+    assert.strictEqual(attributes[0].name.value, 'key');
+    assert.strictEqual(attributes.at(-1).value.value, 'value');
+    assert.strictEqual(texts[0].value, 'text');
+    assert.strictEqual(texts.at(-1).value, 'text');
     parser.end();
   });
 });

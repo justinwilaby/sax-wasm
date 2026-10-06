@@ -598,9 +598,12 @@ export class SAXParser {
 
   public eventHandler?: <T extends SaxEvent>(type: T[0], detail: T[1]) => void;
 
-  private createDetailConstructor<T extends { new(...args: unknown[]): {}; LENGTH: number }>(Constructor: T) {
+  private createDetailConstructor<T extends {
+    new(pointer: number, memory: WebAssembly.Memory): Reader<Detail>;
+    LENGTH: number;
+  }>(Constructor: T) {
     return (ptr: number): Reader => {
-      return new Constructor(ptr, this.wasmSaxParser.memory) as Reader;
+      return new Constructor(ptr, this.wasmSaxParser!.memory);
     };
   }
 

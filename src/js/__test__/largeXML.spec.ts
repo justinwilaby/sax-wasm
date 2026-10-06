@@ -1,15 +1,16 @@
+import { afterEach, before, beforeEach, describe, it } from 'node:test';
 import { readFileSync, createReadStream } from 'fs';
-import { resolve as pathResolve } from 'path';
-import {deepEqual, equal, notStrictEqual, strictEqual} from 'assert';
-import { Detail, Reader, SaxEventType, SAXParser } from '../saxWasm';
+import {deepEqual, equal, notStrictEqual, strictEqual} from 'node:assert';
+import { Reader, SaxEventType, SAXParser } from '../saxWasm.ts';
+import type { Detail } from '../saxWasm.ts';
 import { Readable } from 'stream';
 
-const saxWasm = readFileSync(pathResolve(__dirname, '../../../lib/sax-wasm.wasm'));
+const saxWasm = readFileSync(new URL('../../../lib/sax-wasm.wasm', import.meta.url));
 const options = {highWaterMark: 32 * 1024};
 describe('When parsing XML, the SaxWasm', () => {
   let parser: SAXParser;
   let _data;
-  beforeAll(async () => {
+  before(async () => {
     parser = new SAXParser(SaxEventType.CloseTag);
     _data = [];
 
@@ -29,7 +30,7 @@ describe('When parsing XML, the SaxWasm', () => {
 
   it('should read', async () => {
     await new Promise(resolve => {
-      const readable = createReadStream(pathResolve(__dirname + '/xml.xml'), options);
+      const readable = createReadStream(new URL('xml.xml', import.meta.url), options);
       readable.on('data', (chunk) => {
         parser.write(chunk as Uint8Array);
       });
@@ -39,7 +40,7 @@ describe('When parsing XML, the SaxWasm', () => {
 
   it('should process large XML files', async () => {
     await new Promise<void>(resolve => {
-      const readable = createReadStream(pathResolve(__dirname + '/xml.xml'), options);
+      const readable = createReadStream(new URL('xml.xml', import.meta.url), options);
       let t = process.hrtime();
       readable.on('data', (chunk) => {
         parser.write(chunk as Uint8Array);
@@ -58,7 +59,7 @@ describe('When parsing XML, the SaxWasm', () => {
   });
 
   it ('events should be equivalent between the generator and event_handler', async () => {
-    const readable = createReadStream(pathResolve(__dirname + '/xml.xml'), options);
+    const readable = createReadStream(new URL('xml.xml', import.meta.url), options);
     const webReadable = Readable.toWeb(readable);
     const eventsFromGenerator: [SaxEventType, Detail][] = [];
     for await (const [event, detail] of parser.parse(webReadable.getReader() as ReadableStreamDefaultReader<Uint8Array<ArrayBufferLike>>)) {
@@ -70,7 +71,7 @@ describe('When parsing XML, the SaxWasm', () => {
       eventsFromEventHandler.push([event, detail.toJSON()]);
     };
     await new Promise(resolve => {
-      const readable = createReadStream(pathResolve(__dirname + '/xml.xml'), options);
+      const readable = createReadStream(new URL('xml.xml', import.meta.url), options);
       readable.on('data', (chunk) => {
         parser.write(chunk as Uint8Array);
       });

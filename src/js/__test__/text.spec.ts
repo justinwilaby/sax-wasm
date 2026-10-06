@@ -1,9 +1,10 @@
+import { beforeEach, describe, it } from 'node:test';
 import { readFileSync } from 'fs';
-import { resolve } from 'path';
-import { deepStrictEqual, strictEqual } from  'assert';
-import { Detail, Reader, SaxEventType, SAXParser } from '../saxWasm';
+import { deepStrictEqual, strictEqual } from  'node:assert';
+import { Reader, SaxEventType, SAXParser } from '../saxWasm.ts';
+import type { Detail } from '../saxWasm.ts';
 
-const saxWasm = readFileSync(resolve(__dirname, '../../../lib/sax-wasm.wasm'));
+const saxWasm = readFileSync(new URL('../../../lib/sax-wasm.wasm', import.meta.url));
 describe('SaxWasm', () => {
   let parser;
   let _event;
