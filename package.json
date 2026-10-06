@@ -9,6 +9,7 @@
     "node": ">=24.3.0"
   },
   "description": "An extremely fast JSX, HTML and XML parser written in Rust compiled to WebAssembly for Node and the Web",
+  "type": "module",
   "main": "lib/cjs/index.js",
   "module": "lib/esm/index.js",
   "browser": {
@@ -21,7 +22,7 @@
     "test": "node --experimental-transform-types --test src/js/__test__/*.spec.ts",
     "coverage": "node --experimental-transform-types --test --experimental-test-coverage --test-coverage-include='src/js/saxWasm.ts' src/js/__test__/*.spec.ts",
     "build:wasm": "cargo build --target wasm32-unknown-unknown --release && npm run wasm-opt",
-    "wasm-opt": "node scripts/run-wasm-opt.js -O4 target/wasm32-unknown-unknown/release/sax_wasm.wasm -o lib/sax-wasm.wasm --enable-bulk-memory --enable-simd --enable-sign-ext",
+    "wasm-opt": "node scripts/run-wasm-opt.cjs -O4 target/wasm32-unknown-unknown/release/sax_wasm.wasm -o lib/sax-wasm.wasm --enable-bulk-memory --enable-simd --enable-sign-ext",
     "build": "(npm run build:esm && npm run build:cjs & npm run build:types) && npm run build:wasm",
     "build:dev": "(npm run build:esm -- --sourceMap && npm run build:cjs -- --sourceMap & npm run build:types) && npm run build:wasm && node_modules/@typescript/native/bin/tsc --emitDeclarationOnly",
     "build:esm": "node_modules/@typescript/native/bin/tsc --module esnext --outDir lib/esm --target esnext",
