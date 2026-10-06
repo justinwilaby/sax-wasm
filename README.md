@@ -45,7 +45,7 @@ for await (const [event, detail] of parser.parse(res.body.getReader())) {
 
 Note: `prepareWasm` accepts `Uint8Array | Response | Promise<Response>`.
 
-TypeScript note (Node 20+/22): `SAXParser.parse` expects a `ReadableStreamDefaultReader<Uint8Array>`.
+TypeScript note (Node 24+): `SAXParser.parse` expects a `ReadableStreamDefaultReader<Uint8Array>`.
 Node's `Readable.toWeb()` often produces a `ReadableStream<any>`, so the generic type is lost.
 You can either type the stream or cast the reader:
 
@@ -80,6 +80,7 @@ for await (const [event, detail] of parser.parse(
 - [sax-wasm.wasm](#sax-wasmwasm)
 - [Benchmarks](#benchmarks-node-v22200--macos-arm64)
 - [Building from source](#building-from-source)
+- [Development workflow](#development-workflow)
 
 The first streamable, low memory XML, HTML, JSX and Angular Template parser for [WebAssembly](https://developer.mozilla.org/en-US/docs/WebAssembly).
 
@@ -465,7 +466,7 @@ rustup default stable
 rustup target add wasm32-unknown-unknown --toolchain stable
 ```
 
-Install [node with npm](https://nodejs.org/en/), then from the project root:
+Install [Node.js 24.3 or later with npm](https://nodejs.org/en/), then from the project root:
 ```bash
 npm install
 cargo install wasm-bindgen-cli
@@ -484,3 +485,19 @@ Build artifacts (JS, types, wasm) land in `lib/`:
 ```bash
 npm run build
 ```
+
+## Development workflow
+
+This repository uses Node.js 24.3+ and the built-in Node test runner. Tests execute the TypeScript sources directly, so no Jest or test-specific transpiler is required.
+
+```bash
+npm install
+npm run lint
+npm test
+npm run coverage
+npm run build
+```
+
+`npm test` runs the complete test suite. `npm run coverage` reports V8 coverage for the parser implementation. The TypeScript 7 compiler is used for production JS and declaration builds; TypeScript 5.9 remains installed only as a compatibility peer for the current ESLint TypeScript integration.
+
+Node's TypeScript transformation is used for the test suite because the source includes TypeScript syntax that requires transformation. That Node flag is currently experimental, so CI keeps the Node 24 line explicit until it graduates to stable behavior.
