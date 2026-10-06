@@ -39,6 +39,23 @@ static DOCTYPE_END: &[u8] = &[b'!', b'>'];
 // to pass to the parser for receiving events
 pub trait EventHandler {
     fn handle_event(&self, event: Event, data: Entity);
+
+    /// Opt in only when the handler snapshots metadata and preserves any owned
+    /// bytes itself. Unhydrated headers refer to `source`, valid through write.
+    fn supports_borrowed_events(&self) -> bool {
+        false
+    }
+
+    fn handle_borrowed_event(&self, event: Event, data: Entity, _source: &[u8]) {
+        self.handle_event(event, data);
+    }
+
+    fn handle_borrowed_event_pair(&self, first: Event, second: Event, data: Entity, source: &[u8]) {
+        self.handle_borrowed_event(first, data, source);
+        self.handle_borrowed_event(second, data, source);
+    }
+
+    fn clear_events(&self) {}
 }
 
 /// Represents a SAX (Simple API for XML) parser.
@@ -74,6 +91,7 @@ pub struct SAXParser<'a> {
 
     // Event Handling
     event_handler: &'a dyn EventHandler,
+    borrowed_events: bool,
     // Used to make sure dispatched objects
     // stick around until the next write
     dispatched: Vec<Dispatched>,
@@ -89,10 +107,13 @@ pub struct SAXParser<'a> {
     tag: Tag,
     close_tag: Text,
     fragment: Vec<u8>,
+    // Combined input for split UTF-8 sequences must outlive deferred readers.
+    retained_input: Vec<u8>,
 
     // Position Tracking
     end_pos: [u64; 2],
     source_ptr: *const u8,
+    source_len: usize,
     end_offset: usize,
     chunk_offset: u64,
 }
@@ -158,6 +179,7 @@ impl<'a> SAXParser<'a> {
 
             // Event Handling
             event_handler,
+            borrowed_events: event_handler.supports_borrowed_events(),
             dispatched: Vec::new(),
 
             // Parsing Buffers
@@ -171,11 +193,13 @@ impl<'a> SAXParser<'a> {
             tag: Tag::new([0, 0]),
             close_tag: Text::new([0, 0]),
             fragment: Vec::new(),
+            retained_input: Vec::new(),
 
             // Position Tracking
             end_pos: [0, 0],
             end_offset: 0,
             source_ptr: ptr::null(),
+            source_len: 0,
             chunk_offset: 0,
         }
     }
@@ -229,11 +253,13 @@ impl<'a> SAXParser<'a> {
     ///
     /// ```
     pub fn write(&mut self, source: &[u8]) {
+        self.event_handler.clear_events();
         self.dispatched.clear();
         let mut bytes = source;
 
         let frag_len = self.fragment.len();
-        let mut vec = Vec::new();
+        let mut vec = mem::take(&mut self.retained_input);
+        vec.clear();
         if frag_len != 0 {
             let frag = mem::take(&mut self.fragment);
             vec.reserve(frag_len + source.len());
@@ -243,6 +269,7 @@ impl<'a> SAXParser<'a> {
         }
 
         self.source_ptr = bytes.as_ptr();
+        self.source_len = bytes.len();
 
         let mut gc = GraphemeClusters::new(bytes);
         gc.line = self.end_pos[0];
@@ -261,6 +288,22 @@ impl<'a> SAXParser<'a> {
 
         self.hydrate();
         self.chunk_offset += source.len() as u64;
+        self.retained_input = vec;
+    }
+
+    fn event_source(&self) -> &[u8] {
+        // Input storage is either the caller's write buffer or retained_input.
+        // Both remain allocated until the next write or end; snapshots of owned
+        // strings are the borrowed handler's responsibility.
+        if self.source_len == 0 {
+            &[]
+        } else {
+            unsafe { std::slice::from_raw_parts(self.source_ptr, self.source_len) }
+        }
+    }
+
+    fn emit_borrowed(&self, event: Event, data: Entity) {
+        self.event_handler.handle_borrowed_event(event, data, self.event_source());
     }
 
     fn hydrate(&mut self) {
@@ -339,6 +382,7 @@ impl<'a> SAXParser<'a> {
 
         // Reset Event Handling
         self.dispatched.clear();
+        self.event_handler.clear_events();
 
         // Reset Parsing Buffers
         self.text = None;
@@ -351,11 +395,13 @@ impl<'a> SAXParser<'a> {
         self.tag = Tag::new([0, 0]);
         self.close_tag = Text::new([0, 0]);
         self.fragment.clear();
+        self.retained_input.clear();
 
         // Reset Position Tracking
         self.end_pos = [0, 0];
         self.end_offset = 0;
         self.source_ptr = ptr::null();
+        self.source_len = 0;
         self.chunk_offset = 0;
     }
 
@@ -533,11 +579,15 @@ impl<'a> SAXParser<'a> {
         }
 
         if self.events[Event::OpenTagStart] {
-            let mut tag = Box::new(self.tag.clone());
-            tag.hydrate(self.source_ptr);
+            if self.borrowed_events {
+                self.emit_borrowed(Event::OpenTagStart, Entity::Tag(&self.tag));
+            } else {
+                let mut tag = Box::new(self.tag.clone());
+                tag.hydrate(self.source_ptr);
 
-            self.event_handler.handle_event(Event::OpenTagStart, Entity::Tag(&*tag));
-            self.dispatched.push(Dispatched::Tag(tag));
+                self.event_handler.handle_event(Event::OpenTagStart, Entity::Tag(&*tag));
+                self.dispatched.push(Dispatched::Tag(tag));
+            }
         }
 
         match byte {
@@ -605,7 +655,7 @@ impl<'a> SAXParser<'a> {
         if self.text.is_none() {
             return;
         }
-        let mut text = Box::new(unsafe { self.text.take().unwrap_unchecked() });
+        let mut text = unsafe { self.text.take().unwrap_unchecked() };
         text.end = [line, character];
         text.header.1 = offset;
 
@@ -618,10 +668,13 @@ impl<'a> SAXParser<'a> {
         let len = self.tags.len();
         // Store these only if we're interested in CloseTag events
         if len != 0 && self.events[Event::CloseTag] {
-            self.tags[len - 1].text_nodes.push(*text.clone());
+            self.tags[len - 1].text_nodes.push(text.clone());
         }
 
-        if self.events[Event::Text] && text.hydrate(self.source_ptr) {
+        if self.events[Event::Text] && self.borrowed_events && text.can_hydrate() {
+            self.emit_borrowed(Event::Text, Entity::Text(&text));
+        } else if self.events[Event::Text] && text.hydrate(self.source_ptr) {
+            let text = Box::new(text);
             self.event_handler.handle_event(Event::Text, Entity::Text(&text));
             self.dispatched.push(Dispatched::Text(text));
         }
@@ -692,12 +745,16 @@ impl<'a> SAXParser<'a> {
     }
 
     fn comment(&mut self, gc: &mut GraphemeClusters, current: &[u8]) {
-        let markup_decl = self.markup_decl.as_mut().unwrap();
         let byte = current[0];
 
         if byte != b'>' {
             gc.take_until(b'>', true);
         }
+
+        if self.borrow_markup(Event::Comment, b"-->", gc) {
+            return;
+        }
+        let markup_decl = self.markup_decl.as_mut().unwrap();
 
         markup_decl.header.1 = gc.cursor;
         markup_decl.byte_range.1 = self.chunk_offset + gc.cursor as u64;
@@ -726,6 +783,10 @@ impl<'a> SAXParser<'a> {
             gc.take_until(b'>', true);
         }
 
+        if self.borrow_markup(Event::Cdata, b"]]>", gc) {
+            return;
+        }
+
         let markup_decl = self.markup_decl.as_mut().unwrap();
         markup_decl.header.1 = gc.cursor;
         markup_decl.byte_range.1 = self.chunk_offset + gc.cursor as u64;
@@ -745,6 +806,31 @@ impl<'a> SAXParser<'a> {
         } else {
             markup_decl.header = (gc.cursor, 0);
         }
+    }
+
+    fn borrow_markup(&mut self, event: Event, terminator: &[u8], gc: &GraphemeClusters) -> bool {
+        if !self.borrowed_events || !self.markup_decl.as_ref().unwrap().value.is_empty() {
+            return false;
+        }
+        let text = self.markup_decl.as_mut().unwrap();
+        text.header.1 = gc.cursor;
+        text.byte_range.1 = self.chunk_offset + gc.cursor as u64;
+        let complete = text.borrow_value(self.source_ptr, self.source_len).ends_with(terminator);
+        if complete {
+            text.end = [gc.line, gc.character];
+            if self.events[event] {
+                let mut text = self.markup_decl.take().unwrap();
+                text.trim_borrowed(0, terminator.len());
+                self.emit_borrowed(event, Entity::Text(&text));
+            }
+            if matches!(event, Event::Comment) {
+                self.markup_decl = None;
+            }
+            self.state = State::BeginWhitespace;
+        }
+        // Keep the original span start across intermediate '>' characters.
+        // If the write ends, hydrate() preserves that prefix for the next one.
+        true
     }
 
     /// DOCTYPE can be simple:
@@ -791,9 +877,13 @@ impl<'a> SAXParser<'a> {
         }
 
         if byte == b'>' {
-            let mut markup_decl = Box::new(self.markup_decl.take().unwrap());
+            let mut markup_decl = self.markup_decl.take().unwrap();
             markup_decl.end = [gc.line, gc.character];
-            if self.events[Event::Doctype] && markup_decl.hydrate(self.source_ptr) {
+            if self.events[Event::Doctype] && self.borrowed_events && markup_decl.value.is_empty() && markup_decl.can_hydrate() {
+                markup_decl.trim_borrowed(0, 1);
+                self.emit_borrowed(Event::Doctype, Entity::Text(&markup_decl));
+            } else if self.events[Event::Doctype] && markup_decl.hydrate(self.source_ptr) {
+                let mut markup_decl = Box::new(markup_decl);
                 markup_decl.value.truncate(markup_decl.value.len() - 1); // remove '>' or '['
 
                 self.event_handler.handle_event(Event::Doctype, Entity::Text(&markup_decl));
@@ -819,7 +909,9 @@ impl<'a> SAXParser<'a> {
 
             markup_entity.end = [gc.line, gc.character.saturating_sub(1)];
 
-            if self.events[Event::Declaration] && markup_entity.hydrate(self.source_ptr) {
+            if self.events[Event::Declaration] && self.borrowed_events && markup_entity.value.is_empty() && markup_entity.can_hydrate() {
+                self.emit_borrowed(Event::Cdata, Entity::Text(&markup_entity));
+            } else if self.events[Event::Declaration] && markup_entity.hydrate(self.source_ptr) {
                 self.event_handler.handle_event(Event::Cdata, Entity::Text(&markup_entity));
                 self.dispatched.push(Dispatched::Text(markup_entity));
             }
@@ -890,7 +982,20 @@ impl<'a> SAXParser<'a> {
 
     fn process_proc_inst(&mut self, gc: &mut GraphemeClusters) {
         self.state = State::BeginWhitespace;
-        let mut proc_inst = Box::new(self.proc_inst.take().unwrap());
+        let mut proc_inst = self.proc_inst.take().unwrap();
+        if self.borrowed_events && !self.events[Event::ProcessingInstruction] {
+            return;
+        }
+        if self.borrowed_events && proc_inst.target.value.is_empty() && proc_inst.content.value.is_empty() {
+            proc_inst.end = [gc.line, gc.character];
+            proc_inst.content.end = [gc.line, gc.character.saturating_sub(2)];
+            proc_inst.byte_range.1 = self.chunk_offset + gc.cursor as u64;
+            proc_inst.target.trim_borrowed(2, 0);
+            proc_inst.content.trim_borrowed(0, 2);
+            self.emit_borrowed(Event::ProcessingInstruction, Entity::ProcInst(&proc_inst));
+            return;
+        }
+        let mut proc_inst = Box::new(proc_inst);
         proc_inst.hydrate(self.source_ptr);
 
         if self.events[Event::ProcessingInstruction] {
@@ -1103,13 +1208,35 @@ impl<'a> SAXParser<'a> {
     fn process_attribute(&mut self, gc: &mut GraphemeClusters) {
         let mut attr = mem::replace(&mut self.attribute, Attribute::new());
         attr.byte_range.1 = self.chunk_offset + gc.cursor as u64;
+        let retain = self.events[Event::OpenTag] || self.events[Event::CloseTag];
+        if !self.events[Event::Attribute] {
+            if retain {
+                self.tag.attributes.push(attr);
+            }
+            return;
+        }
+        if self.borrowed_events {
+            if attr.name.can_hydrate() || attr.value.can_hydrate() {
+                self.emit_borrowed(Event::Attribute, Entity::Attribute(&attr));
+            }
+            if retain {
+                self.tag.attributes.push(attr);
+            }
+            return;
+        }
         if self.events[Event::Attribute] && attr.hydrate(self.source_ptr) {
+            if !retain {
+                let attr_box = Box::new(attr);
+                self.event_handler.handle_event(Event::Attribute, Entity::Attribute(&attr_box));
+                self.dispatched.push(Dispatched::Attribute(attr_box));
+                return;
+            }
             let attr_box = Box::new(attr.clone());
             self.event_handler.handle_event(Event::Attribute, Entity::Attribute(&attr_box));
             self.dispatched.push(Dispatched::Attribute(attr_box));
         }
         // Store them only if we're interested in Open and Close tag events
-        if self.events[Event::OpenTag] || self.events[Event::CloseTag] {
+        if retain {
             self.tag.attributes.push(attr);
         }
     }
@@ -1120,23 +1247,55 @@ impl<'a> SAXParser<'a> {
         tag.open_end = [gc.line, gc.character];
         tag.byte_range.1 = self.chunk_offset + gc.cursor as u64;
 
+        // A self-closing tag never enters the stack. Its event snapshots must
+        // remain immutable for the remainder of this write.
+        if self_closing {
+            if !self.events[Event::OpenTag] && !self.events[Event::CloseTag] {
+                self.state = State::BeginWhitespace;
+                return;
+            }
+            if self.borrowed_events {
+                // Capture this tag's subscriptions before entering JS. The
+                // baseline applies callback-time changes to the next tag.
+                let open = self.events[Event::OpenTag];
+                let close = self.events[Event::CloseTag];
+                if open && close {
+                    self.event_handler.handle_borrowed_event_pair(Event::OpenTag, Event::CloseTag, Entity::Tag(&tag), self.event_source());
+                } else if open {
+                    self.emit_borrowed(Event::OpenTag, Entity::Tag(&tag));
+                } else if close {
+                    self.emit_borrowed(Event::CloseTag, Entity::Tag(&tag));
+                }
+                self.state = State::BeginWhitespace;
+                return;
+            }
+            if self.events[Event::OpenTag] || self.events[Event::CloseTag] {
+                tag.hydrate(self.source_ptr);
+                let tag_box = Box::new(tag);
+                if self.events[Event::OpenTag] {
+                    self.event_handler.handle_event(Event::OpenTag, Entity::Tag(&tag_box));
+                }
+                if self.events[Event::CloseTag] {
+                    self.event_handler.handle_event(Event::CloseTag, Entity::Tag(&tag_box));
+                }
+                self.dispatched.push(Dispatched::Tag(tag_box));
+            }
+            self.state = State::BeginWhitespace;
+            return;
+        }
+
         if self.events[Event::OpenTag] {
-            tag.hydrate(self.source_ptr);
-            let tag_box = Box::new(tag.clone());
-            self.event_handler.handle_event(Event::OpenTag, Entity::Tag(&tag_box));
-            self.dispatched.push(Dispatched::Tag(tag_box));
+            if self.borrowed_events {
+                self.emit_borrowed(Event::OpenTag, Entity::Tag(&tag));
+            } else {
+                tag.hydrate(self.source_ptr);
+                let tag_box = Box::new(tag.clone());
+                self.event_handler.handle_event(Event::OpenTag, Entity::Tag(&tag_box));
+                self.dispatched.push(Dispatched::Tag(tag_box));
+            }
         }
 
-        if self.events[Event::CloseTag] && self_closing {
-            tag.hydrate(self.source_ptr);
-            let tag_box = Box::new(tag.clone());
-            self.event_handler.handle_event(Event::CloseTag, Entity::Tag(&tag_box));
-            self.dispatched.push(Dispatched::Tag(tag_box));
-        }
-
-        if !self_closing {
-            self.tags.push(tag);
-        }
+        self.tags.push(tag);
 
         self.state = State::BeginWhitespace;
     }
@@ -1144,7 +1303,7 @@ impl<'a> SAXParser<'a> {
     fn process_close_tag(&mut self, gc: &mut GraphemeClusters) {
         self.state = State::BeginWhitespace;
         let mut close_tag = mem::replace(&mut self.close_tag, Text::new([0, 0]));
-        let close_tag_name = close_tag.get_value_slice(self.source_ptr, gc.byte_len);
+        let close_tag_name = close_tag.borrow_value(self.source_ptr, gc.byte_len);
 
         let mut found = false;
         let mut tag_index = 0;
@@ -1185,6 +1344,12 @@ impl<'a> SAXParser<'a> {
 
         let mut i = self.tags.len();
         while i > tag_index {
+            if self.borrowed_events {
+                let tag = unsafe { self.tags.pop().unwrap_unchecked() };
+                self.emit_borrowed(Event::CloseTag, Entity::Tag(&tag));
+                i -= 1;
+                continue;
+            }
             let mut tag = Box::new(unsafe { self.tags.pop().unwrap_unchecked() });
             tag.hydrate(self.source_ptr);
             self.event_handler.handle_event(Event::CloseTag, Entity::Tag(&tag));

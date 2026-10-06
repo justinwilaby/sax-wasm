@@ -41,6 +41,17 @@ describe('When parsing processing instructions, the SaxWasm', () => {
 
   });
 
+  it.each([1, 7, 65536])('reports UTF-8 byte offsets across %s-byte writes', (chunkSize) => {
+    const input = Buffer.from('<root>é🚀\n<?target content?></root>');
+    for (let offset = 0; offset < input.length; offset += chunkSize) {
+      parser.write(input.subarray(offset, offset + chunkSize));
+    }
+    deepEqual(_data?.byteOffsets, {
+      start: input.indexOf('<?'),
+      end: input.indexOf('?>') + 2,
+    });
+  });
+
   it('should parse the unexpected question mark instead of tag name as a processing instruction', () => {
     const doc = `<!--lit-part cI7PGs8mxHY=-->
       <p><!--lit-part-->hello<!--/lit-part--></p>

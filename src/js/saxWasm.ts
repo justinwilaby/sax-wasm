@@ -99,25 +99,64 @@ export type ByteOffsets = {
  */
 export type Detail = AttributeDetail | TextDetail | TagDetail | ProcInstDetail;
 
-/**
- * Abstract class for decoding SAX event data.
- *
- * @template T - The type of detail to be read.
- */
+type MemoryViews = { buffer: ArrayBuffer; bytes: Uint8Array; view: DataView; shared: boolean };
+const memoryViews = new WeakMap<WebAssembly.Memory, MemoryViews>();
+const viewsFor = (memory: WebAssembly.Memory): MemoryViews => {
+  let views = memoryViews.get(memory);
+  if (!views || views.buffer.byteLength === 0 || (views.shared && views.buffer !== memory.buffer)) {
+    const buffer = memory.buffer;
+    views = { buffer, bytes: new Uint8Array(buffer), view: new DataView(buffer), shared: typeof SharedArrayBuffer !== 'undefined' && buffer instanceof SharedArrayBuffer };
+    memoryViews.set(memory, views);
+  }
+  return views;
+};
+
+/** Abstract class for decoding SAX event data directly from linear memory. */
 export abstract class Reader<T extends Detail = Detail> {
   protected cache = {} as Record<string, unknown>;
-  #dataView: Uint8Array;
-  get dataView(): Uint8Array {
-    return this.#dataView ??= new Uint8Array(this.memory.buffer);
+  protected pointer: number;
+  private views: MemoryViews;
+
+  private currentViews(): MemoryViews {
+    if (this.views.buffer.byteLength === 0 || (this.views.shared && this.views.buffer !== this.memory.buffer)) {
+      this.views = viewsFor(this.memory);
+    }
+    return this.views;
   }
-  /**
-   * Creates a new Reader instance.
-   *
-   * @param data - The data buffer containing the event data.
-   * @param ptr - The initial pointer position.
-   * @param memory - The WebAssembly memory instance.
-   */
-  constructor(protected data: Uint8Array, protected memory: WebAssembly.Memory) {
+
+  get dataView(): Uint8Array {
+    return this.currentViews().bytes;
+  }
+
+  constructor(pointer: number, protected memory: WebAssembly.Memory) {
+    if (typeof pointer !== 'number') {
+      throw new TypeError('Event readers require a numeric Wasm memory pointer.');
+    }
+    this.pointer = pointer;
+    this.views = viewsFor(memory);
+  }
+
+  protected readU32(offset: number): number {
+    return this.currentViews().view.getUint32(this.pointer + offset, true);
+  }
+
+  protected readU64(offset: number): number {
+    const view = this.currentViews().view;
+    const ptr = this.pointer + offset;
+    return view.getUint32(ptr, true) + view.getUint32(ptr + 4, true) * 0x1_0000_0000;
+  }
+
+  protected readPosition(offset: number): Position {
+    const view = this.currentViews().view;
+    const ptr = this.pointer + offset;
+    return new Position(
+      view.getUint32(ptr, true) + view.getUint32(ptr + 4, true) * 0x1_0000_0000,
+      view.getUint32(ptr + 8, true) + view.getUint32(ptr + 12, true) * 0x1_0000_0000
+    );
+  }
+
+  protected readByte(offset: number): number {
+    return this.currentViews().bytes[this.pointer + offset];
   }
 
   /**
@@ -152,26 +191,33 @@ export class Position implements PositionDetail {
 /**
  * Represents an attribute in the XML data.
  *
- * This class decodes the Attribute data sent across
- * the FFI boundary. Encoded data has the following schema:
- *
- * 1. AttributeType - byte position 0 (1 bytes)
- * 2. name_length - length of the 'name' Text - byte position 1-4 (4 bytes)
- * 3. 'name' bytes - byte position 5-name_length (name_length bytes)
- * 4. 'value' bytes - byte position name_length-n (n bytes)
+ * Decodes a version 1 descriptor: name Text at offset 0, value Text at
+ * offset 56, type at 112, and byte offsets at 120 and 128.
  */
 export class Attribute extends Reader<AttributeDetail> implements AttributeDetail {
-  public static LENGTH = 168 as const;
+  public static LENGTH = 136 as const;
 
   public type: AttributeType;
-  public name: Text;
-  public value: Text;
 
-  constructor(data: Uint8Array, memory: WebAssembly.Memory) {
-    super(data, memory);
-    this.name = new Text(new Uint8Array(data.buffer, data.byteOffset, Text.LENGTH), memory);
-    this.value = new Text(new Uint8Array(data.buffer, data.byteOffset + Text.LENGTH, Text.LENGTH), memory);
-    this.type = data[144];
+  public get name(): Text {
+    return (this.cache.name ??= new Text(this.pointer, this.memory)) as Text;
+  }
+
+  public set name(value: Text) {
+    this.cache.name = value;
+  }
+
+  public get value(): Text {
+    return (this.cache.value ??= new Text(this.pointer + Text.LENGTH, this.memory)) as Text;
+  }
+
+  public set value(value: Text) {
+    this.cache.value = value;
+  }
+
+  constructor(pointer: number, memory: WebAssembly.Memory) {
+    super(pointer, memory);
+    this.type = this.readByte(112);
   }
 
   /**
@@ -180,8 +226,8 @@ export class Attribute extends Reader<AttributeDetail> implements AttributeDetai
   */
   public get byteOffsets(): ByteOffsets {
     return (this.cache.byteOffsets ??= {
-      start: readU64(this.data, 152),
-      end: readU64(this.data, 160)
+      start: this.readU64(120),
+      end: this.readU64(128)
     }) as ByteOffsets;
   }
 
@@ -210,13 +256,8 @@ export class Attribute extends Reader<AttributeDetail> implements AttributeDetai
  * Represents a processing instruction in the XML data.
  *
  * This class decodes the processing instruction data sent across the FFI boundary.
- * The encoded data has the following schema:
- *
- * 1. Start position (line and character) - byte positions 0-7 (8 bytes)
- * 2. End position (line and character) - byte positions 8-15 (8 bytes)
- * 3. Target length - byte positions 16-19 (4 bytes)
- * 4. Target bytes - byte positions 20-(20 + target length - 1) (target length bytes)
- * 5. Content bytes - byte positions (20 + target length)-(end of buffer) (remaining bytes)
+ * Its version 1 descriptor contains start/end positions at offsets 0/16,
+ * target/content Text descriptors at 32/88, and byte offsets at 144/152.
  *
  * The `ProcInst` class decodes this data into its respective fields: `start`, `end`, `target`, and `content`.
  *
@@ -229,20 +270,26 @@ export class Attribute extends Reader<AttributeDetail> implements AttributeDetai
  *
  * # Arguments
  *
- * * `buffer` - The buffer containing the processing instruction data.
- * * `ptr` - The initial pointer position.
+ * * `pointer` - The descriptor's numeric offset into Wasm memory.
+ * * `memory` - The Wasm memory containing the descriptor and its strings.
  */
 export class ProcInst extends Reader<ProcInstDetail> implements ProcInstDetail {
-  public static LENGTH = 186 as const;
+  public static LENGTH = 160 as const;
 
-  public target: Text;
-  public content: Text;
+  public get target(): Text {
+    return (this.cache.target ??= new Text(this.pointer + 32, this.memory)) as Text;
+  }
 
-  constructor(data: Uint8Array, memory: WebAssembly.Memory) {
-    super(data, memory);
+  public set target(value: Text) {
+    this.cache.target = value;
+  }
 
-    this.target = new Text(new Uint8Array(data.buffer, data.byteOffset + 32, Text.LENGTH), memory);
-    this.content = new Text(new Uint8Array(data.buffer, data.byteOffset + 32 + Text.LENGTH, Text.LENGTH), memory);
+  public get content(): Text {
+    return (this.cache.content ??= new Text(this.pointer + 32 + Text.LENGTH, this.memory)) as Text;
+  }
+
+  public set content(value: Text) {
+    this.cache.content = value;
   }
 
   /**
@@ -253,7 +300,7 @@ export class ProcInst extends Reader<ProcInstDetail> implements ProcInstDetail {
   public get start(): PositionDetail {
     return (
       (this.cache.start as PositionDetail) ||
-      (this.cache.start = readPosition(this.data, 0))
+      (this.cache.start = this.readPosition(0))
     );
   }
 
@@ -265,7 +312,7 @@ export class ProcInst extends Reader<ProcInstDetail> implements ProcInstDetail {
   public get end(): PositionDetail {
     return (
       (this.cache.end as PositionDetail) ||
-      (this.cache.end = readPosition(this.data, 16))
+      (this.cache.end = this.readPosition(16))
     );
   }
 
@@ -275,8 +322,8 @@ export class ProcInst extends Reader<ProcInstDetail> implements ProcInstDetail {
    */
   public get byteOffsets(): ByteOffsets {
     return (this.cache.byteOffsets ??= {
-      start: readU64(this.data, 16),
-      end: readU64(this.data, 24),
+      start: this.readU64(144),
+      end: this.readU64(152),
     }) as ByteOffsets;
   }
 
@@ -306,7 +353,7 @@ export class ProcInst extends Reader<ProcInstDetail> implements ProcInstDetail {
  * into its respective fields: `start`, `end`, and `value`.
  */
 export class Text extends Reader<TextDetail> implements TextDetail {
-  public static LENGTH = 72 as const;
+  public static LENGTH = 56 as const;
 
   /**
    * Gets the start position of the text node.
@@ -314,7 +361,7 @@ export class Text extends Reader<TextDetail> implements TextDetail {
    * @returns The start position of the text node.
    */
   public get start(): PositionDetail {
-    return this.cache.start as PositionDetail || (this.cache.start = readPosition(this.data, 24));
+    return this.cache.start as PositionDetail || (this.cache.start = this.readPosition(8));
   }
 
   /**
@@ -323,7 +370,7 @@ export class Text extends Reader<TextDetail> implements TextDetail {
    * @returns The end position of the text node.
    */
   public get end(): PositionDetail {
-    return this.cache.end as PositionDetail || (this.cache.end = readPosition(this.data, 40));
+    return this.cache.end as PositionDetail || (this.cache.end = this.readPosition(24));
   }
 
   /**
@@ -332,11 +379,11 @@ export class Text extends Reader<TextDetail> implements TextDetail {
    * @returns The value of the text node.
    */
   public get value(): string {
-    if (this.cache.value) {
+    if (this.cache.value !== undefined) {
       return this.cache.value as string;
     }
-    const vecPtr = readU32(this.data, 12);
-    const valueLen = readU32(this.data, 16);
+    const vecPtr = this.readU32(0);
+    const valueLen = this.readU32(4);
     return (this.cache.value = readString(this.dataView, vecPtr, valueLen));
   }
 
@@ -346,8 +393,8 @@ export class Text extends Reader<TextDetail> implements TextDetail {
   */
   public get byteOffsets(): ByteOffsets {
     return (this.cache.byteOffsets ??= {
-      start: readU64(this.data, 56),
-      end: readU64(this.data, 64)
+      start: this.readU64(40),
+      end: this.readU64(48)
     }) as ByteOffsets;
   }
 
@@ -379,7 +426,7 @@ export class Text extends Reader<TextDetail> implements TextDetail {
  * `closeEnd`, `selfClosing`, `name`, `attributes`, and `textNodes`.
  */
 export class Tag extends Reader<TagDetail> implements TagDetail {
-  public static LENGTH = 128 as const;
+  public static LENGTH = 112 as const;
 
   /**
    * Gets the start position of the tag opening.
@@ -389,7 +436,7 @@ export class Tag extends Reader<TagDetail> implements TagDetail {
   public get openStart(): PositionDetail {
     return (
       (this.cache.openStart as PositionDetail) ||
-      (this.cache.openStart = readPosition(this.data, 40))
+      (this.cache.openStart = this.readPosition(32))
     );
   }
   /**
@@ -400,7 +447,7 @@ export class Tag extends Reader<TagDetail> implements TagDetail {
   public get openEnd(): PositionDetail {
     return (
       (this.cache.openEnd as PositionDetail) ||
-      (this.cache.openEnd = readPosition(this.data, 56))
+      (this.cache.openEnd = this.readPosition(48))
     );
   }
   /**
@@ -411,7 +458,7 @@ export class Tag extends Reader<TagDetail> implements TagDetail {
   public get closeStart(): PositionDetail {
     return (
       (this.cache.closeStart as PositionDetail) ||
-      (this.cache.closeStart = readPosition(this.data, 72))
+      (this.cache.closeStart = this.readPosition(64))
     );
   }
 
@@ -423,7 +470,7 @@ export class Tag extends Reader<TagDetail> implements TagDetail {
   public get closeEnd(): PositionDetail {
     return (
       (this.cache.closeEnd as PositionDetail) ||
-      (this.cache.closeEnd = readPosition(this.data, 88))
+      (this.cache.closeEnd = this.readPosition(80))
     );
   }
 
@@ -433,7 +480,7 @@ export class Tag extends Reader<TagDetail> implements TagDetail {
    * @returns The self-closing flag of the tag.
    */
   public get selfClosing(): boolean {
-    return !!this.data[36];
+    return !!this.readByte(24);
   }
 
   /**
@@ -445,8 +492,8 @@ export class Tag extends Reader<TagDetail> implements TagDetail {
     if (this.cache.name) {
       return this.cache.name as string;
     }
-    const vecPtr = readU32(this.data, 4);
-    const valueLen = readU32(this.data, 8);
+    const vecPtr = this.readU32(0);
+    const valueLen = this.readU32(4);
     return (this.cache.name = readString(this.dataView, vecPtr, valueLen));
   }
 
@@ -461,13 +508,12 @@ export class Tag extends Reader<TagDetail> implements TagDetail {
       return this.cache.attributes as Attribute[];
     }
     // starting location of the attribute block
-    let ptr = readU32(this.data, 16);
-    const numAttrs = readU32(this.data, 20);
+    let ptr = this.readU32(8);
+    const numAttrs = this.readU32(12);
 
     const attributes = [] as Attribute[];
     for (let i = 0; i < numAttrs; i++) {
-      const attrVecData = new Uint8Array(this.dataView.buffer, ptr, Attribute.LENGTH);
-      attributes[i] = new Attribute(attrVecData, this.memory);
+      attributes[i] = new Attribute(ptr, this.memory);
       ptr += Attribute.LENGTH;
     }
     return (this.cache.attributes = attributes);
@@ -484,12 +530,11 @@ export class Tag extends Reader<TagDetail> implements TagDetail {
       return this.cache.textNodes as Text[];
     }
     // starting location of the text nodes block
-    let ptr = readU32(this.data, 28);
-    const numTextNodes = readU32(this.data, 32);
+    let ptr = this.readU32(16);
+    const numTextNodes = this.readU32(20);
     const textNodes = [] as Text[];
     for (let i = 0; i < numTextNodes; i++) {
-      const textVecData = new Uint8Array(this.dataView.buffer, ptr, Text.LENGTH);
-      textNodes[i] = new Text(textVecData, this.memory);
+      textNodes[i] = new Text(ptr, this.memory);
       ptr += Text.LENGTH;
     }
     return (this.cache.textNodes = textNodes);
@@ -501,8 +546,8 @@ export class Tag extends Reader<TagDetail> implements TagDetail {
   */
   public get byteOffsets(): ByteOffsets {
     return (this.cache.byteOffsets ??= {
-      start: readU64(this.data, 112),
-      end: readU64(this.data, 120)
+      start: this.readU64(96),
+      end: this.readU64(104)
     }) as ByteOffsets;
   }
 
@@ -536,6 +581,7 @@ interface WasmSaxParser extends WebAssembly.Exports {
   parser: (events: number) => void;
   write: (pointer: number, length: number) => void;
   end: () => void;
+  event_abi_version: () => number;
 }
 
 type TextDecoder = {
@@ -553,12 +599,12 @@ export class SAXParser {
   public eventHandler?: <T extends SaxEvent>(type: T[0], detail: T[1]) => void;
 
   private createDetailConstructor<T extends { new(...args: unknown[]): {}; LENGTH: number }>(Constructor: T) {
-    return (memoryBuffer: ArrayBuffer, ptr: number): Reader => {
-      return new Constructor(new Uint8Array(memoryBuffer, ptr, Constructor.LENGTH), this.wasmSaxParser.memory) as Reader;
+    return (ptr: number): Reader => {
+      return new Constructor(ptr, this.wasmSaxParser.memory) as Reader;
     };
   }
 
-  private eventConstructors: Array<((memoryBuffer: ArrayBuffer, ptr: number) => Reader<Detail>) | undefined> = [];
+  private eventConstructors: Array<((ptr: number) => Reader<Detail>) | undefined> = [];
 
   private writeBuffer?: Uint8Array;
 
@@ -793,7 +839,7 @@ export class SAXParser {
     const env = {
       memory: new WebAssembly.Memory({ initial: 10, shared: true, maximum: 150 } as WebAssembly.MemoryDescriptor),
       table: new WebAssembly.Table({ initial: 1, element: 'anyfunc' } as WebAssembly.TableDescriptor),
-      event_listener: this.eventTrap
+      event_listener_v1: this.eventTrap
     };
 
     let instance: WebAssembly.Instance;
@@ -807,8 +853,13 @@ export class SAXParser {
       instance = result?.instance;
     }
     if (instance && typeof this.events === 'number') {
-      const { parser } = this.wasmSaxParser = instance.exports as unknown as WasmSaxParser;
-      parser(this.events);
+      const exports = instance.exports as unknown as WasmSaxParser;
+      const abi = exports.event_abi_version?.();
+      if (abi !== 1) {
+        throw new Error(`Unsupported SAX event ABI version: ${abi ?? 'missing'}; expected 1.`);
+      }
+      this.wasmSaxParser = exports;
+      exports.parser(this.events);
       return true;
     }
     throw new Error(`Failed to instantiate the parser.`);
@@ -818,12 +869,11 @@ export class SAXParser {
     if (!this.wasmSaxParser || !this.eventHandler) {
       return;
     }
-    const memoryBuffer = this.wasmSaxParser.memory.buffer;
     let detail: Attribute | Text | Tag | ProcInst;
 
     const ctor = this.eventConstructors[event];
     if (ctor) {
-      detail = ctor(memoryBuffer, ptr) as Attribute | Text | Tag | ProcInst
+      detail = ctor(ptr) as Attribute | Text | Tag | ProcInst
     } else {
       throw new Error("No reader for this event type");
     }
