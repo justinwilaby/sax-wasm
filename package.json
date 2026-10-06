@@ -65,14 +65,14 @@
     "@typescript-eslint/eslint-plugin": "^8.19.0",
     "@typescript-eslint/parser": "^8.19.0",
     "eslint": "9.33.0",
-    "jest": "30.0.5",
+    "jest": "^30.5.2",
     "ltx": "^3.0.0",
     "node-expat": "^2.4.1",
     "node-xml": "^1.0.2",
-    "nyc": "17.1.0",
+    "nyc": "^18.0.0",
     "sax": "^1.2.4",
     "saxes": "^6.0.0",
-    "ts-jest": "^29.2.5",
+    "ts-jest": "^29.1.2",
     "typescript": "5.X"
   }
 }
