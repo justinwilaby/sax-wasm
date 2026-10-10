@@ -29,6 +29,7 @@ pub(crate) struct AttributeDescriptor {
 }
 
 #[repr(C)]
+#[derive(Clone, Copy)]
 pub(crate) struct TagDescriptor {
     pub name: Span,
     pub attributes: Span,
@@ -43,6 +44,7 @@ pub(crate) struct TagDescriptor {
 }
 
 #[repr(C)]
+#[derive(Clone, Copy)]
 pub(crate) struct ProcInstDescriptor {
     pub start: [u64; 2],
     pub end: [u64; 2],
@@ -83,32 +85,81 @@ mod storage {
     use super::*;
     use crate::sax::tag::{Attribute, Entity, Text};
 
-    // Boxed records and boxed slices remain at fixed addresses when these
-    // bookkeeping vectors grow. A Vec of records alone would invalidate JS
-    // pointers on reallocation.
-    #[allow(dead_code)] // Payloads own the backing storage read through JS pointers.
-    enum Record {
-        Text(Box<TextDescriptor>),
-        Attribute(Box<AttributeDescriptor>),
-        Tag(Box<TagRecord>),
-        ProcInst(Box<ProcInstDescriptor>),
+    use std::mem::{align_of, size_of, MaybeUninit};
+
+    const BLOCK_BYTES: usize = 64 * 1024;
+    const RETAIN_BYTES: usize = 2 * 1024 * 1024;
+
+    struct Block {
+        // u64 storage guarantees the descriptors' required eight-byte alignment.
+        // Moving the Box in the bookkeeping Vec never moves its allocation.
+        words: Box<[MaybeUninit<u64>]>,
+        used: usize,
     }
 
-    struct TagRecord {
-        descriptor: TagDescriptor,
-        _attributes: Box<[AttributeDescriptor]>,
-        _text_nodes: Box<[TextDescriptor]>,
+    #[derive(Default)]
+    struct DescriptorArena {
+        blocks: Vec<Block>,
+        current: usize,
+    }
+
+    impl DescriptorArena {
+        fn allocate<T: Copy>(&mut self, count: usize) -> *mut T {
+            assert!(align_of::<T>() <= align_of::<u64>());
+            if count == 0 { return std::ptr::NonNull::<T>::dangling().as_ptr(); }
+            let bytes = size_of::<T>().checked_mul(count).expect("descriptor size overflow");
+            let words = bytes.checked_add(7).expect("descriptor alignment overflow") / 8;
+            loop {
+                if self.current == self.blocks.len() {
+                    self.blocks.push(Block {
+                        words: Box::<[u64]>::new_uninit_slice(words.max(BLOCK_BYTES / 8)),
+                        used: 0,
+                    });
+                }
+                let block = &mut self.blocks[self.current];
+                if words <= block.words.len() - block.used {
+                    let pointer = unsafe { block.words.as_mut_ptr().add(block.used).cast::<T>() };
+                    block.used += words;
+                    return pointer;
+                }
+                self.current += 1;
+            }
+        }
+
+        fn store<T: Copy>(&mut self, value: T) -> *const u8 {
+            let pointer = self.allocate::<T>(1);
+            // allocate reserves non-overlapping aligned storage; T has no drop
+            // glue. Every exposed descriptor is initialized before the callback.
+            unsafe { pointer.write(value); }
+            pointer.cast()
+        }
+
+        fn clear(&mut self) {
+            // Called only at the next write/end, after the reader lifetime ends.
+            // Retain a bounded prefix for common writes; release outlier blocks.
+            let mut retained = 0;
+            let mut keep = 0;
+            for block in &mut self.blocks {
+                let bytes = block.words.len() * 8;
+                if bytes > RETAIN_BYTES - retained { break; }
+                retained += bytes;
+                block.used = 0;
+                keep += 1;
+            }
+            self.blocks.truncate(keep);
+            self.current = 0;
+        }
     }
 
     #[derive(Default)]
     pub(crate) struct EventStore {
-        records: Vec<Record>,
+        descriptors: DescriptorArena,
         strings: Vec<Box<[u8]>>,
     }
 
     impl EventStore {
         pub fn clear(&mut self) {
-            self.records.clear();
+            self.descriptors.clear();
             self.strings.clear();
         }
 
@@ -174,61 +225,53 @@ mod storage {
         }
 
         pub fn snapshot(&mut self, data: Entity, source: &[u8], retained_owned: bool) -> *const u8 {
-            let (record, pointer) = match data {
+            match data {
                 Entity::Text(text) => {
-                    let descriptor = Box::new(self.text(text, source, retained_owned));
-                    let pointer = std::ptr::from_ref(&*descriptor).cast();
-                    (Record::Text(descriptor), pointer)
+                    let descriptor = self.text(text, source, retained_owned);
+                    self.descriptors.store(descriptor)
                 }
                 Entity::Attribute(attribute) => {
-                    let descriptor = Box::new(self.attribute(attribute, source, retained_owned));
-                    let pointer = std::ptr::from_ref(&*descriptor).cast();
-                    (Record::Attribute(descriptor), pointer)
+                    let descriptor = self.attribute(attribute, source, retained_owned);
+                    self.descriptors.store(descriptor)
                 }
                 Entity::Tag(tag) => {
                     let name = self.span(&tag.name, tag.header, source, retained_owned);
-                    let attributes: Box<[_]> =
-                        tag.attributes.iter().map(|attribute| self.attribute(attribute, source, retained_owned)).collect();
-                    let text_nodes: Box<[_]> = tag.text_nodes.iter().map(|text| self.text(text, source, retained_owned)).collect();
-                    let record = Box::new(TagRecord {
-                        descriptor: TagDescriptor {
-                            name,
-                            attributes: Span {
-                                pointer: attributes.as_ptr() as u32,
-                                length: attributes.len() as u32,
-                            },
-                            text_nodes: Span {
-                                pointer: text_nodes.as_ptr() as u32,
-                                length: text_nodes.len() as u32,
-                            },
-                            self_closing: tag.self_closing as u32,
-                            reserved: 0,
-                            open_start: tag.open_start,
-                            open_end: tag.open_end,
-                            close_start: tag.close_start,
-                            close_end: tag.close_end,
-                            byte_range: [tag.byte_range.0, tag.byte_range.1],
-                        },
-                        _attributes: attributes,
-                        _text_nodes: text_nodes,
-                    });
-                    let pointer = std::ptr::from_ref(&record.descriptor).cast();
-                    (Record::Tag(record), pointer)
+                    let attributes = self.descriptors.allocate::<AttributeDescriptor>(tag.attributes.len());
+                    for (index, attribute) in tag.attributes.iter().enumerate() {
+                        let descriptor = self.attribute(attribute, source, retained_owned);
+                        // The entire contiguous array was reserved above. String
+                        // allocations cannot invalidate its block's address.
+                        unsafe { attributes.add(index).write(descriptor); }
+                    }
+                    let text_nodes = self.descriptors.allocate::<TextDescriptor>(tag.text_nodes.len());
+                    for (index, text) in tag.text_nodes.iter().enumerate() {
+                        let descriptor = self.text(text, source, retained_owned);
+                        unsafe { text_nodes.add(index).write(descriptor); }
+                    }
+                    self.descriptors.store(TagDescriptor {
+                        name,
+                        attributes: Span { pointer: attributes as u32, length: tag.attributes.len() as u32 },
+                        text_nodes: Span { pointer: text_nodes as u32, length: tag.text_nodes.len() as u32 },
+                        self_closing: tag.self_closing as u32,
+                        reserved: 0,
+                        open_start: tag.open_start,
+                        open_end: tag.open_end,
+                        close_start: tag.close_start,
+                        close_end: tag.close_end,
+                        byte_range: [tag.byte_range.0, tag.byte_range.1],
+                    })
                 }
                 Entity::ProcInst(proc_inst) => {
-                    let descriptor = Box::new(ProcInstDescriptor {
+                    let descriptor = ProcInstDescriptor {
                         start: proc_inst.start,
                         end: proc_inst.end,
                         target: self.text(&proc_inst.target, source, retained_owned),
                         content: self.text(&proc_inst.content, source, retained_owned),
                         byte_range: [proc_inst.byte_range.0, proc_inst.byte_range.1],
-                    });
-                    let pointer = std::ptr::from_ref(&*descriptor).cast();
-                    (Record::ProcInst(descriptor), pointer)
+                    };
+                    self.descriptors.store(descriptor)
                 }
-            };
-            self.records.push(record);
-            pointer
+            }
         }
     }
 }
