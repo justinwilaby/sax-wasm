@@ -55,6 +55,9 @@ pub trait EventHandler {
         self.handle_borrowed_event(second, data, source);
     }
 
+    /// Payload-free notification; opt in by subscribing to CloseTagSignal.
+    fn handle_signal(&self, _event: Event) {}
+
     fn clear_events(&self) {}
 }
 
@@ -84,7 +87,7 @@ pub trait EventHandler {
 /// * `end_pos` - The end position of the current parse.
 pub struct SAXParser<'a> {
     // Configuration and State
-    pub events: [bool; 10],
+    pub events: [bool; 11],
     state: State,
     brace_ct: u32,
     quote: u8,
@@ -159,7 +162,7 @@ impl<'a> SAXParser<'a> {
     /// let tags = Rc::new(RefCell::new(Vec::new()));
     /// let event_handler = SaxEventHandler::new(Rc::clone(&tags));
     /// let mut parser = SAXParser::new(&event_handler);
-    /// let mut events = [false;10];
+    /// let mut events = [false;11];
     /// events[Event::OpenTag as usize] = true;
     /// parser.events = events;
     /// parser.write(b"<tag>content</tag>");
@@ -172,7 +175,7 @@ impl<'a> SAXParser<'a> {
     pub fn new(event_handler: &'a dyn EventHandler) -> SAXParser<'a> {
         SAXParser {
             // Configuration and State
-            events: [false; 10],
+            events: [false; 11],
             state: State::Begin,
             brace_ct: 0,
             quote: 0,
@@ -667,7 +670,7 @@ impl<'a> SAXParser<'a> {
 
         let len = self.tags.len();
         // Store these only if we're interested in CloseTag events
-        if len != 0 && self.events[Event::CloseTag] {
+        if len != 0 && (self.events[Event::CloseTag] || self.events[Event::CloseTagSignal]) {
             self.tags[len - 1].text_nodes.push(text.clone());
         }
 
@@ -1208,7 +1211,7 @@ impl<'a> SAXParser<'a> {
     fn process_attribute(&mut self, gc: &mut GraphemeClusters) {
         let mut attr = mem::replace(&mut self.attribute, Attribute::new());
         attr.byte_range.1 = self.chunk_offset + gc.cursor as u64;
-        let retain = self.events[Event::OpenTag] || self.events[Event::CloseTag];
+        let retain = self.events[Event::OpenTag] || self.events[Event::CloseTag] || self.events[Event::CloseTagSignal];
         if !self.events[Event::Attribute] {
             if retain {
                 self.tag.attributes.push(attr);
@@ -1250,13 +1253,14 @@ impl<'a> SAXParser<'a> {
         // A self-closing tag never enters the stack. Its event snapshots must
         // remain immutable for the remainder of this write.
         if self_closing {
-            if !self.events[Event::OpenTag] && !self.events[Event::CloseTag] {
+            if !self.events[Event::OpenTag] && !self.events[Event::CloseTag] && !self.events[Event::CloseTagSignal] {
                 self.state = State::BeginWhitespace;
                 return;
             }
             if self.borrowed_events {
                 // Capture this tag's subscriptions before entering JS. The
                 // baseline applies callback-time changes to the next tag.
+                let signal = self.events[Event::CloseTagSignal];
                 let open = self.events[Event::OpenTag];
                 let close = self.events[Event::CloseTag];
                 if open && close {
@@ -1266,9 +1270,13 @@ impl<'a> SAXParser<'a> {
                 } else if close {
                     self.emit_borrowed(Event::CloseTag, Entity::Tag(&tag));
                 }
+                if signal {
+                    self.event_handler.handle_signal(Event::CloseTagSignal);
+                }
                 self.state = State::BeginWhitespace;
                 return;
             }
+            let signal = self.events[Event::CloseTagSignal];
             if self.events[Event::OpenTag] || self.events[Event::CloseTag] {
                 tag.hydrate(self.source_ptr);
                 let tag_box = Box::new(tag);
@@ -1279,6 +1287,9 @@ impl<'a> SAXParser<'a> {
                     self.event_handler.handle_event(Event::CloseTag, Entity::Tag(&tag_box));
                 }
                 self.dispatched.push(Dispatched::Tag(tag_box));
+            }
+            if signal {
+                self.event_handler.handle_signal(Event::CloseTagSignal);
             }
             self.state = State::BeginWhitespace;
             return;
@@ -1337,16 +1348,28 @@ impl<'a> SAXParser<'a> {
             return;
         }
 
-        if !self.events[Event::CloseTag] {
+        let signal = self.events[Event::CloseTagSignal];
+        if !self.events[Event::CloseTag] && !signal {
             self.tags.truncate(tag_index.max(1));
             return;
         }
 
         let mut i = self.tags.len();
+        // Capture subscriptions before dispatch, as for paired self-closing events.
+        let close = self.events[Event::CloseTag];
         while i > tag_index {
+            if !close {
+                self.tags.pop();
+                self.event_handler.handle_signal(Event::CloseTagSignal);
+                i -= 1;
+                continue;
+            }
             if self.borrowed_events {
                 let tag = unsafe { self.tags.pop().unwrap_unchecked() };
                 self.emit_borrowed(Event::CloseTag, Entity::Tag(&tag));
+                if signal {
+                    self.event_handler.handle_signal(Event::CloseTagSignal);
+                }
                 i -= 1;
                 continue;
             }
@@ -1354,6 +1377,9 @@ impl<'a> SAXParser<'a> {
             tag.hydrate(self.source_ptr);
             self.event_handler.handle_event(Event::CloseTag, Entity::Tag(&tag));
             self.dispatched.push(Dispatched::Tag(tag));
+            if signal {
+                self.event_handler.handle_signal(Event::CloseTagSignal);
+            }
             i -= 1;
         }
     }
@@ -1376,7 +1402,7 @@ impl<'a> SAXParser<'a> {
     }
 
     fn new_text(&mut self, line: u64, character: u64, offset: usize) {
-        if self.text.is_none() && (self.events[Event::Text] || self.events[Event::CloseTag]) {
+        if self.text.is_none() && (self.events[Event::Text] || self.events[Event::CloseTag] || self.events[Event::CloseTagSignal]) {
             let mut text = Text::new([line, character]);
             text.header = (offset, offset);
             text.byte_range.0 = self.chunk_offset + offset as u64;
@@ -1408,9 +1434,11 @@ pub enum Event {
     CloseTag = 8,
     // 512
     Cdata = 9,
+    // 1024: the same close notification without a tag payload.
+    CloseTagSignal = 10,
 }
 
-impl Index<Event> for [bool; 10] {
+impl Index<Event> for [bool; 11] {
     type Output = bool;
 
     fn index(&self, event: Event) -> &Self::Output {
@@ -1419,7 +1447,7 @@ impl Index<Event> for [bool; 10] {
     }
 }
 
-impl IndexMut<Event> for [bool; 10] {
+impl IndexMut<Event> for [bool; 11] {
     fn index_mut(&mut self, event: Event) -> &mut Self::Output {
         unsafe { self.get_unchecked_mut(event as usize) }
     }
@@ -1518,7 +1546,7 @@ mod tests {
     fn test_attribute_position() -> Result<()> {
         let event_handler = TextEventHandler::new();
         let mut sax = SAXParser::new(&event_handler);
-        let mut events = [false; 10];
+        let mut events = [false; 11];
         events[Event::Attribute] = true;
         events[Event::CloseTag] = true;
         sax.events = events;
@@ -1560,7 +1588,7 @@ mod tests {
     fn test_attribute_position_1() -> Result<()> {
         let event_handler = TextEventHandler::new();
         let mut sax = SAXParser::new(&event_handler);
-        let mut events = [false; 10];
+        let mut events = [false; 11];
         events[Event::Attribute] = true;
         events[Event::CloseTag] = true;
         sax.events = events;
@@ -1598,7 +1626,7 @@ mod tests {
     fn test_attribute_position_2() -> Result<()> {
         let event_handler = TextEventHandler::new();
         let mut sax = SAXParser::new(&event_handler);
-        let mut events = [false; 10];
+        let mut events = [false; 11];
         events[Event::Attribute] = true;
         events[Event::CloseTag] = true;
         events[Event::Text] = true;
@@ -1623,7 +1651,7 @@ mod tests {
     fn test_attribute() -> Result<()> {
         let event_handler = TextEventHandler::new();
         let mut sax = SAXParser::new(&event_handler);
-        let mut events = [false; 10];
+        let mut events = [false; 11];
         events[Event::Attribute] = true;
         events[Event::CloseTag] = true;
         events[Event::Text] = true;
@@ -1683,7 +1711,7 @@ mod tests {
     fn test_attribute_single_character_boolean() -> Result<()> {
         let event_handler = TextEventHandler::new();
         let mut sax = SAXParser::new(&event_handler);
-        let mut events = [false; 10];
+        let mut events = [false; 11];
         events[Event::Attribute] = true;
         events[Event::CloseTag] = true;
         events[Event::Text] = true;
@@ -1710,7 +1738,7 @@ mod tests {
     fn test_attribute_unquoted() -> Result<()> {
         let event_handler = TextEventHandler::new();
         let mut sax = SAXParser::new(&event_handler);
-        let mut events = [false; 10];
+        let mut events = [false; 11];
         events[Event::Attribute] = true;
         events[Event::CloseTag] = true;
         events[Event::Text] = true;
@@ -1735,7 +1763,7 @@ mod tests {
     fn test_attribute_single_character() -> Result<()> {
         let event_handler = TextEventHandler::new();
         let mut sax = SAXParser::new(&event_handler);
-        let mut events = [false; 10];
+        let mut events = [false; 11];
         events[Event::Attribute] = true;
         events[Event::CloseTag] = true;
         events[Event::Text] = true;
@@ -1765,7 +1793,7 @@ mod tests {
     fn test_empty_tag() -> Result<()> {
         let event_handler = TextEventHandler::new();
         let mut sax = SAXParser::new(&event_handler);
-        let mut events = [false; 10];
+        let mut events = [false; 11];
         events[Event::CloseTag] = true;
         events[Event::Text] = true;
         sax.events = events;
@@ -1796,7 +1824,7 @@ mod tests {
     fn test_tag() -> Result<()> {
         let event_handler = TextEventHandler::new();
         let mut sax = SAXParser::new(&event_handler);
-        let mut events = [false; 10];
+        let mut events = [false; 11];
         events[Event::CloseTag] = true;
         events[Event::Text] = true;
         sax.events = events;
@@ -1832,7 +1860,7 @@ mod tests {
         for i in 1..bytes.len() {
             let event_handler = TextEventHandler::new();
             let mut sax = SAXParser::new(&event_handler);
-            let mut events = [false; 10];
+            let mut events = [false; 11];
             events[Event::CloseTag] = true;
             events[Event::Text] = true;
             events[Event::Attribute] = true;
@@ -1879,7 +1907,7 @@ mod tests {
     fn test_whitespace() -> Result<()> {
         let event_handler = TextEventHandler::new();
         let mut sax = SAXParser::new(&event_handler);
-        let mut events = [false; 10];
+        let mut events = [false; 11];
         events[Event::CloseTag] = true;
         events[Event::Text] = true;
         sax.events = events;
@@ -1907,7 +1935,7 @@ the plugin
     fn test_comment() -> Result<()> {
         let event_handler = TextEventHandler::new();
         let mut sax = SAXParser::new(&event_handler);
-        let mut events = [false; 10];
+        let mut events = [false; 11];
         events[Event::Comment] = true;
         events[Event::Text] = true;
         sax.events = events;
@@ -1935,7 +1963,7 @@ the plugin
 
     #[test]
     fn test_comment_write_boundary_2() -> Result<()> {
-        let mut events = [false; 10];
+        let mut events = [false; 11];
         events[Event::Comment] = true;
         let str = r#"<!--lit-part cI7PGs8mxHY=-->
         <p><!--lit-part-->hello<!--/lit-part--></p>
@@ -1970,7 +1998,7 @@ the plugin
     fn stream_large_xml() -> Result<()> {
         let event_handler = TextEventHandler::new();
         let mut sax = SAXParser::new(&event_handler);
-        sax.events = [true; 10];
+        sax.events = [true; 11];
         let f = File::open("src/js/__test__/xml.xml")?;
         let mut reader = BufReader::new(f);
         const BUFFER_LEN: usize = 64 * 1024;
@@ -1990,7 +2018,7 @@ the plugin
     fn test_4_bytes() -> Result<()> {
         let event_handler = TextEventHandler::new();
         let mut sax = SAXParser::new(&event_handler);
-        let mut events = [false; 10];
+        let mut events = [false; 11];
         events[Event::Text] = true;
         sax.events = events;
         let str = "🏴📚📚🏴📚📚🏴📚📚🏴📚📚🏴📚📚🏴📚📚🏴📚📚🏴📚📚🏴📚📚🏴📚📚";
@@ -2013,7 +2041,7 @@ the plugin
     fn test_cdata_write_boundary() -> Result<()> {
         let str = "<div><![CDATA[something]]>";
         let bytes = str.as_bytes();
-        let mut events = [false; 10];
+        let mut events = [false; 11];
         events[Event::Cdata] = true;
         for i in 1..bytes.len() {
             let event_handler = TextEventHandler::new();
@@ -2043,7 +2071,7 @@ the plugin
     fn count_grapheme_length() -> Result<()> {
         let event_handler = TextEventHandler::new();
         let mut sax = SAXParser::new(&event_handler);
-        let mut events = [false; 10];
+        let mut events = [false; 11];
         events[Event::Text] = true;
         sax.events = events;
         let str = "🏴📚📚<div href=\"./123/123\">hey there</div>";
@@ -2063,7 +2091,7 @@ the plugin
     fn parse_jsx_expression() -> Result<()> {
         let event_handler = TextEventHandler::new();
         let mut sax = SAXParser::new(&event_handler);
-        let mut events = [false; 10];
+        let mut events = [false; 11];
         events[Event::Text] = true;
         events[Event::CloseTag] = true;
         sax.events = events;
@@ -2090,7 +2118,7 @@ the plugin
     fn test_doctype() -> Result<()> {
         let event_handler = TextEventHandler::new();
         let mut sax = SAXParser::new(&event_handler);
-        let mut events = [false; 10];
+        let mut events = [false; 11];
         events[Event::Doctype] = true;
         events[Event::Declaration] = true;
         sax.events = events;
@@ -2120,7 +2148,7 @@ the plugin
     fn test_empty_cdata() -> Result<()> {
         let event_handler = TextEventHandler::new();
         let mut sax = SAXParser::new(&event_handler);
-        let mut events = [false; 10];
+        let mut events = [false; 11];
         events[Event::Cdata] = true;
         sax.events = events;
         let str = "<div>
@@ -2147,7 +2175,7 @@ the plugin
     fn test_proc_inst() -> Result<()> {
         let event_handler = TextEventHandler::new();
         let mut sax = SAXParser::new(&event_handler);
-        let mut events = [false; 10];
+        let mut events = [false; 11];
         events[Event::ProcessingInstruction] = true;
         sax.events = events;
         let str = r#"<?xml-stylesheet
@@ -2173,7 +2201,7 @@ the plugin
     fn test_jsx() -> Result<()> {
         let event_handler = TextEventHandler::new();
         let mut sax = SAXParser::new(&event_handler);
-        let mut events = [false; 10];
+        let mut events = [false; 11];
         events[Event::CloseTag] = true;
         sax.events = events;
         let str = r#"
@@ -2205,7 +2233,7 @@ the plugin
     fn test_self_closing_tag() -> Result<()> {
         let event_handler = TextEventHandler::new();
         let mut sax = SAXParser::new(&event_handler);
-        let mut events = [false; 10];
+        let mut events = [false; 11];
         events[Event::CloseTag] = true;
         sax.events = events;
         let str = r#"
@@ -2242,7 +2270,7 @@ the plugin
     fn test_comment_write_boundary() -> Result<()> {
         let str = r#"<!--some comment here-->"#;
         let bytes = str.as_bytes();
-        let mut events = [false; 10];
+        let mut events = [false; 11];
         events[Event::Comment] = true;
 
         for i in 1..bytes.len() {
@@ -2276,7 +2304,7 @@ the plugin
         for i in 1..bytes.len() {
             let event_handler = TextEventHandler::new();
             let mut sax = SAXParser::new(&event_handler);
-            let mut events = [false; 10];
+            let mut events = [false; 11];
             events[Event::Attribute] = true;
             sax.events = events;
 
@@ -2313,7 +2341,7 @@ the plugin
     fn test_script_tag_unquoted_attribute() -> Result<()> {
         let event_handler = TextEventHandler::new();
         let mut sax = SAXParser::new(&event_handler);
-        let mut events = [false; 10];
+        let mut events = [false; 11];
         events[Event::Attribute] = true;
         events[Event::CloseTag] = true;
         sax.events = events;
@@ -2354,7 +2382,7 @@ the plugin
     fn test_attribute_no_whitespace_between() -> Result<()> {
         let event_handler = TextEventHandler::new();
         let mut sax = SAXParser::new(&event_handler);
-        let mut events = [false; 10];
+        let mut events = [false; 11];
         events[Event::Attribute] = true;
         events[Event::CloseTag] = true;
         sax.events = events;
@@ -2382,7 +2410,7 @@ the plugin
     fn test_attribute_position_no_value_attr() -> Result<()> {
         let event_handler = TextEventHandler::new();
         let mut sax = SAXParser::new(&event_handler);
-        let mut events = [false; 10];
+        let mut events = [false; 11];
         events[Event::Attribute] = true;
         events[Event::CloseTag] = true;
         sax.events = events;
@@ -2425,7 +2453,7 @@ the plugin
     fn test_attribute_position_no_value_attr1() -> Result<()> {
         let event_handler = TextEventHandler::new();
         let mut sax = SAXParser::new(&event_handler);
-        let mut events = [false; 10];
+        let mut events = [false; 11];
         events[Event::Attribute] = true;
         events[Event::CloseTag] = true;
         sax.events = events;
@@ -2450,4 +2478,41 @@ the plugin
 
         Ok(())
     }
+
+    #[test]
+    fn close_signal_does_not_invoke_the_payload_handler() {
+        struct Signals(RefCell<usize>);
+        impl EventHandler for Signals {
+            fn handle_event(&self, _event: Event, _data: Entity) {
+                panic!("signal-only subscriptions must not construct a payload event");
+            }
+            fn handle_signal(&self, event: Event) {
+                assert_eq!(event as usize, Event::CloseTagSignal as usize);
+                *self.0.borrow_mut() += 1;
+            }
+        }
+        let handler = Signals(RefCell::new(0));
+        let mut parser = SAXParser::new(&handler);
+        parser.events[Event::CloseTagSignal] = true;
+        parser.write(b"<root><self/><nested>text</root></orphan><unfinished>");
+        parser.identity();
+        assert_eq!(*handler.0.borrow(), 3);
+    }
+
+    #[test]
+    fn close_signal_preserves_data_for_a_later_full_close_subscription() {
+        let handler = TextEventHandler::new();
+        let mut parser = SAXParser::new(&handler);
+        parser.events[Event::CloseTagSignal] = true;
+        parser.write(b"<root key=\"value\">before");
+        parser.events[Event::CloseTag] = true;
+        parser.write(b"after</root>");
+        parser.identity();
+        let tags = handler.tags.borrow();
+        assert_eq!(tags.len(), 1);
+        assert_eq!(tags[0].attributes[0].value.value, b"value");
+        let text: Vec<u8> = tags[0].text_nodes.iter().flat_map(|t| t.value.clone()).collect();
+        assert_eq!(text, b"beforeafter");
+    }
+
 }
