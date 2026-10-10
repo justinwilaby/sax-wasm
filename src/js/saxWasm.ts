@@ -25,6 +25,8 @@ export const SaxEventType = {
   OpenTag: 0b10000000,
   CloseTag: 0b100000000,
   Cdata: 0b1000000000,
+  /** Close notification with undefined detail; no Tag reader is constructed. */
+  CloseTagSignal: 0b10000000000,
 } as const;
 
 export type SaxEventType = typeof SaxEventType[keyof typeof SaxEventType]
@@ -38,6 +40,7 @@ export type SaxEvent = [typeof SaxEventType.Text, Text]
   | [typeof SaxEventType.Attribute, Attribute]
   | [typeof SaxEventType.OpenTag, Tag]
   | [typeof SaxEventType.CloseTag, Tag]
+  | [typeof SaxEventType.CloseTagSignal, undefined]
   | [typeof SaxEventType.Cdata, Text]
 
 /**
@@ -579,6 +582,7 @@ export class Tag extends Reader<TagDetail> implements TagDetail {
 interface WasmSaxParser extends WebAssembly.Exports {
   memory: WebAssembly.Memory;
   parser: (events: number) => void;
+  close_tag_signal_version: () => number;
   write: (pointer: number, length: number) => void;
   end: () => void;
   event_abi_version: () => number;
@@ -632,10 +636,14 @@ export class SAXParser {
           if (events === ~~value) {
             return;
           }
-          events = ~~value;
+          const next = ~~value;
           if (self.wasmSaxParser) {
-            self.wasmSaxParser.parser(events);
+            if ((next & SaxEventType.CloseTagSignal) && self.wasmSaxParser.close_tag_signal_version?.() !== 1) {
+              throw new Error("WASM does not support CloseTagSignal");
+            }
+            self.wasmSaxParser.parser(next);
           }
+          events = next;
         },
         configurable: false,
         enumerable: true,
@@ -861,6 +869,9 @@ export class SAXParser {
       if (abi !== 1) {
         throw new Error(`Unsupported SAX event ABI version: ${abi ?? 'missing'}; expected 1.`);
       }
+      if ((this.events & SaxEventType.CloseTagSignal) && exports.close_tag_signal_version?.() !== 1) {
+        throw new Error("WASM does not support CloseTagSignal");
+      }
       this.wasmSaxParser = exports;
       exports.parser(this.events);
       return true;
@@ -870,6 +881,11 @@ export class SAXParser {
 
   public eventTrap = (event: SaxEventType, ptr: number): void => {
     if (!this.wasmSaxParser || !this.eventHandler) {
+      return;
+    }
+    // Signals have no descriptor; do not construct a Reader for the null pointer.
+    if (event === SaxEventType.CloseTagSignal) {
+      this.eventHandler(event, undefined);
       return;
     }
     let detail: Attribute | Text | Tag | ProcInst;

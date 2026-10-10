@@ -25,9 +25,11 @@ export declare const SaxEventType: {
     readonly OpenTag: 128;
     readonly CloseTag: 256;
     readonly Cdata: 512;
+    /** Close notification with undefined detail; no Tag reader is constructed. */
+    readonly CloseTagSignal: 1024;
 };
 export type SaxEventType = typeof SaxEventType[keyof typeof SaxEventType];
-export type SaxEvent = [typeof SaxEventType.Text, Text] | [typeof SaxEventType.ProcessingInstruction, ProcInst] | [typeof SaxEventType.Declaration, Text] | [typeof SaxEventType.Doctype, Text] | [typeof SaxEventType.Comment, Text] | [typeof SaxEventType.OpenTagStart, Tag] | [typeof SaxEventType.Attribute, Attribute] | [typeof SaxEventType.OpenTag, Tag] | [typeof SaxEventType.CloseTag, Tag] | [typeof SaxEventType.Cdata, Text];
+export type SaxEvent = [typeof SaxEventType.Text, Text] | [typeof SaxEventType.ProcessingInstruction, ProcInst] | [typeof SaxEventType.Declaration, Text] | [typeof SaxEventType.Doctype, Text] | [typeof SaxEventType.Comment, Text] | [typeof SaxEventType.OpenTagStart, Tag] | [typeof SaxEventType.Attribute, Attribute] | [typeof SaxEventType.OpenTag, Tag] | [typeof SaxEventType.CloseTag, Tag] | [typeof SaxEventType.CloseTagSignal, undefined] | [typeof SaxEventType.Cdata, Text];
 /**
  * Represents the different types of attributes.
  */
@@ -388,6 +390,7 @@ export declare class Tag extends Reader<TagDetail> implements TagDetail {
 interface WasmSaxParser extends WebAssembly.Exports {
     memory: WebAssembly.Memory;
     parser: (events: number) => void;
+    close_tag_signal_version: () => number;
     write: (pointer: number, length: number) => void;
     end: () => void;
     event_abi_version: () => number;

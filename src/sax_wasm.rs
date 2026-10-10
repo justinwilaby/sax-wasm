@@ -44,6 +44,10 @@ impl EventHandler for SaxEventHandler {
         }
     }
 
+    fn handle_signal(&self, event: Event) {
+        unsafe { event_listener_v1(1 << event as u32, ptr::null()) };
+    }
+
     fn clear_events(&self) {
         self.store.borrow_mut().clear();
     }
@@ -54,9 +58,12 @@ pub extern "C" fn event_abi_version() -> u32 {
     1
 }
 
-fn generate_event_lookup(events: u32) -> [bool; 10] {
-    let mut event_lookup = [false; 10];
-    for i in 0..10 {
+#[no_mangle]
+pub extern "C" fn close_tag_signal_version() -> u32 { 1 }
+
+fn generate_event_lookup(events: u32) -> [bool; 11] {
+    let mut event_lookup = [false; 11];
+    for i in 0..11 {
         event_lookup[i] = events & (1 << i) != 0;
     }
     event_lookup

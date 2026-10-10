@@ -399,8 +399,33 @@ Complete list of event/argument pairs:
 |SaxEventType.OpenTag              |0b10000000    | `tag: Tag`                    |
 |SaxEventType.CloseTag             |0b100000000   | `tag: Tag`                    |
 |SaxEventType.Cdata                |0b1000000000  | `text: Text`                  |
+|SaxEventType.CloseTagSignal       |0b10000000000 | `undefined`                   |
 
 Note: In prose you may see “CDATA”, but the enum value is spelled `Cdata`.
+
+### Close notifications without a tag payload
+
+Use `CloseTagSignal` when a consumer tracks nesting from open events and only needs a notification to close the current element:
+
+```js
+const parser = new SAXParser(SaxEventType.OpenTag | SaxEventType.CloseTagSignal);
+const openTags = [];
+parser.eventHandler = (event, detail) => {
+  if (event === SaxEventType.OpenTag) {
+    openTags.push(detail.toJSON());
+  } else if (event === SaxEventType.CloseTagSignal) {
+    openTags.pop(); // detail is undefined; there is no close Tag to decode.
+  }
+};
+```
+
+`CloseTagSignal` has mask `1024` and does not construct a Rust event descriptor or a JavaScript `Tag` reader. The async `parse()` generator yields `[SaxEventType.CloseTagSignal, undefined]`; its event tuple still allocates normally. Check the event type before calling methods on `detail`.
+
+Signals follow the same closing behavior as `CloseTag`: self-closing tags produce a signal, and malformed nesting can produce several signals when several open elements are closed. Unmatched closing tags and unclosed elements at `end()` do not produce additional signals. If both close subscriptions are enabled, each full `CloseTag` is followed by its signal. In the JS API, subscriptions for a self-closing tag or group of implicit closes are captured before its callbacks; changes affect subsequent tags.
+
+This event removes close-payload construction, not parser state. Names, attributes, and text needed for a later full `CloseTag` subscription remain retained while signal events are enabled. Subscription changes continue to work during a document. Use `CloseTag` when the closing tag's name, attributes, text, or positions are needed.
+
+The bundled wrapper checks WASM support when preparing a parser or enabling `CloseTagSignal`. An older ABI-1 binary remains usable for existing events, but enabling the new event requires a binary exporting `close_tag_signal_version() = 1`. Existing event masks and payload layouts retain their values. Native Rust callers will need 11 entries in the public event array and should implement `EventHandler::handle_signal` to receive these notifications.
 
 ### Whitespace handling
 Whitespace-only text nodes between elements are intentionally not emitted to keep streaming performance high. If you need to account for inter-element whitespace, compare the `line`/`character` positions of consecutive tags to infer gaps.
@@ -437,7 +462,7 @@ Constructs a new SAXParser instance with the specified events bitmask.
 
 - `events` - A bitmask containing the events to subscribe to. See the examples for creating the bitmask
 
-- `eventHandler` - A function reference used for event handling. It receives the event bitmask and the corresponding `detail` object listed in the event table.
+- `eventHandler` - A function reference used for event handling. It receives the event bitmask and the corresponding `detail` listed in the event table. `CloseTagSignal` passes `undefined`.
 
 ## sax-wasm.wasm
 ### Methods
@@ -454,6 +479,8 @@ unpredictable results but probably will not break.
 - `end()` - resets the `character` and `line` counts but does not halt processing of the current buffer.
 
 - `event_abi_version() -> u32` - Returns `1` for the required event descriptor format. The module imports `env.event_listener_v1(event: u32, ptr: u32)`. Custom wrappers must keep input bytes unchanged until the next `write()` or `end()`. The bundled JS wrapper requires version 1 and rejects other versions.
+
+- `close_tag_signal_version() -> u32` - Returns `1` when payload-free close notifications are supported. For event mask `1024`, `env.event_listener_v1` receives `ptr = 0`; custom wrappers must dispatch the signal without reading a descriptor.
 
 ## Building from source
 ### Prerequisites
