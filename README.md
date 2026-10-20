@@ -7,7 +7,7 @@
 
 ## Quickstart
 
-- Works in Node (>=24.3.0) and modern browsers. Install with `npm i sax-wasm`.
+- Works in Node (>=16.4.0) and modern browsers. Install with `npm i sax-wasm`. (Examples use `import.meta.resolve`, which requires Node 20.6+ / 18.19+; on older runtimes, pass the wasm bytes yourself.)
 - Initialize `SAXParser`, load the packaged `lib/sax-wasm.wasm`, and stream bytes via a reader.
 
 Node (ESM):
@@ -45,7 +45,7 @@ for await (const [event, detail] of parser.parse(res.body.getReader())) {
 
 Note: `prepareWasm` accepts a `Uint8Array`, `WebAssembly.Module`, `Response`, or `Promise<Response>`.
 
-TypeScript note (Node 24+): `SAXParser.parse` expects a `ReadableStreamDefaultReader<Uint8Array>`.
+TypeScript note: `SAXParser.parse` expects a `ReadableStreamDefaultReader<Uint8Array>`.
 Node's `Readable.toWeb()` often produces a `ReadableStream<any>`, so the generic type is lost.
 You can either type the stream or cast the reader:
 
@@ -276,7 +276,7 @@ Install once, then jump back to Quickstart for minimal usage:
 ```bash
 npm i sax-wasm
 ```
-Supports Node (>=24.3.0) with both ESM and CJS entry points and modern browsers.
+Supports Node (>=16.4.0) with both ESM and CJS entry points and modern browsers. Examples that use `Readable.toWeb()` require Node 17+, and `SAXParser.parse` with global `ReadableStream` requires Node 18+.
 
 ## Usage in Node (ESM)
 ```js
