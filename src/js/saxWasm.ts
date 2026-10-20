@@ -864,16 +864,16 @@ export class SAXParser {
       instance = result?.instance;
     }
     if (instance && typeof this.events === 'number') {
-      const exports = instance.exports as unknown as WasmSaxParser;
-      const abi = exports.event_abi_version?.();
+      const wasmExports = instance.exports as unknown as WasmSaxParser;
+      const abi = wasmExports.event_abi_version?.();
       if (abi !== 1) {
         throw new Error(`Unsupported SAX event ABI version: ${abi ?? 'missing'}; expected 1.`);
       }
-      if ((this.events & SaxEventType.CloseTagSignal) && exports.close_tag_signal_version?.() !== 1) {
+      if ((this.events & SaxEventType.CloseTagSignal) && wasmExports.close_tag_signal_version?.() !== 1) {
         throw new Error("WASM does not support CloseTagSignal");
       }
-      this.wasmSaxParser = exports;
-      exports.parser(this.events);
+      this.wasmSaxParser = wasmExports;
+      wasmExports.parser(this.events);
       return true;
     }
     throw new Error(`Failed to instantiate the parser.`);
